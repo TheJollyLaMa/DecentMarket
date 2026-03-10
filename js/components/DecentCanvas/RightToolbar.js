@@ -4,12 +4,9 @@ class RightToolbar extends HTMLElement {
     this.style.flexDirection = 'column';
     this.style.alignItems = 'center';
     this.style.justifyContent = 'space-between';
-    this.style.height = 'calc(100vh - 50px)';
     this.style.width = '50px';
     this.style.background = 'rgba(0, 0, 0, 0.6)';
-    this.style.position = 'absolute';
     this.style.right = '0';
-    this.style.top = '0';
     this.style.zIndex = '999';
     this.style.padding = '20px 0';
 
@@ -63,4 +60,4 @@ class RightToolbar extends HTMLElement {
   }
 }
 
-customElements.define('right-toolbar', RightToolbar);
+customElements.define('decent-right-toolbar', RightToolbar);

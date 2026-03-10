@@ -1,5 +1,3 @@
-
-import './DecentCanvas/DecentUILayer.js';
 import './DecentCanvas/LeftToolbar.js';
 import './DecentCanvas/RightToolbar.js';
 
@@ -19,6 +17,8 @@ class DecentCanvas extends HTMLElement {
   }
 
   connectedCallback() {
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
     // Scene setup
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x000000);
@@ -28,8 +28,8 @@ class DecentCanvas extends HTMLElement {
     // Attach renderer.domElement to this custom element
     this.appendChild(this.renderer.domElement);
 
-    this.camera.position.set(0, 5, 15);
-    this.camera.lookAt(0, 0, 0);
+    this.camera.position.set(0, 3, 15);
+    this.camera.lookAt(0, -2, 0);
 
     // Add 200 randomly placed 2D sprite stars using emojis
     this.starEmojis = ['✨', '⭐️'];
@@ -57,6 +57,9 @@ class DecentCanvas extends HTMLElement {
     this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.05;
+    this.controls.enablePan = false;    // disable panning
+    this.controls.enableZoom = false;   // disable zoom
+    this.controls.minDistance = this.controls.maxDistance = 15; // lock distance
     this.controls.update();
 
     // Video sphere
@@ -82,7 +85,8 @@ class DecentCanvas extends HTMLElement {
     });
     const mandelblumShip = new THREE.Mesh(geometry, material);
     mandelblumShip.rotation.y = -Math.PI / 2;
-    mandelblumShip.position.set(0, 0.5, 0);
+    mandelblumShip.position.set(-0.3, -5, 0);
+
     this.scene.add(mandelblumShip);
     const light = new THREE.PointLight(0xffffff, 1, 100);
     light.position.set(10, 10, 10);
@@ -166,6 +170,12 @@ class DecentCanvas extends HTMLElement {
       this.renderer.render(this.scene, this.camera);
     };
     animate();
+    // Handle resizing to keep camera and renderer in sync with window size
+    window.addEventListener('resize', () => {
+      this.camera.aspect = window.innerWidth / window.innerHeight;
+      this.camera.updateProjectionMatrix();
+      this.renderer.setSize(window.innerWidth, window.innerHeight);
+    });
   }
 
   // Utility: create emoji texture

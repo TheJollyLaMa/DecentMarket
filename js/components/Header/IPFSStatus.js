@@ -79,45 +79,41 @@ export class IPFSStatus extends HTMLElement {
   }
 
   async checkForStoredCredentials() {
+    console.time("checkForStoredCredentials");
     try {
-      const { connectW3upClient } = await import('..Header/helpers/ipfs/w3upClient.js');
-      const result = await connectW3upClient(true); // autoConnect flag
-      if (result) {
+      // First: Try IndexedDB via connectW3upClient
+      const { connectW3upClient } = await import('./helpers/ipfs/w3upClient.js');
+      const result = await connectW3upClient(true);
+      console.log("[IPFS] connectW3upClient(true) returned:", result);
+
+      if (result && result.client) {
+        console.log("[IPFS] IndexedDB has valid client + spaces, fully connected.");
         this.ipfsConnected = true;
         window.w3upClient = result.client;
-        // Log and compare the list of space DIDs for debugging
-        let spaces = [];
-        try {
-          spaces = await result.client.spaces();
-        } catch (e) {
-          console.warn("Failed to get spaces from client:", e);
-        }
-        if (spaces && spaces.length > 0) {
-          console.log("Found stored spaces:", spaces.map(s => s.did()));
-        } else {
-          console.warn("No stored spaces found in client after autoConnect.");
-        }
         this.updateUIConnected();
         if (window.onIPFSReady) window.onIPFSReady(result.client);
-      } else {
-        console.warn("No stored credentials found.");
-        if (!window.w3upClient) {
-          // Show modal with email button; do NOT prompt immediately
-          this.showWaitingModal();
-          return;
-        } else {
-          await this.connectToW3up();
-        }
-      }
-    } catch (err) {
-      console.warn("Auto-connect failed or no stored credentials:", err);
-      if (!window.w3upClient) {
-        // Show modal with email button; do NOT prompt immediately
-        this.showWaitingModal();
+        console.timeEnd("checkForStoredCredentials");
         return;
-      } else {
-        await this.connectToW3up();
       }
+
+      // Second: Try localStorage trust if IndexedDB fails
+      const localEmailData = JSON.parse(localStorage.getItem('IPFS_Email_Address') || '{}');
+      if (localEmailData?.email && localEmailData?.confirmed) {
+        console.log("[IPFS] No valid IndexedDB, but local storage says confirmed email:", localEmailData.email);
+        this.ipfsConnected = true;
+        this.updateUIConnected();
+        console.timeEnd("checkForStoredCredentials");
+        return;
+      }
+
+      // Third: Neither present, show modal
+      console.warn("[IPFS] No credentials found anywhere, showing modal.");
+      this.showWaitingModal();
+      console.timeEnd("checkForStoredCredentials");
+    } catch (err) {
+      console.warn("[IPFS] Auto-connect failed:", err);
+      this.showWaitingModal();
+      console.timeEnd("checkForStoredCredentials");
     }
   }
 
@@ -163,6 +159,8 @@ export class IPFSStatus extends HTMLElement {
 
   async finishW3upLogin(email) {
     try {
+      // Store email with confirmed: false immediately
+      localStorage.setItem('IPFS_Email_Address', JSON.stringify({ email, confirmed: false }));
       const client = await window.w3up.create();
       const account = await client.login(email);
       if (account.plan) {
@@ -172,6 +170,12 @@ export class IPFSStatus extends HTMLElement {
       // Hide the waiting modal after credentials are confirmed and current space is set
       const space = spaces[0];
       await client.setCurrentSpace(space.did());
+      // After setting currentSpace, set confirmed: true in localStorage
+      const confirmed = JSON.parse(localStorage.getItem('IPFS_Email_Address'));
+      if (confirmed) {
+        confirmed.confirmed = true;
+        localStorage.setItem('IPFS_Email_Address', JSON.stringify(confirmed));
+      }
       this.hideWaitingModal();
       this.ipfsConnected = true;
       window.w3upClient = client;

@@ -1,5 +1,9 @@
 class DecentFoot extends HTMLElement {
   connectedCallback() {
+    // Lock scrolling on body and html to prevent canvas from scrolling
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+
     // Get references to canvas element internals
     const canvasEl = document.querySelector('decent-canvas');
     const scene = canvasEl?.scene;
@@ -9,13 +13,57 @@ class DecentFoot extends HTMLElement {
     const setSpeed = (val) => canvasEl?.setSpeed(val);
 
     let cannonAngle = 0;
-    let shootingCows = false;
-    let shootingHearts = false;
-    let shootingSuns = false;
-    let shootingGems = false;
-    let shootingFungis = false;
-    let shootingButter = false;
-    let lastShotTime = 0;
+    // --- Cannon shooting system ---
+    // Emoji shooting groups
+    const emojiGroups = {
+      m: ['🧈', '🥤', '🥛', '🍨', '🍦'],
+      h: ['💗', '❣️', '💞', '💋'],
+      c: ['🐄', '🐮'],
+      f: ['🍄', '🍄‍🟫'],
+      s: ['🌞', '🌻', '😎', '🤗'],
+      g: ['💎', '🔮', '🔑', '👑', '💍']
+    };
+    const emojiIndexes = { m:0, h:0, c:0, f:0, s:0, g:0 };
+
+    // --- Shooting mode toggle ---
+    let shootFromShip = false;
+    function shootEmoji(emoji) {
+      if (!scene || !createEmojiTexture) return;
+      const texture = createEmojiTexture(emoji);
+      const material = new THREE.SpriteMaterial({ map: texture, transparent: true, opacity: 0.9 });
+      const sprite = new THREE.Sprite(material);
+      sprite.scale.set(1, 1, 1);
+
+      if (shootFromShip) {
+        // Clamp cannonAngle to front 180 degrees
+        if (cannonAngle < -Math.PI/2) cannonAngle = -Math.PI/2;
+        if (cannonAngle > Math.PI/2) cannonAngle = Math.PI/2;
+        sprite.position.set(0, -5, 0);
+        sprite.userData.vx = Math.sin(cannonAngle) * 0.5;
+        sprite.userData.vz = -Math.cos(cannonAngle) * 0.5;
+      } else {
+        const isLeft = Math.random() < 0.5;
+        const cannonOffsetX = isLeft ? -5.5 : 5.5;
+        sprite.position.set(cannonOffsetX, -8, 0);
+        sprite.userData.vx = Math.sin(cannonAngle) * 0.5 + (Math.random() - 0.5) * 0.1;
+        sprite.userData.vz = -Math.cos(cannonAngle) * 0.5 + (Math.random() - 0.5) * 0.1;
+      }
+
+      sprite.userData.isProjectile = true;
+      scene.add(sprite);
+      canvasEl.starSprites.push(sprite);
+    }
+
+    document.addEventListener('keydown', e => {
+      if (emojiGroups[e.key]) {
+        const list = emojiGroups[e.key];
+        const index = emojiIndexes[e.key];
+        shootEmoji(list[index]);
+        emojiIndexes[e.key] = (index + 1) % list.length;
+      }
+      if (e.key === 'ArrowLeft') cannonAngle -= 0.1;
+      if (e.key === 'ArrowRight') cannonAngle += 0.1;
+    });
 
     // Build dial + controls
     const toggleWrapper = document.createElement('div');
@@ -41,7 +89,7 @@ class DecentFoot extends HTMLElement {
 
     // GitHub icon
     const githubLink = document.createElement('a');
-    githubLink.href = 'https://github.com/TheJollyLaMa/DecentFoot';
+    githubLink.href = 'https://github.com/TheJollyLaMa/DecentMarket';
     githubLink.target = '_blank';
     const githubIcon = document.createElement('img');
     githubIcon.src = 'img/Github_Logo.png';
@@ -180,6 +228,50 @@ class DecentFoot extends HTMLElement {
 
     updateKnob(210);
 
+    // Shooting mode toggle on the dial
+    const shootSwitch = document.createElement('div');
+    shootSwitch.style.position = 'absolute';
+    shootSwitch.style.bottom = '18px';
+    shootSwitch.style.right = '28px';
+    shootSwitch.style.width = '36px';
+    shootSwitch.style.height = '18px';
+    shootSwitch.style.border = '1px solid #0ff';
+    shootSwitch.style.borderRadius = '10px';
+    shootSwitch.style.background = '#000';
+    shootSwitch.style.cursor = 'pointer';
+    shootSwitch.style.display = 'flex';
+    shootSwitch.style.alignItems = 'center';
+    shootSwitch.style.justifyContent = 'flex-start';
+    shootSwitch.style.padding = '1px';
+
+    const shootKnob = document.createElement('div');
+    shootKnob.style.width = '16px';
+    shootKnob.style.height = '16px';
+    shootKnob.style.background = '#0ff';
+    shootKnob.style.borderRadius = '50%';
+    shootKnob.style.transition = '0.2s';
+    shootSwitch.appendChild(shootKnob);
+
+    const cannonEmoji = document.createElement('span');
+    cannonEmoji.textContent = '🏰';
+    cannonEmoji.style.fontSize = '14px';
+    cannonEmoji.style.marginLeft = '4px';
+    cannonEmoji.style.pointerEvents = 'none';
+    shootSwitch.appendChild(cannonEmoji);
+
+    shootSwitch.onclick = () => {
+      shootFromShip = !shootFromShip;
+      if (shootFromShip) {
+        shootKnob.style.transform = 'translateX(18px)';
+        cannonEmoji.textContent = '🚀';
+      } else {
+        shootKnob.style.transform = 'translateX(0)';
+        cannonEmoji.textContent = '🏰';
+      }
+    };
+
+    speedDial.appendChild(shootSwitch);
+
     // Right cannon
     const cannonRight = document.createElement('img');
     cannonRight.src = 'img/cannon.png';
@@ -216,6 +308,7 @@ class DecentFoot extends HTMLElement {
     toggleWrapper.appendChild(cannonLeft);
     toggleWrapper.appendChild(dialWrapper);
     toggleWrapper.appendChild(speedDial);
+
     toggleWrapper.appendChild(cannonRight);
     toggleWrapper.appendChild(discordLink);
     toggleWrapper.appendChild(mailLink);

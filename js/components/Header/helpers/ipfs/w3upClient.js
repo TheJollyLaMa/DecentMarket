@@ -1,19 +1,17 @@
-const { create } = window.w3up;
-
 export async function connectW3upClient(autoConnect = false) {
   try {
     console.log("Initializing w3up client...");
-    const client = await create();
+    const client = await window.w3up.create();
     console.log("Client ready:", client);
 
-    // Check for existing credentials/spaces before prompting for email
+    // Always check for existing credentials/spaces
     const spaces = await client.spaces();
+    console.log("[W3UP] Spaces found:", spaces.map(s => s.did()));
+
     if (spaces && spaces.length > 0) {
-      // Credentials already stored, no prompt needed
       const space = spaces[0];
       await client.setCurrentSpace(space.did());
-      console.log("Connected to space (auto-restored):", space.did());
-      // Reveal the IPFS icon
+      console.log("[W3UP] Connected to space (auto-restored):", space.did());
       const ipfsIcon = document.getElementById("ipfsIcon");
       if (ipfsIcon) ipfsIcon.style.display = "inline-block";
       return {
@@ -23,7 +21,6 @@ export async function connectW3upClient(autoConnect = false) {
     }
 
     if (!autoConnect) {
-      // Only prompt for email if not auto-connect (legacy usage)
       const email = prompt("Enter your email to login:");
       if (!email) {
         alert("Please enter a valid email to login.");
@@ -42,19 +39,18 @@ export async function connectW3upClient(autoConnect = false) {
       }
       const space = spacesAfter[0];
       await client.setCurrentSpace(space.did());
-      console.log("Connected to space:", space.did());
-      // Reveal the IPFS icon
+      console.log("[W3UP] Connected to space:", space.did());
       const ipfsIcon = document.getElementById("ipfsIcon");
       if (ipfsIcon) ipfsIcon.style.display = "inline-block";
       return {
         client,
         spaceDid: space.did(),
       };
-    } else {
-      // If autoConnect is true but no stored credentials, return null
-      console.warn("No stored credentials found for autoConnect.");
-      return null;
     }
+
+    // If autoConnect is true but no stored credentials, just return a client object to avoid null breaks
+    console.warn("[W3UP] No stored credentials found for autoConnect, returning client anyway.");
+    return { client, spaceDid: null };
   } catch (err) {
     console.error("Error initializing w3up client:", err);
     return null;
