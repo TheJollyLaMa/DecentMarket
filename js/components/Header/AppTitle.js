@@ -46,7 +46,7 @@ export class AppTitle extends HTMLElement {
 
   render() {
     this.shadowRoot.innerHTML = `
-<link rel="stylesheet" href="../css/header.css" />
+<link rel="stylesheet" href="css/header.css" />
 <div id="header-center">
   <div id="app-title-wrapper">
     <div class="ankh-left">

@@ -375,8 +375,8 @@ export class IPFSStatus extends HTMLElement {
 
   render() {
     this.shadowRoot.innerHTML = `
-      <link rel="stylesheet" href="../css/styles.css" />
-      <link rel="stylesheet" href="../css/header.css" />
+      <link rel="stylesheet" href="css/styles.css" />
+      <link rel="stylesheet" href="css/header.css" />
       <div id="ipfs-status" class="ipfs-disconnected">
         <div class="ticker-wrapper">
           <div id="ipfs-ticker-circle" class="ticker-circle-ipfs" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);"></div>
