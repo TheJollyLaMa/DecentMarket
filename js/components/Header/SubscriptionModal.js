@@ -17,7 +17,7 @@ class SubscriptionModal extends HTMLElement {
 
   render() {
     this.shadowRoot.innerHTML = `
-      <link rel="stylesheet" href="../css/header.css" />
+      <link rel="stylesheet" href="css/header.css" />
       <div class="modal-overlay">
         <div class="modal-content">
           <span class="modal-close">✖</span>

@@ -39,7 +39,7 @@ export class WalletConnect extends HTMLElement {
 
   render() {
     this.shadowRoot.innerHTML = `
-        <link rel="stylesheet" href="../css/header.css" />
+        <link rel="stylesheet" href="css/header.css" />
         <div id="walletHeaderContainer" style="display: flex; align-items: center; justify-content: flex-end; height: 100px;">
           <div id="walletIconWrapper">
             <div class="ticker-wrapper wallet-ticker">

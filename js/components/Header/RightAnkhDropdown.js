@@ -6,7 +6,7 @@ class RightAnkhDropdown extends HTMLElement {
 
   connectedCallback() {
     this.shadowRoot.innerHTML = `
-      <link rel="stylesheet" href="../css/header.css" />
+      <link rel="stylesheet" href="css/header.css" />
       <div class="ankh-wrapper">
         <div class="ankh-container">
           <span class="ankh-coin">☥</span>
