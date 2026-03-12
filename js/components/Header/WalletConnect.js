@@ -1,28 +1,20 @@
-import { SUPPORTED_CHAIN_IDS, getChainConfig } from '../../config/contracts.js';
-
 export class WalletConnect extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
     this.walletAddress = null;
     this.walletConnected = false;
-    this.currentChainId = null;
     // Store references to important elements
     this.walletButton = null;
     this.walletDisplay = null;
     this.walletHoverDisplay = null;
     this.walletTickerCircle = null;
-    this.networkBanner = null;
-    // Bound listeners for cleanup
+    // Bound listener for cleanup
     this._onAccountsChanged = (accounts) => {
       this.walletAddress = accounts[0] || null;
       this.walletConnected = !!this.walletAddress;
       this.updateWalletUI();
       if (this.walletConnected) this.animateWalletTicker(this.walletAddress);
-    };
-    this._onChainChanged = (chainId) => {
-      this.currentChainId = chainId;
-      this.updateNetworkBanner();
     };
   }
 
@@ -34,15 +26,11 @@ export class WalletConnect extends HTMLElement {
     this.walletDisplay = this.shadowRoot.getElementById('wallet-display');
     this.walletHoverDisplay = this.shadowRoot.getElementById('walletHoverDisplay');
     this.walletTickerCircle = this.shadowRoot.getElementById('wallet-ticker-circle');
-    this.networkBanner = this.shadowRoot.getElementById('network-banner');
 
     // Attach click event for MetaMask connect
     if (window.ethereum) {
       this.walletButton.addEventListener('click', () => this.connectWallet());
-
-      // Listen for account / chain changes
       window.ethereum.on('accountsChanged', this._onAccountsChanged);
-      window.ethereum.on('chainChanged', this._onChainChanged);
     } else {
       this.walletButton.addEventListener('click', () => {
         alert('MetaMask not detected. Please install MetaMask!');
@@ -53,18 +41,13 @@ export class WalletConnect extends HTMLElement {
     if (window.ethereum && window.ethereum.selectedAddress) {
       this.walletAddress = window.ethereum.selectedAddress;
       this.walletConnected = true;
-      window.ethereum.request({ method: 'eth_chainId' }).then((chainId) => {
-        this.currentChainId = chainId;
-        this.updateWalletUI();
-        this.updateNetworkBanner();
-      });
+      this.updateWalletUI();
     }
   }
 
   disconnectedCallback() {
     if (window.ethereum) {
       window.ethereum.removeListener('accountsChanged', this._onAccountsChanged);
-      window.ethereum.removeListener('chainChanged', this._onChainChanged);
     }
   }
 
@@ -83,7 +66,6 @@ export class WalletConnect extends HTMLElement {
             <div id="walletHoverDisplay" class="wallet-hover-display"></div>
           </div>
         </div>
-        <div id="network-banner" class="network-banner"></div>
     `;
   }
 
@@ -103,9 +85,7 @@ export class WalletConnect extends HTMLElement {
       const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
       this.walletAddress = accounts[0];
       this.walletConnected = true;
-      this.currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
       this.updateWalletUI();
-      this.updateNetworkBanner();
       // Animate the ticker
       this.animateWalletTicker(this.walletAddress);
       // Show the current weight display (global, outside shadow DOM)
@@ -119,76 +99,7 @@ export class WalletConnect extends HTMLElement {
       alert('Wallet connection failed.');
       this.walletConnected = false;
       this.walletAddress = null;
-      this.currentChainId = null;
       this.updateWalletUI();
-      this.updateNetworkBanner();
-    }
-  }
-
-  /** Switch MetaMask to the first supported network (Polygon). */
-  async switchToSupportedNetwork() {
-    const targetChainId = SUPPORTED_CHAIN_IDS[0]; // Polygon
-    const chainConfig = getChainConfig(targetChainId);
-    if (!window.ethereum || !chainConfig) return;
-    try {
-      await window.ethereum.request({
-        method: 'wallet_switchEthereumChain',
-        params: [{ chainId: targetChainId }],
-      });
-    } catch (switchErr) {
-      // Chain not yet added to wallet — add it
-      if (switchErr.code === 4902) {
-        try {
-          await window.ethereum.request({
-            method: 'wallet_addEthereumChain',
-            params: [{
-              chainId: chainConfig.chainId,
-              chainName: chainConfig.chainName,
-              nativeCurrency: chainConfig.nativeCurrency,
-              rpcUrls: chainConfig.rpcUrls,
-              blockExplorerUrls: chainConfig.blockExplorerUrls,
-            }],
-          });
-        } catch (addErr) {
-          console.error('Failed to add network:', addErr);
-        }
-      }
-    }
-  }
-
-  /** Render the network-status banner below the wallet button. */
-  updateNetworkBanner() {
-    if (!this.networkBanner) return;
-    if (!this.walletConnected || !this.walletAddress) {
-      this.networkBanner.innerHTML = '';
-      this.networkBanner.className = 'network-banner';
-      return;
-    }
-    const chainConfig = getChainConfig(this.currentChainId);
-    if (chainConfig) {
-      this.networkBanner.innerHTML = `
-        <span class="network-dot connected-dot"></span>
-        Connected to ${chainConfig.chainName}
-        <br/>
-        <span class="network-address">${this.shortenAddress(this.walletAddress)}</span>
-      `;
-      this.networkBanner.className = 'network-banner network-connected';
-    } else {
-      this.networkBanner.innerHTML = `
-        <span class="network-dot wrong-dot"></span>
-        Wrong network detected.<br/>
-        Please switch to Polygon Mainnet.
-        <br/>
-        <button class="network-switch-btn" id="switch-network-btn">Switch to Polygon</button>
-      `;
-      this.networkBanner.className = 'network-banner network-wrong';
-      // Use a single delegated listener on the banner to avoid accumulating
-      // duplicate listeners each time this method is called.
-      this.networkBanner.onclick = (e) => {
-        if (e.target && e.target.id === 'switch-network-btn') {
-          this.switchToSupportedNetwork();
-        }
-      };
     }
   }
 

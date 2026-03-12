@@ -46,3 +46,26 @@ export const SUPPORTED_CHAIN_IDS = Object.values(CONTRACTS).map(c => c.chainId);
 export function getChainConfig(chainIdHex) {
   return Object.values(CONTRACTS).find(c => c.chainId === chainIdHex);
 }
+
+/**
+ * Application version registry.
+ * Each entry describes a released (or upcoming) version of the app.
+ * Set `available: false` for versions not yet deployed.
+ * Update `href` to the real deployment URL when a version goes live.
+ */
+export const VERSIONS = [
+  {
+    label: 'v0.1',
+    description: 'current',
+    href: '/',
+    available: true,
+    current: true,
+  },
+  {
+    label: 'v0.2',
+    description: 'coming soon',
+    href: '/v0.2/',
+    available: false,
+    current: false,
+  },
+];
