@@ -1,6 +1,7 @@
 import './Header/IPFSStatus.js';
 import './Header/AppTitle.js';
 import './Header/WalletConnect.js';
+import './Header/VersionSwitcher.js';
 
 class DecentHeader extends HTMLElement {
   constructor() {
@@ -32,6 +33,7 @@ class DecentHeader extends HTMLElement {
             <ipfs-status></ipfs-status>
             <app-title></app-title>
             <wallet-connect></wallet-connect>
+            <version-switcher></version-switcher>
         </header>
     `;
     // Removed: global waitingModal DOM injection. Modal is managed by IPFSStatus shadow DOM only.
