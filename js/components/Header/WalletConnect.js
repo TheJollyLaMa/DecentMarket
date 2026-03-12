@@ -9,6 +9,13 @@ export class WalletConnect extends HTMLElement {
     this.walletDisplay = null;
     this.walletHoverDisplay = null;
     this.walletTickerCircle = null;
+    // Bound listener for cleanup
+    this._onAccountsChanged = (accounts) => {
+      this.walletAddress = accounts[0] || null;
+      this.walletConnected = !!this.walletAddress;
+      this.updateWalletUI();
+      if (this.walletConnected) this.animateWalletTicker(this.walletAddress);
+    };
   }
 
   connectedCallback() {
@@ -23,17 +30,24 @@ export class WalletConnect extends HTMLElement {
     // Attach click event for MetaMask connect
     if (window.ethereum) {
       this.walletButton.addEventListener('click', () => this.connectWallet());
+      window.ethereum.on('accountsChanged', this._onAccountsChanged);
     } else {
       this.walletButton.addEventListener('click', () => {
         alert('MetaMask not detected. Please install MetaMask!');
       });
     }
 
-    // Optionally, check if already connected (autoconnect on page reload)
+    // Auto-connect if already authorised on page reload
     if (window.ethereum && window.ethereum.selectedAddress) {
       this.walletAddress = window.ethereum.selectedAddress;
       this.walletConnected = true;
       this.updateWalletUI();
+    }
+  }
+
+  disconnectedCallback() {
+    if (window.ethereum) {
+      window.ethereum.removeListener('accountsChanged', this._onAccountsChanged);
     }
   }
 
