@@ -2,22 +2,30 @@
 pragma solidity ^0.8.26;
 
 import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/token/common/ERC2981.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 
 /**
  * @title DecentNFT_v0.2
- * @notice ERC-1155 editionable NFT contract for DecentMarket product and user NFTs.
- *         Supports multiple editions per token ID, per-token supply caps, ERC-2981
- *         royalties, and per-token IPFS metadata URIs.
+ * @notice ERC-1155 editionable NFT contract for DecentMarket.
  *
- * Token ID semantics
- * ------------------
- *   - Product NFTs  (e.g. DecentHead_v1.0 → tokenId 1): registered by the owner,
- *     minted with `mintEdition`.
- *   - User / submission NFTs: any holder can self-mint via `mintUser`, up to the
- *     configured supply cap.
+ * Two token "lanes" are enforced on-chain:
+ *
+ *   Product  – private/admin-controlled (licenses, codebase access, provenance).
+ *              Only DEFAULT_ADMIN_ROLE can register and mint these.
+ *
+ *   Achievement – runtime NFTs issued by authorized dapps (e.g. BigNuten streaks).
+ *                 Admin registers the token IDs; MINTER_ROLE wallets issue them to
+ *                 users at runtime.
+ *
+ * Role model
+ * ----------
+ *   DEFAULT_ADMIN_ROLE  Decent Agency admin (deployer by default).
+ *                       Can register tokens, mint Product tokens, manage roles,
+ *                       and update URIs / royalties.
+ *   MINTER_ROLE         Authorized issuer wallets (e.g. BigNuten backend).
+ *                       Can mint Achievement tokens; cannot register new token IDs.
  *
  * URI scheme
  * ----------
@@ -25,22 +33,37 @@ import "@openzeppelin/contracts/utils/Strings.sol";
  *   Each token's full metadata URI is then `<baseURI><tokenId>.json`.
  *   Override individual URIs with `setTokenURI`.
  */
-contract DecentNFT_v0_2 is ERC1155, Ownable, ERC2981 {
+contract DecentNFT_v0_2 is ERC1155, AccessControl, ERC2981 {
     using Strings for uint256;
+
+    // -------------------------------------------------------------------------
+    // Roles
+    // -------------------------------------------------------------------------
+
+    /// @notice Role for authorized dapp issuer wallets (Achievement minting).
+    bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
+
+    // -------------------------------------------------------------------------
+    // Token classification
+    // -------------------------------------------------------------------------
+
+    /// @notice Classifies a registered token as a Product or Achievement NFT.
+    enum TokenKind { Product, Achievement }
 
     // -------------------------------------------------------------------------
     // Events
     // -------------------------------------------------------------------------
 
-    /// @notice Emitted when a new token ID is registered.
+    /// @notice Emitted when a new token ID is registered by an admin.
     event TokenRegistered(
         uint256 indexed tokenId,
         address indexed creator,
         uint256 maxSupply,
+        TokenKind kind,
         string uri
     );
 
-    /// @notice Emitted when editions of a token are minted.
+    /// @notice Emitted whenever editions of any token are minted.
     event EditionMinted(
         uint256 indexed tokenId,
         address indexed to,
@@ -53,16 +76,17 @@ contract DecentNFT_v0_2 is ERC1155, Ownable, ERC2981 {
     // -------------------------------------------------------------------------
 
     struct TokenInfo {
-        address creator;   // Original creator / product origin
-        uint256 maxSupply; // 0 = unlimited
-        uint256 minted;    // Total editions minted so far
-        string  tokenURI;  // Per-token URI override (empty → use base URI pattern)
+        address   creator;   // Original registering admin
+        uint256   maxSupply; // 0 = unlimited
+        uint256   minted;    // Total editions minted so far
+        string    tokenURI;  // Per-token URI override (empty → use base URI pattern)
+        TokenKind kind;      // Product or Achievement
     }
 
     /// @notice Base URI applied when no per-token override is set.
     string private _baseTokenURI;
 
-    /// @notice Per-token metadata and supply information.
+    /// @notice Per-token metadata, supply, and classification.
     mapping(uint256 => TokenInfo) private _tokenInfo;
 
     /// @notice Auto-incrementing counter for the next token ID.
@@ -73,10 +97,10 @@ contract DecentNFT_v0_2 is ERC1155, Ownable, ERC2981 {
     // -------------------------------------------------------------------------
 
     /**
-     * @param baseURI_       Base URI for all tokens, e.g. `ipfs://<rootCID>/`.
-     *                       Append `{id}.json` manually per ERC-1155 convention.
+     * @param baseURI_        Base URI for all tokens, e.g. `ipfs://<rootCID>/`.
+     *                        Each token's URI becomes `<baseURI><tokenId>.json`.
      * @param royaltyReceiver Address that receives secondary-sale royalties.
-     * @param royaltyFeeBps  Royalty expressed in basis points (e.g. 500 = 5 %).
+     * @param royaltyFeeBps   Royalty in basis points (e.g. 500 = 5 %).
      */
     constructor(
         string memory baseURI_,
@@ -84,9 +108,9 @@ contract DecentNFT_v0_2 is ERC1155, Ownable, ERC2981 {
         uint96  royaltyFeeBps
     )
         ERC1155(baseURI_)
-        Ownable(msg.sender)
     {
         _baseTokenURI = baseURI_;
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _setDefaultRoyalty(royaltyReceiver, royaltyFeeBps);
     }
 
@@ -108,46 +132,49 @@ contract DecentNFT_v0_2 is ERC1155, Ownable, ERC2981 {
     }
 
     /**
-     * @notice Update the base URI. Only callable by the owner.
+     * @notice Update the base URI. Only callable by DEFAULT_ADMIN_ROLE.
      * @param baseURI_ New base URI string.
      */
-    function setBaseURI(string calldata baseURI_) external onlyOwner {
+    function setBaseURI(string calldata baseURI_) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _baseTokenURI = baseURI_;
         emit URI(baseURI_, type(uint256).max); // signal global change
     }
 
     /**
-     * @notice Set a per-token metadata URI override. Only callable by the owner.
+     * @notice Set a per-token metadata URI override. Only callable by DEFAULT_ADMIN_ROLE.
      * @param tokenId  Token ID to update.
      * @param tokenURI New full URI string (e.g. `ipfs://<CID>`).
      */
-    function setTokenURI(uint256 tokenId, string calldata tokenURI) external onlyOwner {
+    function setTokenURI(uint256 tokenId, string calldata tokenURI) external onlyRole(DEFAULT_ADMIN_ROLE) {
         require(_tokenInfo[tokenId].creator != address(0), "DecentNFT: token not registered");
         _tokenInfo[tokenId].tokenURI = tokenURI;
         emit URI(tokenURI, tokenId);
     }
 
     // -------------------------------------------------------------------------
-    // Token registration
+    // Token registration (admin-only)
     // -------------------------------------------------------------------------
 
     /**
-     * @notice Register a new token ID (product NFT). Only callable by the owner.
-     * @param maxSupply_     Maximum editions allowed (0 = unlimited).
-     * @param tokenURI_  Optional per-token URI override. Pass empty string to
-     *                   use the base URI pattern.
-     * @param royaltyReceiver  Per-token royalty receiver (address(0) = use default).
-     * @param royaltyFeeBps    Per-token royalty in basis points (0 = use default).
-     * @return tokenId   The newly registered token ID.
+     * @notice Register a new token ID. Only DEFAULT_ADMIN_ROLE may call this,
+     *         ensuring the token space cannot be polluted by unauthorized actors.
+     * @param maxSupply_      Maximum editions allowed (0 = unlimited).
+     * @param tokenURI_       Optional per-token URI override. Pass empty string to
+     *                        use the base URI pattern.
+     * @param kind_           `TokenKind.Product` or `TokenKind.Achievement`.
+     * @param royaltyReceiver Per-token royalty receiver (address(0) = use default).
+     * @param royaltyFeeBps   Per-token royalty in basis points (0 = use default).
+     * @return tokenId        The newly registered token ID.
      */
     function registerToken(
-        uint256 maxSupply_,
-        string  calldata tokenURI_,
-        address royaltyReceiver,
-        uint96  royaltyFeeBps
+        uint256   maxSupply_,
+        string    calldata tokenURI_,
+        TokenKind kind_,
+        address   royaltyReceiver,
+        uint96    royaltyFeeBps
     )
         external
-        onlyOwner
+        onlyRole(DEFAULT_ADMIN_ROLE)
         returns (uint256 tokenId)
     {
         tokenId = _nextTokenId++;
@@ -156,51 +183,69 @@ contract DecentNFT_v0_2 is ERC1155, Ownable, ERC2981 {
             creator:   msg.sender,
             maxSupply: maxSupply_,
             minted:    0,
-            tokenURI:  tokenURI_
+            tokenURI:  tokenURI_,
+            kind:      kind_
         });
 
         if (royaltyReceiver != address(0)) {
             _setTokenRoyalty(tokenId, royaltyReceiver, royaltyFeeBps);
         }
 
-        emit TokenRegistered(tokenId, msg.sender, maxSupply_, uri(tokenId));
+        emit TokenRegistered(tokenId, msg.sender, maxSupply_, kind_, uri(tokenId));
     }
 
     // -------------------------------------------------------------------------
-    // Minting — product editions (onlyOwner)
+    // Lane A: Product minting (DEFAULT_ADMIN_ROLE only)
     // -------------------------------------------------------------------------
 
     /**
-     * @notice Mint one or more editions of a registered token. Only callable by
-     *         the owner (for product NFTs).
+     * @notice Mint editions of a Product token. Restricted to DEFAULT_ADMIN_ROLE.
+     *         Reverts if `tokenId` is not registered or is classified as Achievement.
      * @param to       Recipient address.
-     * @param tokenId  Token ID to mint.
+     * @param tokenId  Product token ID to mint.
      * @param amount   Number of editions to mint.
      */
-    function mintEdition(
+    function mintProduct(
         address to,
         uint256 tokenId,
         uint256 amount
     )
         external
-        onlyOwner
+        onlyRole(DEFAULT_ADMIN_ROLE)
     {
+        require(_tokenInfo[tokenId].creator != address(0), "DecentNFT: token not registered");
+        require(
+            _tokenInfo[tokenId].kind == TokenKind.Product,
+            "DecentNFT: not a Product token"
+        );
         _mintChecked(to, tokenId, amount);
     }
 
     // -------------------------------------------------------------------------
-    // Minting — user / self-mint (open)
+    // Lane B: Achievement minting (MINTER_ROLE only)
     // -------------------------------------------------------------------------
 
     /**
-     * @notice Mint editions of a token as a user. The token must have been
-     *         registered and must not exceed its supply cap (if any).
-     *         This is the open / user-mint path.
-     * @param tokenId  Token ID to mint.
+     * @notice Mint editions of an Achievement token. Restricted to MINTER_ROLE.
+     *         Reverts if `tokenId` is not registered or is classified as Product.
+     * @param to       Recipient address.
+     * @param tokenId  Achievement token ID to mint.
      * @param amount   Number of editions to mint.
      */
-    function mintUser(uint256 tokenId, uint256 amount) external {
-        _mintChecked(msg.sender, tokenId, amount);
+    function mintAchievement(
+        address to,
+        uint256 tokenId,
+        uint256 amount
+    )
+        external
+        onlyRole(MINTER_ROLE)
+    {
+        require(_tokenInfo[tokenId].creator != address(0), "DecentNFT: token not registered");
+        require(
+            _tokenInfo[tokenId].kind == TokenKind.Achievement,
+            "DecentNFT: not an Achievement token"
+        );
+        _mintChecked(to, tokenId, amount);
     }
 
     // -------------------------------------------------------------------------
@@ -230,29 +275,29 @@ contract DecentNFT_v0_2 is ERC1155, Ownable, ERC2981 {
     }
 
     // -------------------------------------------------------------------------
-    // Royalty management
+    // Royalty management (admin-only)
     // -------------------------------------------------------------------------
 
     /**
-     * @notice Update the default royalty. Only callable by the owner.
-     * @param receiver  Royalty receiver address.
-     * @param feeBps    Fee in basis points.
+     * @notice Update the default royalty. Only DEFAULT_ADMIN_ROLE may call this.
+     * @param receiver Royalty receiver address.
+     * @param feeBps   Fee in basis points.
      */
-    function setDefaultRoyalty(address receiver, uint96 feeBps) external onlyOwner {
+    function setDefaultRoyalty(address receiver, uint96 feeBps) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _setDefaultRoyalty(receiver, feeBps);
     }
 
     /**
-     * @notice Update the per-token royalty. Only callable by the owner.
-     * @param tokenId   Token ID.
-     * @param receiver  Royalty receiver address.
-     * @param feeBps    Fee in basis points.
+     * @notice Update the per-token royalty. Only DEFAULT_ADMIN_ROLE may call this.
+     * @param tokenId  Token ID.
+     * @param receiver Royalty receiver address.
+     * @param feeBps   Fee in basis points.
      */
     function setTokenRoyalty(
         uint256 tokenId,
         address receiver,
         uint96  feeBps
-    ) external onlyOwner {
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _setTokenRoyalty(tokenId, receiver, feeBps);
     }
 
@@ -282,6 +327,13 @@ contract DecentNFT_v0_2 is ERC1155, Ownable, ERC2981 {
     }
 
     /**
+     * @notice Returns the TokenKind (Product or Achievement) for `tokenId`.
+     */
+    function kindOf(uint256 tokenId) external view returns (TokenKind) {
+        return _tokenInfo[tokenId].kind;
+    }
+
+    /**
      * @notice Returns the next token ID that will be assigned on `registerToken`.
      */
     function nextTokenId() external view returns (uint256) {
@@ -295,9 +347,10 @@ contract DecentNFT_v0_2 is ERC1155, Ownable, ERC2981 {
     function supportsInterface(bytes4 interfaceId)
         public
         view
-        override(ERC1155, ERC2981)
+        override(ERC1155, ERC2981, AccessControl)
         returns (bool)
     {
         return super.supportsInterface(interfaceId);
     }
 }
+
