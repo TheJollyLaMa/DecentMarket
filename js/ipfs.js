@@ -12,7 +12,7 @@
  * -----------------
  * DNFT metadata follows the OpenSea ERC-721 / ERC-1155 metadata standard
  * (https://docs.opensea.io/docs/metadata-standards) with additional optional
- * fields reserved for future 3D/layout features:
+ * fields reserved for future 3D/layout features and Product DNFT metadata:
  *
  *   {
  *     "name":         "Human-readable token name",
@@ -20,14 +20,36 @@
  *     "image":        "ipfs://<image-cid>",          // MUST be an ipfs:// URI
  *     "external_url": "https://decentmarket.io",      // optional, link to dapp
  *     "attributes": [                                 // OpenSea trait array
- *       { "trait_type": "Kind", "value": "Product" }
+ *       { "trait_type": "Kind",    "value": "Product" },
+ *       { "trait_type": "Version", "value": "1.0"     }
  *     ],
  *     "animation_url": "",   // reserved — future 3D model / video
  *     "properties": {        // reserved — future layout / 3D config
  *       "layout":  {},
- *       "model3d": ""
+ *       "model3d": "",
+ *       // Product DNFT fields (present when kind === "Product"):
+ *       "product": {
+ *         "version":      "1.0",
+ *         "repo_url":     "https://github.com/TheJollyLaMa/DecentMarket",
+ *         "commit":       "https://github.com/…/commit/<hash>",
+ *         "artifact_cid": "ipfs://<artifact-cid>",
+ *         "opensea_url":  "https://opensea.io/assets/…/<token-id>"
+ *       }
  *     }
  *   }
+ *
+ * Product DNFT schema
+ * -------------------
+ * Product DNFTs are admin-minted tokens representing digital goods (software,
+ * tools, datasets, …).  They carry extra fields under `properties.product`:
+ *
+ *   version      — semver string matching the release tag, e.g. "1.0"
+ *   repo_url     — canonical GitHub / source URL for the product
+ *   commit       — permalink to the exact commit / release this token covers
+ *   artifact_cid — ipfs:// URI for the zipped artifact / code snapshot
+ *   opensea_url  — marketplace listing URL (fill in after first mint)
+ *
+ * See docs/decenthead-v1-metadata.json for a complete example.
  *
  * tokenURI convention
  * -------------------
@@ -153,6 +175,12 @@ export async function uploadFileToIPFS(file) {
  * @param {object}   [opts.layout]    2-D layout hints for the canvas (future).
  * @param {string}   [opts.model3d]   `ipfs://` URI of a 3D model file (future).
  * @param {Array}    [opts.extraAttributes] Additional OpenSea-style attribute objects.
+ * @param {object}   [opts.product]   Product DNFT metadata (present when kind === "Product"):
+ * @param {string}   [opts.product.version]      Semver version string, e.g. "1.0".
+ * @param {string}   [opts.product.repo_url]     Canonical source repo URL.
+ * @param {string}   [opts.product.commit]       Permalink to the exact commit / release.
+ * @param {string}   [opts.product.artifact_cid] `ipfs://` URI for the zipped artifact.
+ * @param {string}   [opts.product.opensea_url]  Marketplace listing URL (fill after mint).
  * @returns {object} Metadata JSON object ready for IPFS upload.
  */
 export function buildDNFTMetadata({
@@ -165,7 +193,41 @@ export function buildDNFTMetadata({
   layout = {},
   model3d = "",
   extraAttributes = [],
+  // Product DNFT-specific fields (Issue #5).
+  // Present only when kind === "Product"; ignored for Achievement tokens.
+  product = null,
 }) {
+  // ── Build the OpenSea attribute array ─────────────────────────────────────
+  const attributes = [
+    { trait_type: "Kind", value: kind },
+    // Include Version attribute when a product version is supplied.
+    ...(product?.version ? [{ trait_type: "Version", value: product.version }] : []),
+    ...extraAttributes,
+  ];
+
+  // ── Build the properties block ────────────────────────────────────────────
+  // Always include layout/model3d stubs so future consumers can rely on them.
+  // Merge product-specific fields under a dedicated `product` sub-object to
+  // avoid polluting the top-level namespace.
+  const properties = {
+    // 2-D canvas placement config (x, y, scale, rotation, …)
+    layout,
+    // IPFS URI of a glTF/GLB 3D model file
+    model3d,
+  };
+
+  if (kind === "Product" && product) {
+    // Product DNFT schema v1 (Issue #5).
+    // Extend this block — not properties root — to add new product fields.
+    properties.product = {
+      version:      product.version      || "",
+      repo_url:     product.repo_url     || "",
+      commit:       product.commit       || "",
+      artifact_cid: product.artifact_cid || "",
+      opensea_url:  product.opensea_url  || "",
+    };
+  }
+
   return {
     // ── Core OpenSea fields ───────────────────────────────────────────────
     name,
@@ -175,25 +237,17 @@ export function buildDNFTMetadata({
     external_url: externalUrl,
 
     // ── OpenSea trait attributes ──────────────────────────────────────────
-    attributes: [
-      { trait_type: "Kind", value: kind },
-      ...extraAttributes,
-    ],
+    attributes,
 
     // ── Reserved for future media types ──────────────────────────────────
     // Set animation_url to an ipfs:// URI when a video / interactive scene
     // is available.  Leave empty ("") when unused.
     animation_url: animationUrl,
 
-    // ── Reserved for future 3-D / layout features ─────────────────────────
+    // ── Reserved for future 3-D / layout features + product fields ────────
     // Extend `properties` with new subfields rather than adding top-level
     // keys, so that existing metadata consumers are not broken.
-    properties: {
-      // 2-D canvas placement config (x, y, scale, rotation, …)
-      layout,
-      // IPFS URI of a glTF/GLB 3D model file
-      model3d,
-    },
+    properties,
   };
 }
 

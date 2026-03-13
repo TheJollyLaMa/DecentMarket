@@ -124,8 +124,17 @@ class DecentCanvas extends HTMLElement {
     });
 
     // Plot NFT images
+    // Event detail: { x, y, token, metadata }
+    // - token:    image URL (string) — used to load the sprite texture
+    // - metadata: optional full token metadata object. When present and
+    //             metadata.properties?.product is set, the sprite is rendered
+    //             with a gold/cyan product badge to distinguish it from
+    //             user-minted DNFTs.
     this.uiLayer.addEventListener('add-plot', (e) => {
-      const { x, y, token } = e.detail;
+      const { x, y, token, metadata } = e.detail;
+      const isProduct = !!(metadata?.properties?.product || metadata?.kind === 'Product' ||
+        (metadata?.attributes || []).some(a => a.trait_type === 'Kind' && a.value === 'Product'));
+
       const textureLoader = new THREE.TextureLoader();
       textureLoader.load(token, (texture) => {
         const spriteMaterial = new THREE.SpriteMaterial({ map: texture, transparent: true });
@@ -133,17 +142,54 @@ class DecentCanvas extends HTMLElement {
         sprite.position.set(x, 0.5, y);
         sprite.scale.set(2, 2, 1);
         this.scene.add(sprite);
-        sprite.userData = { x, y, token };
+        sprite.userData = { x, y, token, metadata, isProduct };
+
+        // Product NFTs: overlay a gold glow badge sprite above the image
+        if (isProduct) {
+          const badgeCanvas = document.createElement('canvas');
+          badgeCanvas.width = 256;
+          badgeCanvas.height = 256;
+          const ctx = badgeCanvas.getContext('2d');
+          // Glowing gold ring
+          ctx.shadowColor = '#ffd700';
+          ctx.shadowBlur = 30;
+          ctx.strokeStyle = '#ffd700';
+          ctx.lineWidth = 12;
+          ctx.beginPath();
+          ctx.arc(128, 128, 110, 0, Math.PI * 2);
+          ctx.stroke();
+          // "PRODUCT" label
+          ctx.shadowBlur = 10;
+          ctx.fillStyle = '#ffd700';
+          ctx.font = 'bold 26px monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('⭐ PRODUCT', 128, 200);
+          const badgeTexture = new THREE.CanvasTexture(badgeCanvas);
+          const badgeMat = new THREE.SpriteMaterial({ map: badgeTexture, transparent: true, opacity: 0.85 });
+          const badge = new THREE.Sprite(badgeMat);
+          badge.position.set(x, 1.6, y);
+          badge.scale.set(2.2, 2.2, 1);
+          badge.userData.isBadge = true;
+          this.scene.add(badge);
+          sprite.userData.badge = badge;
+        }
+
         sprite.onClick = () => {
           if (typeof this.uiLayer.dispatchEvent === 'function') {
             this.uiLayer.dispatchEvent(new CustomEvent('open-nft-modal', {
-              detail: { x, y, token }
+              detail: { x, y, token, metadata, isProduct }
             }));
           }
         };
       }, undefined, (err) => {
         console.error('Failed to load image URL:', token, err);
       });
+    });
+
+    // NFT detail modal handler — shows ownership-gated UI for product DNFTs
+    this.uiLayer.addEventListener('open-nft-modal', (e) => {
+      this._openNFTDetailModal(e.detail);
     });
 
     // Animation loop
@@ -215,6 +261,174 @@ class DecentCanvas extends HTMLElement {
       this.starSprites.push(sprite);
       this.scene && this.scene.add(sprite);
     }
+  }
+
+  // NFT detail modal — shows product metadata and ownership-gated CTAs
+  // Called when an NFT sprite is clicked in the 3D canvas.
+  _openNFTDetailModal({ token, metadata, isProduct }) {
+    // Remove any existing NFT detail modals
+    const existing = document.getElementById('nft-detail-modal');
+    if (existing) existing.remove();
+
+    const m = document.createElement('div');
+    m.id = 'nft-detail-modal';
+    Object.assign(m.style, {
+      position: 'fixed',
+      top: '50%',
+      left: '50%',
+      transform: 'translate(-50%, -50%)',
+      padding: '0',
+      background: 'rgba(0, 10, 20, 0.97)',
+      border: `2px solid ${isProduct ? '#ffd700' : '#00e5ff'}`,
+      borderRadius: '14px',
+      boxShadow: `0 0 30px ${isProduct ? '#ffd700' : '#00e5ff'}`,
+      zIndex: '2000',
+      color: '#fff',
+      fontFamily: 'monospace',
+      minWidth: '300px',
+      maxWidth: '420px',
+      width: '90vw',
+      maxHeight: '85vh',
+      overflowY: 'auto',
+    });
+
+    const name = metadata?.name || 'Unknown NFT';
+    const description = metadata?.description || '';
+    const product = metadata?.properties?.product || null;
+    const version = product?.version || '';
+    const repo_url = product?.repo_url || '';
+    const commit = product?.commit || '';
+    const artifact_cid = product?.artifact_cid || '';
+    const opensea_url = product?.opensea_url || '';
+
+    // Gateway-resolve ipfs:// image for display
+    let displayImg = token;
+    if (displayImg?.startsWith('ipfs://')) {
+      const cid = displayImg.replace('ipfs://', '');
+      displayImg = `https://${cid}.ipfs.w3s.link/`;
+    }
+
+    // Check ownership (ERC-1155 balanceOf) — async, filled in after render
+    const productBadge = isProduct
+      ? `<span style="
+          display:inline-block;background:#ffd700;color:#000;
+          border-radius:4px;padding:1px 8px;font-size:0.65rem;
+          font-weight:bold;letter-spacing:0.05em;margin-left:6px;
+        ">⭐ PRODUCT</span>`
+      : '';
+
+    const productFields = product ? `
+      <div style="margin-top:8px;padding:8px 10px;background:rgba(255,215,0,0.06);border:1px solid #ffd70033;border-radius:6px;font-size:0.68rem;">
+        ${version ? `<div><span style="color:#888;">Version:</span> <span style="color:#ffd700;">${version}</span></div>` : ''}
+        ${repo_url ? `<div style="margin-top:3px;"><span style="color:#888;">Repo:</span> <a href="${repo_url}" target="_blank" rel="noopener" style="color:#00e5ff;text-decoration:none;">${repo_url}</a></div>` : ''}
+        ${commit ? `<div style="margin-top:3px;"><span style="color:#888;">Commit:</span> <a href="${commit}" target="_blank" rel="noopener" style="color:#00e5ff;text-decoration:none;word-break:break-all;">${commit.length > 50 ? commit.slice(0, 47) + '…' : commit}</a></div>` : ''}
+        ${artifact_cid ? `<div style="margin-top:3px;"><span style="color:#888;">Artifact:</span> <span style="color:#aaa;word-break:break-all;">${artifact_cid.length > 40 ? artifact_cid.slice(0, 37) + '…' : artifact_cid}</span></div>` : ''}
+      </div>` : '';
+
+    m.innerHTML = `
+      <div style="
+        background:linear-gradient(90deg,${isProduct ? '#1a1400,#2a2000' : '#001a20,#002030'});
+        padding:12px 16px;display:flex;align-items:center;justify-content:space-between;
+        border-bottom:1px solid ${isProduct ? '#ffd700' : '#00e5ff'};
+        border-radius:12px 12px 0 0;
+      ">
+        <div style="font-size:0.95rem;font-weight:bold;color:${isProduct ? '#ffd700' : '#00e5ff'};">
+          ${name}${productBadge}
+        </div>
+        <button id="nft-detail-close" style="background:none;border:none;color:#aaa;font-size:1.1rem;cursor:pointer;line-height:1;padding:0;">✕</button>
+      </div>
+      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
+        ${displayImg ? `<img src="${displayImg}" alt="${name}" style="max-width:100%;max-height:150px;border-radius:8px;border:1px solid ${isProduct ? '#ffd700' : '#00e5ff'};object-fit:contain;"/>` : ''}
+        ${description ? `<div style="font-size:0.75rem;color:#ccc;line-height:1.4;">${description}</div>` : ''}
+        ${productFields}
+        <div id="nft-detail-cta" style="margin-top:4px;">
+          <div style="font-size:0.65rem;color:#555;text-align:center;">Checking ownership…</div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(m);
+    m.querySelector('#nft-detail-close').onclick = () => m.remove();
+
+    // Close on outside click
+    setTimeout(() => {
+      const outside = (e) => {
+        if (!m.contains(e.target)) { m.remove(); document.removeEventListener('click', outside); }
+      };
+      document.addEventListener('click', outside);
+    }, 0);
+
+    // Async ownership check
+    this._checkNFTOwnership({ metadata, opensea_url }).then(ctaHTML => {
+      const ctaEl = m.querySelector('#nft-detail-cta');
+      if (ctaEl) ctaEl.innerHTML = ctaHTML;
+    });
+  }
+
+  // Checks balanceOf for product NFTs and returns appropriate CTA HTML
+  async _checkNFTOwnership({ metadata, opensea_url }) {
+    const btnBase = `
+      display:inline-block;padding:7px 14px;border-radius:6px;
+      font-family:monospace;font-size:0.75rem;cursor:pointer;
+      text-decoration:none;font-weight:bold;`;
+
+    // Without a tokenId we can't query the chain — show generic links
+    const tokenId = metadata?.tokenId ?? null;
+    const contractAddr = localStorage.getItem('decentNFT_address') || '';
+
+    if (!window.ethereum || !contractAddr || tokenId === null) {
+      return this._buildPurchaseCTA(opensea_url, btnBase);
+    }
+
+    try {
+      const ethers = window.ethers;
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+      if (!accounts || accounts.length === 0) return this._buildPurchaseCTA(opensea_url, btnBase);
+
+      const account = accounts[0];
+      const abi = ['function balanceOf(address account, uint256 id) view returns (uint256)'];
+      const contract = new ethers.Contract(contractAddr, abi, provider);
+      const balance = await contract.balanceOf(account, BigInt(tokenId));
+
+      if (balance > 0n) {
+        // Owner: show full-access indicator
+        return `
+          <div style="text-align:center;">
+            <span style="color:#00e676;font-size:0.8rem;">✅ You own this NFT</span>
+            <div style="margin-top:6px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+              ${opensea_url && !opensea_url.includes('<') ? `<a href="${opensea_url}" target="_blank" rel="noopener" style="${btnBase}background:#000;color:#2081e2;border:1px solid #2081e2;box-shadow:0 0 6px #2081e2;">🔵 View on OpenSea</a>` : ''}
+            </div>
+          </div>`;
+      } else {
+        return this._buildPurchaseCTA(opensea_url, btnBase);
+      }
+    } catch {
+      return this._buildPurchaseCTA(opensea_url, btnBase);
+    }
+  }
+
+  _buildPurchaseCTA(opensea_url, btnBase) {
+    const osLink = opensea_url && !opensea_url.includes('<')
+      ? `<a href="${opensea_url}" target="_blank" rel="noopener"
+           style="${btnBase}background:#000;color:#2081e2;border:1px solid #2081e2;box-shadow:0 0 6px #2081e2;">
+           🛒 Purchase on OpenSea
+         </a>`
+      : `<span style="color:#555;font-size:0.68rem;">OpenSea link coming soon</span>`;
+
+    return `
+      <div style="text-align:center;">
+        <div style="color:#f80;font-size:0.72rem;margin-bottom:8px;">
+          🔒 You don't own this NFT yet
+        </div>
+        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+          ${osLink}
+          <a href="https://opensea.io/collection/decenthead" target="_blank" rel="noopener"
+             style="${btnBase}background:#000;color:#00e5ff;border:1px solid #00e5ff;box-shadow:0 0 6px #00e5ff;">
+             👁 View Access
+          </a>
+        </div>
+      </div>`;
   }
 
   // Toggle between star and cow background
