@@ -26,7 +26,7 @@ const DECENT_NFT_ABI = [
   "function registerToken(uint256 maxSupply_, string tokenURI_, uint8 kind_, address royaltyReceiver, uint96 royaltyFeeBps) returns (uint256 tokenId)",
 ];
 
-// ── Supported networks (Polygon ecosystem) ───────────────────────────────────
+// ── Supported networks ────────────────────────────────────────────────────────
 const NETWORKS = {
   "0x89": {
     name: "Polygon Mainnet",
@@ -43,6 +43,14 @@ const NETWORKS = {
     explorer: "https://amoy.polygonscan.com",
     symbol: "MATIC",
     color: "#00bcd4",
+  },
+  "0xa": {
+    name: "Optimism Mainnet",
+    shortName: "Optimism",
+    rpc: "https://mainnet.optimism.io",
+    explorer: "https://optimistic.etherscan.io",
+    symbol: "ETH",
+    color: "#ff0420",
   },
 };
 
@@ -238,6 +246,10 @@ class RightToolbar extends HTMLElement {
             style="flex:1;padding:4px;border-radius:6px;border:1px solid #00bcd4;background:#000;color:#00bcd4;cursor:pointer;font-size:0.7rem;font-family:monospace;">
             🔵 Amoy
           </button>
+          <button id="chain-optimism" title="Switch to Optimism Mainnet"
+            style="flex:1;padding:4px;border-radius:6px;border:1px solid #ff0420;background:#000;color:#ff0420;cursor:pointer;font-size:0.7rem;font-family:monospace;">
+            🔴 OP
+          </button>
           <span id="chain-status" style="font-size:0.65rem;color:#888;min-width:50px;text-align:right;">—</span>
         </div>
       </div>
@@ -401,11 +413,18 @@ class RightToolbar extends HTMLElement {
           });
         }
       }
+      // Auto-fill the contract address for the selected network if known
+      const chainCfg = getChainConfig(hexId);
+      if (chainCfg?.addresses?.DNFT && addrInput) {
+        addrInput.value = chainCfg.addresses.DNFT;
+        localStorage.setItem("decentNFT_address", chainCfg.addresses.DNFT);
+      }
       await refreshChainStatus();
     };
 
     panel.querySelector("#chain-polygon").onclick = () => switchChain("0x89");
     panel.querySelector("#chain-amoy").onclick = () => switchChain("0x13882");
+    panel.querySelector("#chain-optimism").onclick = () => switchChain("0xa");
     window.ethereum?.on?.("chainChanged", refreshChainStatus);
 
     const addrInput = panel.querySelector("#nft-address");
@@ -641,12 +660,13 @@ class RightToolbar extends HTMLElement {
 
   _buildModalHTML() {
     const polygonCfg = CONTRACTS.polygon;
+    const optimismCfg = CONTRACTS.optimism;
 
     const address = window.ethereum?.selectedAddress || null;
     const isConnected = !!address;
     const chainId = window.ethereum?.chainId || null;
     const chainCfg = chainId ? getChainConfig(chainId) : null;
-    const isOnPolygon = chainCfg && chainCfg.chainId === polygonCfg.chainId;
+    const isOnSupportedNetwork = chainCfg != null;
 
     const shortAddr = address
       ? address.substring(0, 6) + "..." + address.substring(address.length - 4)
@@ -675,13 +695,13 @@ class RightToolbar extends HTMLElement {
           Connect MetaMask
         </button>
       `;
-    } else if (!isOnPolygon) {
+    } else if (!isOnSupportedNetwork) {
       walletSection = `
         <div style="margin-bottom: 6px; font-size: 0.78rem; color: #aaa;">
           Connected: <span style="color: #00e5ff;">${shortAddr}</span>
         </div>
         <div style="color: #ff5722; font-size: 0.78rem; margin-bottom: 8px;">
-          ⚠️ Wrong network — please switch to Polygon
+          ⚠️ Wrong network — please switch to Polygon or Optimism
         </div>
         <button id="dnft-switch-network-btn" style="
           padding: 6px 14px;
@@ -699,7 +719,7 @@ class RightToolbar extends HTMLElement {
       walletSection = `
         <div style="display: flex; align-items: center; gap: 8px; justify-content: center; margin-bottom: 4px;">
           <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#00e676; box-shadow: 0 0 5px #00e676;"></span>
-          <span style="font-size: 0.85rem; color: #00e676;">Connected to Polygon</span>
+          <span style="font-size: 0.85rem; color: #00e676;">Connected to ${chainCfg.chainName}</span>
         </div>
         <div style="font-size: 0.75rem; color: #00e5ff; letter-spacing: 0.05em;">${shortAddr}</div>
       `;
@@ -752,12 +772,22 @@ class RightToolbar extends HTMLElement {
           padding: 10px 14px;
         ">
           <div style="font-size: 0.65rem; color: #8b5fcf; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px;">Network</div>
-          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
             <span style="font-size: 1.4rem;">🟣</span>
             <div>
               <div style="font-size: 0.85rem; color: #d0aaff;">${polygonCfg.chainName}</div>
               <div style="font-size: 0.65rem; color: #666;">Chain ID: ${parseInt(
                 polygonCfg.chainId,
+                16
+              )}</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+            <span style="font-size: 1.4rem;">🔴</span>
+            <div>
+              <div style="font-size: 0.85rem; color: #ff6680;">${optimismCfg.chainName}</div>
+              <div style="font-size: 0.65rem; color: #666;">Chain ID: ${parseInt(
+                optimismCfg.chainId,
                 16
               )}</div>
             </div>
@@ -816,6 +846,27 @@ class RightToolbar extends HTMLElement {
               border-bottom: 1px dashed #8b00ff55;
             "
           >View on PolygonScan ↗</a>
+          <div style="margin-top: 10px; border-top: 1px solid #8b00ff22; padding-top: 8px;">
+          <div style="font-size: 0.65rem; color: #666; margin-bottom: 4px;">${optimismCfg.chainName} (v0.2)</div>
+          <div style="
+            font-size: 0.72rem;
+            color: #ff6680;
+            word-break: break-all;
+            margin-bottom: 6px;
+            letter-spacing: 0.02em;
+          ">${optimismCfg.addresses.DNFT}</div>
+          <a
+            href="${optimismCfg.blockExplorerUrls[0]}/address/${optimismCfg.addresses.DNFT}"
+            target="_blank"
+            rel="noopener noreferrer"
+            style="
+              font-size: 0.68rem;
+              color: #ff0420;
+              text-decoration: none;
+              border-bottom: 1px dashed #ff042055;
+            "
+          >View on Optimistic Etherscan ↗</a>
+          </div>
         </div>
       </div>
     `;
