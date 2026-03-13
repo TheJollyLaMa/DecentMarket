@@ -24,8 +24,8 @@ const PRODUCT_REGISTRY = [
     name:        "DecentHead v1.0",
     description: "DecentHead v1.0 is the first Product DNFT minted in DecentMarket. It represents the DecentHead software artifact — a Web3-native digital good licensed and distributed on-chain.",
     version:     "1.0",
-    repo_url:    "https://github.com/TheJollyLaMa/DecentMarket",
-    commit:      "https://github.com/TheJollyLaMa/DecentMarket/commit/<commit-hash>", // replace with pinned commit
+    repo_url:    "https://github.com/TheJollyLaMa/DecentHead",
+    commit:      "https://github.com/TheJollyLaMa/DecentHead/commit/30920a061ea30db6deacbff26c1b6542bbcfb313",
     artifact_cid: "",   // fill in after uploading artifact to IPFS
     image_cid:   "",    // fill in after uploading product image to IPFS
     opensea_url: "",    // fill in after minting

@@ -9,7 +9,7 @@
   "_image_note": "Replace <image-cid> with the IPFS CID returned after uploading the product image/logo. Always use the ipfs:// scheme.",
   "image": "ipfs://<image-cid>",
 
-  "external_url": "https://github.com/TheJollyLaMa/DecentMarket",
+  "external_url": "https://github.com/TheJollyLaMa/DecentHead",
 
   "attributes": [
     { "trait_type": "Kind",       "value": "Product"    },
@@ -35,10 +35,10 @@
       "version": "1.0",
 
       "_repo_url_note": "Canonical source repository for this product artifact.",
-      "repo_url": "https://github.com/TheJollyLaMa/DecentMarket",
+      "repo_url": "https://github.com/TheJollyLaMa/DecentHead",
 
       "_commit_note": "Replace with the exact commit hash or GitHub permalink once the artifact is published, e.g. 'https://github.com/…/commit/abc1234…'. Do NOT use HEAD — it is a moving reference.",
-      "commit": "https://github.com/TheJollyLaMa/DecentMarket/commit/<commit-hash>",
+      "commit": "https://github.com/TheJollyLaMa/DecentHead/commit/30920a061ea30db6deacbff26c1b6542bbcfb313",
 
       "_artifact_cid_note": "IPFS CID of the zipped source/artifact snapshot. Replace <artifact-cid> before minting.",
       "artifact_cid": "ipfs://<artifact-cid>",
