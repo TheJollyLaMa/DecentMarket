@@ -12,6 +12,27 @@ import {
 // Button 1 opens the DecentNFT v0.2 mint/control panel (PR #12).
 // Button 2 opens the DecentNFT Control Panel (config/versions) modal (main / PR #11).
 // Button 3 opens the "Mint New DNFT" modal (Issue #7).
+// Button 4 opens the "Product Gallery" panel (Issue #5).
+
+// ── Known Product DNFTs (seed registry) ─────────────────────────────────────
+// This registry drives the Product Gallery panel (Issue #5).
+// Each entry describes a product DNFT that has been (or will be) minted.
+// tokenId is null until the token is minted on-chain; fill it in after minting.
+const PRODUCT_REGISTRY = [
+  {
+    id:          "decenthead-v1",
+    name:        "DecentHead v1.0",
+    description: "DecentHead v1.0 is the first Product DNFT minted in DecentMarket. It represents the DecentHead software artifact — a Web3-native digital good licensed and distributed on-chain.",
+    version:     "1.0",
+    repo_url:    "https://github.com/TheJollyLaMa/DecentHead",
+    commit:      "https://github.com/TheJollyLaMa/DecentHead/commit/30920a061ea30db6deacbff26c1b6542bbcfb313",
+    artifact_cid: "",   // fill in after uploading artifact to IPFS
+    image_cid:   "",    // fill in after uploading product image to IPFS
+    opensea_url: "",    // fill in after minting
+    tokenId:     null,  // fill in after registerToken on-chain
+    maxSupply:   100,
+  },
+];
 
 // ── Predefined templates for Product NFTs ────────────────────────────────────
 const MINT_TEMPLATES = [
@@ -176,12 +197,29 @@ class RightToolbar extends HTMLElement {
     mintNewBtn.addEventListener("click", () => this._openMintDNFTModal());
     this.appendChild(mintNewBtn);
 
-    // ── Buttons 4–6: placeholders ─────────────────────────────────────────────
-    const placeholders = ["🔆", "⚙️", "📡"];
+    // ── Button 4: Product Gallery (Issue #5) ─────────────────────────────────
+    const productBtn = document.createElement("button");
+    productBtn.title = "Product Gallery — DecentHead & Product DNFTs";
+    productBtn.innerHTML = "🗿";
+    Object.assign(productBtn.style, {
+      width: "36px",
+      height: "36px",
+      borderRadius: "50%",
+      border: "2px solid #ffd700",
+      background: "#000",
+      boxShadow: "0 0 10px #ffd700",
+      cursor: "pointer",
+      fontSize: "1rem",
+    });
+    productBtn.addEventListener("click", () => this._openProductGallery());
+    this.appendChild(productBtn);
+
+    // ── Buttons 5–6: placeholders ─────────────────────────────────────────────
+    const placeholders = ["⚙️", "📡"];
     placeholders.forEach((icon, i) => {
       const btn = document.createElement("button");
       btn.innerHTML = icon;
-      btn.dataset.modal = `modal-right-${i + 4}`;
+      btn.dataset.modal = `modal-right-${i + 5}`;
       Object.assign(btn.style, {
         width: "36px",
         height: "36px",
@@ -196,6 +234,380 @@ class RightToolbar extends HTMLElement {
         this._showPlaceholder(e.target.dataset.modal)
       );
       this.appendChild(btn);
+    });
+  }
+
+  // ── Product Gallery panel (Issue #5) ─────────────────────────────────────────
+  // Shows all known Product DNFTs with their metadata, ownership-gated CTAs,
+  // and an admin "Seed Mint" flow for DecentHead v1.0.
+  _openProductGallery() {
+    this._clearModals();
+
+    const panel = document.createElement("div");
+    panel.id = "modal-product-gallery";
+    Object.assign(panel.style, {
+      position: "fixed",
+      top: "110px",
+      right: "60px",
+      width: "360px",
+      maxHeight: "calc(100vh - 170px)",
+      overflowY: "auto",
+      background: "rgba(0,10,0,0.97)",
+      border: "2px solid #ffd700",
+      borderRadius: "14px",
+      boxShadow: "0 0 30px #ffd700, 0 0 60px rgba(255,215,0,0.15)",
+      zIndex: "2000",
+      color: "#fff",
+      fontFamily: "monospace",
+      fontSize: "0.78rem",
+      padding: "0",
+    });
+
+    panel.innerHTML = `
+      <div style="
+        background:linear-gradient(90deg,#1a1200,#2a1e00);
+        padding:12px 16px;display:flex;align-items:center;
+        justify-content:space-between;
+        border-bottom:1px solid #ffd700;
+        border-radius:12px 12px 0 0;
+      ">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:1.3rem;">🗿</span>
+          <div>
+            <div style="font-size:0.9rem;font-weight:bold;color:#ffd700;letter-spacing:0.05em;">Product Gallery</div>
+            <div style="font-size:0.6rem;color:#a08000;">DecentMarket — Product DNFTs</div>
+          </div>
+        </div>
+        <button id="pg-close" style="background:none;border:none;color:#a08000;font-size:1.1rem;cursor:pointer;line-height:1;padding:0;">✕</button>
+      </div>
+      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px;">
+        <div style="font-size:0.62rem;color:#666;border-bottom:1px solid #ffd70022;padding-bottom:8px;">
+          ⭐ Product DNFTs are admin-minted tokens representing licensed digital goods.
+          Ownership grants access to the artifact and source snapshot.
+        </div>
+        <div id="pg-product-list"></div>
+        <details id="pg-seed-section" style="border:1px solid #ffd70033;border-radius:8px;overflow:hidden;">
+          <summary style="
+            cursor:pointer;padding:8px 12px;
+            background:rgba(255,215,0,0.05);
+            color:#ffd700;font-size:0.72rem;
+          ">⚙️ Admin: Seed DecentHead v1.0</summary>
+          <div id="pg-seed-form" style="padding:12px 14px;display:flex;flex-direction:column;gap:8px;">
+            <div style="font-size:0.62rem;color:#888;">
+              Upload image + artifact to IPFS, then register &amp; mint the token on-chain.
+              Requires <span style="color:#8247e5;">DEFAULT_ADMIN_ROLE</span>.
+            </div>
+            <div style="font-size:0.65rem;color:#aaa;margin-bottom:2px;">Product Image</div>
+            <div id="pg-dropzone" style="
+              border:2px dashed #ffd700;border-radius:6px;padding:12px;
+              text-align:center;color:#a08000;font-size:0.7rem;cursor:pointer;
+            ">
+              <div style="font-size:1.4rem;margin-bottom:2px;">📁</div>
+              <div>Drag &amp; drop or click to select image</div>
+              <input id="pg-image-file" type="file" accept="image/*" style="display:none;"/>
+            </div>
+            <div id="pg-image-preview" style="display:none;text-align:center;">
+              <img id="pg-preview-img" src="" alt="Preview" style="max-width:100%;max-height:80px;border-radius:4px;border:1px solid #ffd700;"/>
+              <button id="pg-clear-img" style="display:block;margin:4px auto 0;background:#000;color:#f44;border:1px solid #f44;border-radius:3px;padding:2px 6px;font-size:0.62rem;font-family:monospace;cursor:pointer;">✕ Clear</button>
+            </div>
+            <div style="font-size:0.65rem;color:#aaa;">Artifact CID (ipfs://… or leave blank)</div>
+            <input id="pg-artifact-cid" type="text" placeholder="ipfs://bafybei…"
+              style="width:100%;box-sizing:border-box;background:#000;color:#00e5ff;border:1px solid #ffd70055;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;"/>
+            <div style="font-size:0.65rem;color:#aaa;">Max Supply</div>
+            <input id="pg-max-supply" type="number" min="0" value="100"
+              style="width:80px;background:#000;color:#00e5ff;border:1px solid #ffd70055;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;"/>
+            <button id="pg-seed-btn" style="
+              width:100%;padding:8px;border-radius:6px;
+              border:2px solid #ffd700;background:#000;color:#ffd700;
+              font-family:monospace;font-size:0.78rem;cursor:pointer;
+              box-shadow:0 0 10px #ffd700;font-weight:bold;
+            ">⭐ Seed Mint DecentHead v1.0</button>
+            <div id="pg-seed-status" style="min-height:16px;font-size:0.68rem;color:#888;word-break:break-all;"></div>
+          </div>
+        </details>
+      </div>
+    `;
+
+    document.body.appendChild(panel);
+    panel.querySelector("#pg-close").onclick = () => panel.remove();
+
+    // Outside-click close
+    setTimeout(() => {
+      const outside = (e) => {
+        if (!panel.contains(e.target) && !e.target.closest("decent-right-toolbar")) {
+          panel.remove();
+          document.removeEventListener("click", outside);
+        }
+      };
+      document.addEventListener("click", outside);
+    }, 0);
+
+    // Render product cards
+    this._renderProductCards(panel);
+
+    // Wire seed form
+    this._wireProductSeedForm(panel);
+  }
+
+  // Render product NFT cards with ownership-gated CTAs
+  async _renderProductCards(panel) {
+    const listEl = panel.querySelector("#pg-product-list");
+    if (!listEl) return;
+
+    const ethers = window.ethers;
+    const contractAddr = localStorage.getItem("decentNFT_address") || "";
+    let account = null;
+    if (window.ethereum) {
+      const accounts = await window.ethereum.request({ method: "eth_accounts" }).catch(() => []);
+      account = accounts[0] || null;
+    }
+
+    for (const product of PRODUCT_REGISTRY) {
+      const card = document.createElement("div");
+      card.style.cssText = `
+        border:1px solid #ffd70055;border-radius:10px;overflow:hidden;
+        background:rgba(255,215,0,0.04);
+      `;
+
+      // Check ownership if we have a tokenId, contract, and connected account
+      let ownershipHTML = `<div style="font-size:0.65rem;color:#555;margin-top:4px;">Connect wallet to check ownership</div>`;
+      if (product.tokenId !== null && contractAddr && account && ethers) {
+        try {
+          const provider = new ethers.BrowserProvider(window.ethereum);
+          const abi = ["function balanceOf(address account, uint256 id) view returns (uint256)"];
+          const contract = new ethers.Contract(contractAddr, abi, provider);
+          const balance = await contract.balanceOf(account, BigInt(product.tokenId));
+          if (balance > 0n) {
+            const safeOsUrl = product.opensea_url && this._isSafeUrl(product.opensea_url) ? product.opensea_url : null;
+            ownershipHTML = `
+              <div style="color:#00e676;font-size:0.72rem;margin-top:6px;">✅ You own this NFT</div>
+              ${safeOsUrl ? `<a href="${safeOsUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:4px;padding:4px 10px;border:1px solid #2081e2;border-radius:4px;color:#2081e2;font-size:0.68rem;text-decoration:none;">🔵 View on OpenSea</a>` : ""}`;
+          } else {
+            ownershipHTML = this._productCTAHTML(product);
+          }
+        } catch {
+          ownershipHTML = this._productCTAHTML(product);
+        }
+      } else if (product.tokenId === null) {
+        ownershipHTML = `<div style="font-size:0.65rem;color:#f80;margin-top:4px;">⚠️ Not yet minted — use Admin seed below</div>`;
+      }
+
+      // Build product card image
+      let imgSrc = product.image_cid || "";
+      if (imgSrc.startsWith("ipfs://")) {
+        const cid = imgSrc.replace("ipfs://", "");
+        imgSrc = `https://${cid}.ipfs.w3s.link/`;
+      }
+
+      card.innerHTML = `
+        <div style="background:linear-gradient(90deg,#1a1400,#2a2000);padding:10px 12px;border-bottom:1px solid #ffd70033;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            ${imgSrc ? `<img src="${imgSrc}" style="width:40px;height:40px;border-radius:4px;border:1px solid #ffd700;object-fit:cover;"/>` : `<span style="font-size:2rem;">🗿</span>`}
+            <div>
+              <div style="font-size:0.82rem;font-weight:bold;color:#ffd700;">${product.name}</div>
+              <div>
+                <span style="background:#ffd700;color:#000;border-radius:3px;padding:1px 6px;font-size:0.58rem;font-weight:bold;">⭐ PRODUCT</span>
+                ${product.version ? `<span style="color:#888;font-size:0.62rem;margin-left:4px;">v${product.version}</span>` : ""}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="padding:10px 12px;">
+          <div style="font-size:0.68rem;color:#aaa;line-height:1.4;margin-bottom:6px;">${product.description}</div>
+          ${product.repo_url && this._isSafeUrl(product.repo_url) ? `<div style="font-size:0.65rem;margin-bottom:2px;"><span style="color:#555;">Repo:</span> <a href="${product.repo_url}" target="_blank" rel="noopener noreferrer" style="color:#00e5ff;text-decoration:none;">${product.repo_url}</a></div>` : ""}
+          ${product.artifact_cid ? `<div style="font-size:0.62rem;color:#555;margin-bottom:2px;">Artifact: <span style="color:#888;">${product.artifact_cid.slice(0, 35)}…</span></div>` : ""}
+          ${ownershipHTML}
+        </div>
+      `;
+
+      listEl.appendChild(card);
+    }
+  }
+
+  // Returns true only for safe https:// or http:// URLs — prevents XSS via javascript: etc.
+  _isSafeUrl(url) {
+    try {
+      const u = new URL(url);
+      return u.protocol === 'https:' || u.protocol === 'http:';
+    } catch {
+      return false;
+    }
+  }
+
+  _productCTAHTML(product) {
+    const safeOsUrl = product.opensea_url && this._isSafeUrl(product.opensea_url) ? product.opensea_url : null;
+    const osLink = safeOsUrl
+      ? `<a href="${safeOsUrl}" target="_blank" rel="noopener noreferrer"
+           style="display:inline-block;padding:4px 10px;border:1px solid #2081e2;border-radius:4px;color:#2081e2;font-size:0.68rem;text-decoration:none;margin-top:4px;margin-right:6px;">
+           🛒 Purchase on OpenSea
+         </a>`
+      : `<span style="color:#555;font-size:0.65rem;">OpenSea listing coming soon</span>`;
+
+    return `
+      <div style="margin-top:6px;">
+        <div style="color:#f80;font-size:0.68rem;margin-bottom:4px;">🔒 Not owned — purchase to unlock</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;">
+          ${osLink}
+          <a href="https://opensea.io/collection/decenthead" target="_blank" rel="noopener"
+             style="display:inline-block;padding:4px 10px;border:1px solid #00e5ff;border-radius:4px;color:#00e5ff;font-size:0.68rem;text-decoration:none;margin-top:4px;">
+             👁 View Access
+          </a>
+        </div>
+      </div>`;
+  }
+
+  // Wire the admin seed form for DecentHead v1.0
+  _wireProductSeedForm(panel) {
+    const ethers = window.ethers;
+    const dropzone = panel.querySelector("#pg-dropzone");
+    const fileInput = panel.querySelector("#pg-image-file");
+    const previewBox = panel.querySelector("#pg-image-preview");
+    const previewImg = panel.querySelector("#pg-preview-img");
+    const clearBtn = panel.querySelector("#pg-clear-img");
+    const seedBtn = panel.querySelector("#pg-seed-btn");
+    const statusEl = panel.querySelector("#pg-seed-status");
+    let selectedFile = null;
+
+    const showPreview = (file) => {
+      selectedFile = file;
+      previewImg.src = URL.createObjectURL(file);
+      previewBox.style.display = "block";
+      dropzone.style.display = "none";
+    };
+
+    const clearImage = () => {
+      selectedFile = null;
+      previewImg.src = "";
+      previewBox.style.display = "none";
+      dropzone.style.display = "block";
+      fileInput.value = "";
+    };
+
+    dropzone.addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", () => { if (fileInput.files[0]) showPreview(fileInput.files[0]); });
+    clearBtn.addEventListener("click", clearImage);
+    dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.style.background = "rgba(255,215,0,0.08)"; });
+    dropzone.addEventListener("dragleave", () => { dropzone.style.background = ""; });
+    dropzone.addEventListener("drop", (e) => {
+      e.preventDefault(); dropzone.style.background = "";
+      const f = e.dataTransfer.files[0];
+      if (f && f.type.startsWith("image/")) showPreview(f);
+    });
+
+    seedBtn.addEventListener("click", async () => {
+      seedBtn.disabled = true;
+      seedBtn.style.opacity = "0.6";
+      const setStatus = (msg, color = "#888") => { statusEl.style.color = color; statusEl.textContent = msg; };
+
+      try {
+        if (!window.ethereum) throw new Error("MetaMask not found");
+        setStatus("🔗 Connecting wallet…");
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        await provider.send("eth_requestAccounts", []);
+        const signer = await provider.getSigner();
+        const account = await signer.getAddress();
+
+        const contractAddr = localStorage.getItem("decentNFT_address") || "";
+        if (!contractAddr || !ethers.isAddress(contractAddr)) {
+          throw new Error("Set contract address in the 🔮 panel first.");
+        }
+
+        // ── Upload image to IPFS ──────────────────────────────────────────
+        let imageUri = "";
+        if (selectedFile) {
+          setStatus("📤 Uploading product image to IPFS…");
+          imageUri = await uploadFileToIPFS(selectedFile);
+        } else {
+          throw new Error("Please select a product image to upload.");
+        }
+
+        // ── Build metadata (Product DNFT schema) ──────────────────────────
+        const artifactCid = panel.querySelector("#pg-artifact-cid").value.trim();
+        const productDef = PRODUCT_REGISTRY[0]; // DecentHead v1.0
+        // Note: buildDNFTMetadata auto-adds a "Version" attribute from product.version,
+        // so only pass additional attributes beyond Kind and Version here.
+        const metadata = buildDNFTMetadata({
+          name:        productDef.name,
+          description: productDef.description,
+          image:       imageUri,
+          kind:        "Product",
+          externalUrl: productDef.repo_url,
+          extraAttributes: [
+            { trait_type: "Collection", value: "DecentHead" },
+          ],
+          product: {
+            version:      productDef.version,
+            repo_url:     productDef.repo_url,
+            commit:       productDef.commit,
+            artifact_cid: artifactCid || productDef.artifact_cid,
+            opensea_url:  "",
+          },
+        });
+
+        setStatus("📤 Uploading metadata to IPFS…");
+        const tokenUri = await uploadMetadataToIPFS(metadata);
+
+        // ── Register token on-chain ───────────────────────────────────────
+        setStatus("📝 Registering token on-chain…");
+        const maxSupply = BigInt(panel.querySelector("#pg-max-supply").value || "100");
+        const REGISTER_ABI = [
+          "function registerToken(uint256 maxSupply_, string tokenURI_, uint8 kind_, address royaltyReceiver, uint96 royaltyFeeBps) returns (uint256 tokenId)",
+          "event TokenRegistered(uint256 indexed tokenId, address indexed creator, uint256 maxSupply, uint8 kind, string uri)",
+        ];
+        const contract = new ethers.Contract(contractAddr, REGISTER_ABI, signer);
+        const regTx = await contract.registerToken(maxSupply, tokenUri, 0, ethers.ZeroAddress, 0);
+        setStatus(`📝 Registering… ${regTx.hash.slice(0, 14)}…`);
+        const regReceipt = await regTx.wait();
+
+        // Parse tokenId from event
+        const iface = new ethers.Interface(REGISTER_ABI);
+        const topic = iface.getEvent("TokenRegistered").topicHash;
+        let tokenId = null;
+        for (const log of regReceipt.logs) {
+          if (log.topics[0] !== topic) continue;
+          const parsed = iface.parseLog({ topics: log.topics, data: log.data });
+          if (parsed?.name === "TokenRegistered") { tokenId = parsed.args.tokenId; break; }
+        }
+        if (tokenId === null) throw new Error("Could not read tokenId from receipt.");
+
+        // ── Mint the product token ────────────────────────────────────────
+        setStatus(`🔮 Minting token #${tokenId}…`);
+        const MINT_ABI = ["function mintProduct(address to, uint256 tokenId, uint256 amount)"];
+        const mintContract = new ethers.Contract(contractAddr, MINT_ABI, signer);
+        const mintTx = await mintContract.mintProduct(account, tokenId, 1n);
+        setStatus(`🔮 Minting… ${mintTx.hash.slice(0, 14)}…`);
+        const mintReceipt = await mintTx.wait();
+
+        // Update the in-memory registry entry with the new tokenId
+        PRODUCT_REGISTRY[0].tokenId = Number(tokenId);
+        PRODUCT_REGISTRY[0].image_cid = imageUri;
+
+        setStatus(`✅ Minted! Token #${tokenId} — Block ${mintReceipt.blockNumber}`, "#ffd700");
+        seedBtn.textContent = "✅ Minted!";
+        seedBtn.style.borderColor = "#00e676";
+        seedBtn.style.color = "#00e676";
+
+        // Dispatch gallery-refresh event so other components can react
+        document.dispatchEvent(new CustomEvent("dnft:minted", {
+          detail: { tokenId: tokenId.toString(), tokenUri, name: productDef.name, imageUri },
+        }));
+
+        // Plot the product NFT on the 3D canvas
+        const canvas = document.querySelector("decent-canvas");
+        const uiLayer = canvas?.querySelector("decent-ui-layer");
+        if (uiLayer) {
+          const displaySrc = imageUri.startsWith("ipfs://")
+            ? `https://${imageUri.replace("ipfs://", "")}.ipfs.w3s.link/`
+            : imageUri;
+          uiLayer.dispatchEvent(new CustomEvent("add-plot", {
+            detail: { x: 0, y: 0, token: displaySrc, metadata: { ...metadata, tokenId: Number(tokenId) } },
+          }));
+        }
+      } catch (err) {
+        setStatus(`✗ ${err.reason || err.message}`, "#f44");
+        seedBtn.disabled = false;
+        seedBtn.style.opacity = "1";
+      }
     });
   }
 
@@ -231,6 +643,8 @@ class RightToolbar extends HTMLElement {
     document.querySelectorAll("[id^='modal-']").forEach((m) => m.remove());
     const panel = document.getElementById("decent-nft-panel");
     if (panel) panel.remove();
+    const nftDetail = document.getElementById("nft-detail-modal");
+    if (nftDetail) nftDetail.remove();
   }
 
   // ── DecentNFT v0.2 mint/control panel (PR #12) ─────────────────────────────

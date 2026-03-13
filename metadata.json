@@ -1,6 +1,7 @@
 {
   "_comment": "Sample DNFT metadata following the OpenSea ERC-1155 standard (https://docs.opensea.io/docs/metadata-standards). Replace all placeholder values before uploading.",
   "_docs": "https://docs.opensea.io/docs/metadata-standards",
+  "_schema_version": "product-dnft-v1",
 
   "name": "DecentHead #1",
   "description": "A limited-edition DecentHead collectible from DecentMarket — the first of its kind on the decent canvas.",
@@ -13,17 +14,31 @@
   "attributes": [
     { "trait_type": "Kind",       "value": "Product"    },
     { "trait_type": "Edition",    "value": "1"          },
-    { "trait_type": "Collection", "value": "DecentHead" }
+    { "trait_type": "Collection", "value": "DecentHead" },
+    { "trait_type": "Version",    "value": "1.0"        }
   ],
 
   "_animation_url_note": "Set to an ipfs:// URI pointing to a video (.mp4/.webm) or interactive HTML file when available. Leave empty string when unused.",
   "animation_url": "",
 
-  "_properties_note": "Reserved for future 3D and layout features. Extend these sub-fields rather than adding new top-level keys so existing metadata consumers are not broken.",
+  "_properties_note": "Reserved for future 3D and layout features, and for Product DNFT-specific metadata. Extend these sub-fields rather than adding new top-level keys so existing metadata consumers are not broken.",
   "properties": {
     "_layout_note": "2-D canvas placement config, e.g. { x: 0, y: 0, scale: 1, rotation: 0 }",
     "layout":  {},
     "_model3d_note": "ipfs:// URI of a glTF/GLB 3D model file, e.g. 'ipfs://bafybei…/model.glb'",
-    "model3d": ""
+    "model3d": "",
+
+    "_product_note": "Product DNFT schema v1 fields (Issue #5). Present only when kind === 'Product'. Extend here for future product types.",
+    "product": {
+      "version": "1.0",
+      "_repo_url_note": "Canonical source repository for this product artifact.",
+      "repo_url": "https://github.com/TheJollyLaMa/DecentMarket",
+      "_commit_note": "Replace with the exact commit hash or GitHub permalink once the artifact is published. Do NOT use HEAD — it is a moving reference.",
+      "commit": "https://github.com/TheJollyLaMa/DecentMarket/commit/<commit-hash>",
+      "_artifact_cid_note": "IPFS CID of the zipped source/artifact snapshot.",
+      "artifact_cid": "ipfs://<artifact-cid>",
+      "_opensea_url_note": "OpenSea listing URL. Fill in after first mint.",
+      "opensea_url": "https://opensea.io/assets/optimism/<contract-address>/<token-id>"
+    }
   }
 }

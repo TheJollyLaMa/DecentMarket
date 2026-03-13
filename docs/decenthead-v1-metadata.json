@@ -1,0 +1,50 @@
+{
+  "_comment": "DecentHead v1.0 — Product DNFT metadata following the OpenSea ERC-1155 standard.",
+  "_docs": "https://docs.opensea.io/docs/metadata-standards",
+  "_schema_version": "product-dnft-v1",
+
+  "name": "DecentHead v1.0",
+  "description": "DecentHead v1.0 is the first Product DNFT minted in DecentMarket. It represents the DecentHead software artifact — a Web3-native digital good licensed and distributed on-chain. Owning this token grants access to the DecentHead v1.0 artifact and its source repository snapshot.",
+
+  "_image_note": "Replace <image-cid> with the IPFS CID returned after uploading the product image/logo. Always use the ipfs:// scheme.",
+  "image": "ipfs://<image-cid>",
+
+  "external_url": "https://github.com/TheJollyLaMa/DecentHead",
+
+  "attributes": [
+    { "trait_type": "Kind",       "value": "Product"    },
+    { "trait_type": "Version",    "value": "1.0"        },
+    { "trait_type": "Collection", "value": "DecentHead" },
+    { "trait_type": "Edition",    "value": "1"          }
+  ],
+
+  "_animation_url_note": "Set to an ipfs:// URI when a demo video or interactive preview is available.",
+  "animation_url": "",
+
+  "_properties_note": "Reserved and extensible fields. 'product' holds all Product DNFT-specific metadata. Extend here rather than adding new top-level keys.",
+  "properties": {
+    "_layout_note": "2-D canvas placement config, e.g. { x: 0, y: 0, scale: 1, rotation: 0 }",
+    "layout": {},
+
+    "_model3d_note": "ipfs:// URI of a glTF/GLB 3D model file",
+    "model3d": "",
+
+    "product": {
+      "_note": "Product DNFT schema v1 — fields defined in Issue #5. Add future product fields here.",
+
+      "version": "1.0",
+
+      "_repo_url_note": "Canonical source repository for this product artifact.",
+      "repo_url": "https://github.com/TheJollyLaMa/DecentHead",
+
+      "_commit_note": "Replace with the exact commit hash or GitHub permalink once the artifact is published, e.g. 'https://github.com/…/commit/abc1234…'. Do NOT use HEAD — it is a moving reference.",
+      "commit": "https://github.com/TheJollyLaMa/DecentHead/commit/30920a061ea30db6deacbff26c1b6542bbcfb313",
+
+      "_artifact_cid_note": "IPFS CID of the zipped source/artifact snapshot. Replace <artifact-cid> before minting.",
+      "artifact_cid": "ipfs://<artifact-cid>",
+
+      "_opensea_url_note": "OpenSea listing URL for purchasing this token. Fill in after first mint.",
+      "opensea_url": "https://opensea.io/assets/optimism/<contract-address>/<token-id>"
+    }
+  }
+}
