@@ -46,13 +46,20 @@
 /**
  * Returns a ready-to-use web3.storage w3up client.
  *
- * The client is created once and cached on `window._w3upClientInstance` so
- * that repeated calls within the same page session are free.  The user must
- * have already authenticated via the IPFS status button in the header before
- * calling this function.
+ * Resolution order (first match wins):
+ *   1. `window.w3upClient` — the authenticated client set by the header's
+ *      IPFSStatus component after the user logs in via the IPFS button.
+ *      This is the preferred source because it guarantees the correct
+ *      authenticated space is already active.
+ *   2. `window._w3upClientInstance` — an ipfs.js-level cache from a previous
+ *      call in the same page session.
+ *   3. A freshly-created client loaded from IndexedDB credentials (fallback).
+ *      This path only succeeds if the user has previously authenticated in a
+ *      prior session; it will throw when no space is found, prompting the user
+ *      to connect via the header IPFS button.
  *
  * @returns {Promise<object>} The w3up client with a current space set.
- * @throws {Error} If the w3up library is not loaded or no space is found.
+ * @throws {Error} If the w3up library is not loaded or no authenticated space is found.
  */
 export async function getW3upClient() {
   if (!window.w3up) {
@@ -61,21 +68,43 @@ export async function getW3upClient() {
     );
   }
 
-  // Return the cached client when available to avoid redundant initialisation.
+  // ── Priority 1: use the client already authenticated via the header ─────────
+  // The header's IPFSStatus component sets window.w3upClient when the user
+  // connects through the IPFS button, ensuring the correct space is active.
+  if (window.w3upClient) {
+    // w3up's currentSpace can be either a method or a property depending on the
+    // client version — IPFSStatus.js handles both forms (see updateUIConnected).
+    const currentSpace =
+      typeof window.w3upClient.currentSpace === "function"
+        ? window.w3upClient.currentSpace()
+        : window.w3upClient.currentSpace;
+    if (currentSpace) {
+      // Keep ipfs.js cache in sync so subsequent calls are instant.
+      window._w3upClientInstance = window.w3upClient;
+      return window.w3upClient;
+    }
+  }
+
+  // ── Priority 2: ipfs.js session cache ────────────────────────────────────────
   if (window._w3upClientInstance) return window._w3upClientInstance;
 
+  // ── Priority 3: restore from IndexedDB credentials (fallback) ───────────────
+  // This path creates a new client whose credentials come from IndexedDB (stored
+  // during a previous login).  It will only have spaces if the user has logged in
+  // before; otherwise it throws, directing the user to connect via the header.
   const { create } = window.w3up;
   const client = await create();
 
   const spaces = client.spaces();
   if (!spaces || spaces.length === 0) {
     throw new Error(
-      "No IPFS space found. Please connect to web3.storage via the IPFS button in the header first."
+      "No authenticated IPFS space found. Please connect to web3.storage via the IPFS button in the header first."
     );
   }
 
   // Activate the first available space (the user's default space).
   await client.setCurrentSpace(spaces[0].did());
+  // Cache locally only — window.w3upClient is owned by the header's IPFSStatus.
   window._w3upClientInstance = client;
   return client;
 }
