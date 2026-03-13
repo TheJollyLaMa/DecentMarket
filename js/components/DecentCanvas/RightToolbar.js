@@ -25,7 +25,7 @@ const PRODUCT_REGISTRY = [
     description: "DecentHead v1.0 is the first Product DNFT minted in DecentMarket. It represents the DecentHead software artifact — a Web3-native digital good licensed and distributed on-chain.",
     version:     "1.0",
     repo_url:    "https://github.com/TheJollyLaMa/DecentMarket",
-    commit:      "https://github.com/TheJollyLaMa/DecentMarket/commit/HEAD",
+    commit:      "https://github.com/TheJollyLaMa/DecentMarket/commit/<commit-hash>", // replace with pinned commit
     artifact_cid: "",   // fill in after uploading artifact to IPFS
     image_cid:   "",    // fill in after uploading product image to IPFS
     opensea_url: "",    // fill in after minting
@@ -378,9 +378,10 @@ class RightToolbar extends HTMLElement {
           const contract = new ethers.Contract(contractAddr, abi, provider);
           const balance = await contract.balanceOf(account, BigInt(product.tokenId));
           if (balance > 0n) {
+            const safeOsUrl = product.opensea_url && this._isSafeUrl(product.opensea_url) ? product.opensea_url : null;
             ownershipHTML = `
               <div style="color:#00e676;font-size:0.72rem;margin-top:6px;">✅ You own this NFT</div>
-              ${product.opensea_url ? `<a href="${product.opensea_url}" target="_blank" rel="noopener" style="display:inline-block;margin-top:4px;padding:4px 10px;border:1px solid #2081e2;border-radius:4px;color:#2081e2;font-size:0.68rem;text-decoration:none;">🔵 View on OpenSea</a>` : ""}`;
+              ${safeOsUrl ? `<a href="${safeOsUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:4px;padding:4px 10px;border:1px solid #2081e2;border-radius:4px;color:#2081e2;font-size:0.68rem;text-decoration:none;">🔵 View on OpenSea</a>` : ""}`;
           } else {
             ownershipHTML = this._productCTAHTML(product);
           }
@@ -413,7 +414,7 @@ class RightToolbar extends HTMLElement {
         </div>
         <div style="padding:10px 12px;">
           <div style="font-size:0.68rem;color:#aaa;line-height:1.4;margin-bottom:6px;">${product.description}</div>
-          ${product.repo_url ? `<div style="font-size:0.65rem;margin-bottom:2px;"><span style="color:#555;">Repo:</span> <a href="${product.repo_url}" target="_blank" rel="noopener" style="color:#00e5ff;text-decoration:none;">${product.repo_url}</a></div>` : ""}
+          ${product.repo_url && this._isSafeUrl(product.repo_url) ? `<div style="font-size:0.65rem;margin-bottom:2px;"><span style="color:#555;">Repo:</span> <a href="${product.repo_url}" target="_blank" rel="noopener noreferrer" style="color:#00e5ff;text-decoration:none;">${product.repo_url}</a></div>` : ""}
           ${product.artifact_cid ? `<div style="font-size:0.62rem;color:#555;margin-bottom:2px;">Artifact: <span style="color:#888;">${product.artifact_cid.slice(0, 35)}…</span></div>` : ""}
           ${ownershipHTML}
         </div>
@@ -423,9 +424,20 @@ class RightToolbar extends HTMLElement {
     }
   }
 
+  // Returns true only for safe https:// or http:// URLs — prevents XSS via javascript: etc.
+  _isSafeUrl(url) {
+    try {
+      const u = new URL(url);
+      return u.protocol === 'https:' || u.protocol === 'http:';
+    } catch {
+      return false;
+    }
+  }
+
   _productCTAHTML(product) {
-    const osLink = product.opensea_url
-      ? `<a href="${product.opensea_url}" target="_blank" rel="noopener"
+    const safeOsUrl = product.opensea_url && this._isSafeUrl(product.opensea_url) ? product.opensea_url : null;
+    const osLink = safeOsUrl
+      ? `<a href="${safeOsUrl}" target="_blank" rel="noopener noreferrer"
            style="display:inline-block;padding:4px 10px;border:1px solid #2081e2;border-radius:4px;color:#2081e2;font-size:0.68rem;text-decoration:none;margin-top:4px;margin-right:6px;">
            🛒 Purchase on OpenSea
          </a>`
@@ -512,6 +524,8 @@ class RightToolbar extends HTMLElement {
         // ── Build metadata (Product DNFT schema) ──────────────────────────
         const artifactCid = panel.querySelector("#pg-artifact-cid").value.trim();
         const productDef = PRODUCT_REGISTRY[0]; // DecentHead v1.0
+        // Note: buildDNFTMetadata auto-adds a "Version" attribute from product.version,
+        // so only pass additional attributes beyond Kind and Version here.
         const metadata = buildDNFTMetadata({
           name:        productDef.name,
           description: productDef.description,
@@ -519,8 +533,7 @@ class RightToolbar extends HTMLElement {
           kind:        "Product",
           externalUrl: productDef.repo_url,
           extraAttributes: [
-            { trait_type: "Version",    value: productDef.version },
-            { trait_type: "Collection", value: "DecentHead"       },
+            { trait_type: "Collection", value: "DecentHead" },
           ],
           product: {
             version:      productDef.version,

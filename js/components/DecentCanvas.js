@@ -265,6 +265,17 @@ class DecentCanvas extends HTMLElement {
 
   // NFT detail modal — shows product metadata and ownership-gated CTAs
   // Called when an NFT sprite is clicked in the 3D canvas.
+
+  // Returns true only for safe https:// or http:// URLs — prevents XSS via javascript: etc.
+  _isSafeUrl(url) {
+    try {
+      const u = new URL(url);
+      return u.protocol === 'https:' || u.protocol === 'http:';
+    } catch {
+      return false;
+    }
+  }
+
   _openNFTDetailModal({ token, metadata, isProduct }) {
     // Remove any existing NFT detail modals
     const existing = document.getElementById('nft-detail-modal');
@@ -320,8 +331,8 @@ class DecentCanvas extends HTMLElement {
     const productFields = product ? `
       <div style="margin-top:8px;padding:8px 10px;background:rgba(255,215,0,0.06);border:1px solid #ffd70033;border-radius:6px;font-size:0.68rem;">
         ${version ? `<div><span style="color:#888;">Version:</span> <span style="color:#ffd700;">${version}</span></div>` : ''}
-        ${repo_url ? `<div style="margin-top:3px;"><span style="color:#888;">Repo:</span> <a href="${repo_url}" target="_blank" rel="noopener" style="color:#00e5ff;text-decoration:none;">${repo_url}</a></div>` : ''}
-        ${commit ? `<div style="margin-top:3px;"><span style="color:#888;">Commit:</span> <a href="${commit}" target="_blank" rel="noopener" style="color:#00e5ff;text-decoration:none;word-break:break-all;">${commit.length > 50 ? commit.slice(0, 47) + '…' : commit}</a></div>` : ''}
+        ${repo_url && this._isSafeUrl(repo_url) ? `<div style="margin-top:3px;"><span style="color:#888;">Repo:</span> <a href="${repo_url}" target="_blank" rel="noopener noreferrer" style="color:#00e5ff;text-decoration:none;">${repo_url}</a></div>` : ''}
+        ${commit && this._isSafeUrl(commit) ? `<div style="margin-top:3px;"><span style="color:#888;">Commit:</span> <a href="${commit}" target="_blank" rel="noopener noreferrer" style="color:#00e5ff;text-decoration:none;word-break:break-all;">${commit.length > 50 ? commit.slice(0, 47) + '…' : commit}</a></div>` : ''}
         ${artifact_cid ? `<div style="margin-top:3px;"><span style="color:#888;">Artifact:</span> <span style="color:#aaa;word-break:break-all;">${artifact_cid.length > 40 ? artifact_cid.slice(0, 37) + '…' : artifact_cid}</span></div>` : ''}
       </div>` : '';
 
@@ -393,11 +404,12 @@ class DecentCanvas extends HTMLElement {
 
       if (balance > 0n) {
         // Owner: show full-access indicator
+        const safeOsUrl = opensea_url && this._isSafeUrl(opensea_url) ? opensea_url : null;
         return `
           <div style="text-align:center;">
             <span style="color:#00e676;font-size:0.8rem;">✅ You own this NFT</span>
             <div style="margin-top:6px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
-              ${opensea_url && !opensea_url.includes('<') ? `<a href="${opensea_url}" target="_blank" rel="noopener" style="${btnBase}background:#000;color:#2081e2;border:1px solid #2081e2;box-shadow:0 0 6px #2081e2;">🔵 View on OpenSea</a>` : ''}
+              ${safeOsUrl ? `<a href="${safeOsUrl}" target="_blank" rel="noopener noreferrer" style="${btnBase}background:#000;color:#2081e2;border:1px solid #2081e2;box-shadow:0 0 6px #2081e2;">🔵 View on OpenSea</a>` : ''}
             </div>
           </div>`;
       } else {
@@ -409,8 +421,9 @@ class DecentCanvas extends HTMLElement {
   }
 
   _buildPurchaseCTA(opensea_url, btnBase) {
-    const osLink = opensea_url && !opensea_url.includes('<')
-      ? `<a href="${opensea_url}" target="_blank" rel="noopener"
+    const safeOsUrl = opensea_url && this._isSafeUrl(opensea_url) ? opensea_url : null;
+    const osLink = safeOsUrl
+      ? `<a href="${safeOsUrl}" target="_blank" rel="noopener noreferrer"
            style="${btnBase}background:#000;color:#2081e2;border:1px solid #2081e2;box-shadow:0 0 6px #2081e2;">
            🛒 Purchase on OpenSea
          </a>`

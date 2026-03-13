@@ -37,8 +37,8 @@
       "_repo_url_note": "Canonical source repository for this product artifact.",
       "repo_url": "https://github.com/TheJollyLaMa/DecentMarket",
 
-      "_commit_note": "Exact commit hash or GitHub permalink pointing to the version this token represents.",
-      "commit": "https://github.com/TheJollyLaMa/DecentMarket/commit/HEAD",
+      "_commit_note": "Replace with the exact commit hash or GitHub permalink once the artifact is published, e.g. 'https://github.com/…/commit/abc1234…'. Do NOT use HEAD — it is a moving reference.",
+      "commit": "https://github.com/TheJollyLaMa/DecentMarket/commit/<commit-hash>",
 
       "_artifact_cid_note": "IPFS CID of the zipped source/artifact snapshot. Replace <artifact-cid> before minting.",
       "artifact_cid": "ipfs://<artifact-cid>",
