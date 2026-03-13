@@ -1,4 +1,11 @@
 import { CONTRACTS, SUPPORTED_CHAIN_IDS, getChainConfig, VERSIONS } from '../../config/contracts.js';
+import {
+  getW3upClient,
+  uploadFileToIPFS,
+  uploadMetadataToIPFS,
+  buildDNFTMetadata,
+  validateDNFTFields,
+} from '../../ipfs.js';
 
 // js/components/DecentCanvas/RightToolbar.js
 // Right-side toolbar.
@@ -1004,11 +1011,10 @@ class RightToolbar extends HTMLElement {
         const name = nameInput.value.trim();
         const description = descInput.value.trim();
         const kind = parseInt(kindSelect.value);
+        const kindLabel = kind === 0 ? "Product" : "Achievement";
         const maxSupply = BigInt(maxSupplyInput.value || "0");
         const recipientInput = modal.querySelector("#mint-recipient").value.trim();
         const imageUri = imageUriInput.value.trim();
-
-        if (!name) throw new Error("Name is required.");
 
         // ── Connect wallet ────────────────────────────────────────────────
         if (!window.ethereum) throw new Error("MetaMask not found. Please install MetaMask.");
@@ -1028,11 +1034,13 @@ class RightToolbar extends HTMLElement {
         }
 
         // ── Upload image to IPFS (if file selected) ───────────────────────
+        // Prefer a freshly-uploaded file; fall back to the manually-entered URI.
         let finalImageUri = imageUri;
         if (selectedFile) {
           setStatus("📤 Uploading image to IPFS…");
           try {
-            finalImageUri = await this._uploadFileToIPFS(selectedFile);
+            // uploadFileToIPFS always returns an ipfs:// URI.
+            finalImageUri = await uploadFileToIPFS(selectedFile);
           } catch (ipfsErr) {
             throw new Error(
               `Image upload failed: ${ipfsErr.message}. Enter an image URI manually instead.`
@@ -1040,17 +1048,24 @@ class RightToolbar extends HTMLElement {
           }
         }
 
-        // ── Build and upload metadata JSON ────────────────────────────────
-        const metadata = {
+        // ── Validate required fields before uploading metadata ────────────
+        // Validates name, description, and image (must be non-empty; ipfs:// preferred).
+        validateDNFTFields({ name, description, image: finalImageUri });
+
+        // ── Build OpenSea-compliant metadata JSON ─────────────────────────
+        // buildDNFTMetadata includes stub fields for future 3D/layout support.
+        const metadata = buildDNFTMetadata({
           name,
           description,
-          image: finalImageUri || "",
-        };
+          image: finalImageUri,  // always an ipfs:// URI when a file was uploaded
+          kind: kindLabel,
+        });
 
         setStatus("📤 Uploading metadata to IPFS…");
         let tokenUri;
         try {
-          tokenUri = await this._uploadMetadataToIPFS(metadata);
+          // tokenUri is an ipfs:// URI — this is what gets stored on-chain.
+          tokenUri = await uploadMetadataToIPFS(metadata);
         } catch (metaErr) {
           throw new Error(`Metadata upload failed: ${metaErr.message}`);
         }
@@ -1147,38 +1162,10 @@ class RightToolbar extends HTMLElement {
   }
 
   // ── IPFS upload helpers ──────────────────────────────────────────────────
-  async _uploadFileToIPFS(file) {
-    const client = await this._getW3upClient();
-    const cid = await client.uploadFile(file);
-    return `ipfs://${cid.toString()}`;
-  }
-
-  async _uploadMetadataToIPFS(metadata) {
-    const client = await this._getW3upClient();
-    const blob = new Blob([JSON.stringify(metadata, null, 2)], {
-      type: "application/json",
-    });
-    const metaFile = new File([blob], "metadata.json", { type: "application/json" });
-    const cid = await client.uploadFile(metaFile);
-    return `ipfs://${cid.toString()}`;
-  }
-
-  async _getW3upClient() {
-    if (!window.w3up) throw new Error("IPFS (w3up) library not loaded.");
-    // Try to reuse an already-initialised client stored globally
-    if (window._w3upClientInstance) return window._w3upClientInstance;
-    const { create } = window.w3up;
-    const client = await create();
-    const spaces = client.spaces();
-    if (!spaces || spaces.length === 0) {
-      throw new Error(
-        "No IPFS space found. Please set up web3.storage via the header's IPFS button first."
-      );
-    }
-    await client.setCurrentSpace(spaces[0].did());
-    window._w3upClientInstance = client;
-    return client;
-  }
+  // Delegated to js/ipfs.js (getW3upClient, uploadFileToIPFS,
+  // uploadMetadataToIPFS, buildDNFTMetadata, validateDNFTFields).
+  // Import those functions at the top of this file so they can be reused
+  // by any future minting flow without duplicating the implementation here.
 
   // ── Success toast notification ──────────────────────────────────────────
   _showMintToast({ name, tokenId, txHash }) {
