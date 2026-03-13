@@ -13,6 +13,16 @@ export const CONTRACTS = {
       DNFT: '0x4cE20F0bbF7eA38488F9c9555EfD2b502E86A53E',
     },
   },
+  optimism: {
+    chainId: '0xa',         // 10 in decimal
+    chainName: 'Optimism Mainnet',
+    nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+    rpcUrls: ['https://mainnet.optimism.io'],
+    blockExplorerUrls: ['https://optimistic.etherscan.io'],
+    addresses: {
+      DNFT: '0xe870f7b1D10C41dbc6b75598a5308B9a2Bb52958',
+    },
+  },
   // Future chains — uncomment and fill in when support is added:
   // ethereum: {
   //   chainId: '0x1',
@@ -63,9 +73,9 @@ export const VERSIONS = [
   },
   {
     label: 'v0.2',
-    description: 'coming soon',
+    description: 'live on Optimism',
     href: '/v0.2/',
-    available: false,
+    available: true,
     current: false,
   },
 ];
