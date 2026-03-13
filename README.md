@@ -10,3 +10,70 @@ A Decent Market With a Decent Head, a Decent Canvas, and a Decent Foot in a Web3
 
 The DecentNFT v0.2 contract is live on Optimism at `0xe870f7b1D10C41dbc6b75598a5308B9a2Bb52958`.
 Use the right toolbar panel to switch networks; the contract address will be auto-filled for supported networks.
+
+---
+
+## DNFT Metadata Standard
+
+DNFT metadata follows the [OpenSea ERC-1155 metadata standard](https://docs.opensea.io/docs/metadata-standards).
+
+### tokenURI convention
+
+All token URIs stored on-chain use the `ipfs://` scheme:
+
+```
+ipfs://<metadata-cid>
+```
+
+**Never store HTTP gateway URLs on-chain.** Gateways may change; CIDs are permanent.
+Resolve `ipfs://` URIs in the UI via a public IPFS gateway (e.g. `https://<cid>.ipfs.w3s.link/`).
+
+### Metadata JSON fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | ✅ | Human-readable token name, e.g. `"DecentHead #1"` |
+| `description` | string | ✅ | Long-form description of the token |
+| `image` | string | ✅ | `ipfs://` URI of the cover image |
+| `external_url` | string | — | Link to the dapp or project page |
+| `attributes` | array | — | OpenSea trait objects `{ trait_type, value }` |
+| `animation_url` | string | — | Reserved — future 3D model or video (`ipfs://` URI) |
+| `properties.layout` | object | — | Reserved — future 2-D canvas layout config |
+| `properties.model3d` | string | — | Reserved — future `ipfs://` URI for a glTF/GLB 3D model |
+
+### Sample metadata
+
+See [`metadata.json`](./metadata.json) for a complete example.
+
+```json
+{
+  "name": "DecentHead #1",
+  "description": "A limited-edition DecentHead collectible from DecentMarket.",
+  "image": "ipfs://<image-cid>",
+  "external_url": "https://decentmarket.io",
+  "attributes": [
+    { "trait_type": "Kind",    "value": "Product"    },
+    { "trait_type": "Edition", "value": "1"          }
+  ],
+  "animation_url": "",
+  "properties": {
+    "layout":  {},
+    "model3d": ""
+  }
+}
+```
+
+### IPFS upload utilities
+
+All IPFS logic is centralised in [`js/ipfs.js`](./js/ipfs.js) and can be imported by any minting flow:
+
+```js
+import {
+  uploadFileToIPFS,     // Upload a File → returns ipfs:// URI
+  uploadMetadataToIPFS, // Serialise + upload metadata JSON → returns ipfs:// URI (tokenURI)
+  buildDNFTMetadata,    // Construct an OpenSea-compliant metadata object
+  validateDNFTFields,   // Validate required fields (name, description, image)
+  getW3upClient,        // Get/cache the web3.storage w3up browser client
+} from './js/ipfs.js';
+```
+
