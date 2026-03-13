@@ -4,6 +4,27 @@ import { CONTRACTS, SUPPORTED_CHAIN_IDS, getChainConfig, VERSIONS } from '../../
 // Right-side toolbar.
 // Button 1 opens the DecentNFT v0.2 mint/control panel (PR #12).
 // Button 2 opens the DecentNFT Control Panel (config/versions) modal (main / PR #11).
+// Button 3 opens the "Mint New DNFT" modal (Issue #7).
+
+// ── Predefined templates for Product NFTs ────────────────────────────────────
+const MINT_TEMPLATES = [
+  {
+    id: "custom",
+    label: "✏️ Custom",
+    name: "",
+    description: "",
+    kind: 0,
+    maxSupply: 0,
+  },
+  {
+    id: "decent-head",
+    label: "🗿 DecentHead",
+    name: "DecentHead #",
+    description: "A limited-edition DecentHead collectible from DecentMarket.",
+    kind: 0,
+    maxSupply: 100,
+  },
+];
 
 // ── Minimal ABI subset used by the mint/control panel ────────────────────────
 const DECENT_NFT_ABI = [
@@ -131,12 +152,29 @@ class RightToolbar extends HTMLElement {
     dnftBtn.addEventListener("click", () => this.showDNFTModal());
     this.appendChild(dnftBtn);
 
-    // ── Buttons 3–6: placeholders ─────────────────────────────────────────────
-    const placeholders = ["💧", "🔆", "⚙️", "📡"];
+    // ── Button 3: Mint New DNFT (Issue #7) ───────────────────────────────────
+    const mintNewBtn = document.createElement("button");
+    mintNewBtn.title = "Mint New DNFT";
+    mintNewBtn.innerHTML = "🖼️";
+    Object.assign(mintNewBtn.style, {
+      width: "36px",
+      height: "36px",
+      borderRadius: "50%",
+      border: "1px solid #00e676",
+      background: "#000",
+      boxShadow: "0 0 10px #00e676",
+      cursor: "pointer",
+      fontSize: "1rem",
+    });
+    mintNewBtn.addEventListener("click", () => this._openMintDNFTModal());
+    this.appendChild(mintNewBtn);
+
+    // ── Buttons 4–6: placeholders ─────────────────────────────────────────────
+    const placeholders = ["🔆", "⚙️", "📡"];
     placeholders.forEach((icon, i) => {
       const btn = document.createElement("button");
       btn.innerHTML = icon;
-      btn.dataset.modal = `modal-right-${i + 3}`;
+      btn.dataset.modal = `modal-right-${i + 4}`;
       Object.assign(btn.style, {
         width: "36px",
         height: "36px",
@@ -602,6 +640,605 @@ class RightToolbar extends HTMLElement {
       statusEl.style.color = "#f44";
       statusEl.textContent = `✗ ${e.reason || e.message}`;
     }
+  }
+
+  // ── "Mint New DNFT" modal (Issue #7) ──────────────────────────────────────
+  _openMintDNFTModal() {
+    this._clearModals();
+
+    const modal = document.createElement("div");
+    modal.id = "modal-mint-dnft";
+    Object.assign(modal.style, {
+      position: "fixed",
+      top: "50%",
+      left: "50%",
+      transform: "translate(-50%, -50%)",
+      padding: "0",
+      background: "rgba(0, 10, 20, 0.97)",
+      border: "2px solid #00e676",
+      borderRadius: "14px",
+      boxShadow: "0 0 30px #00e676, 0 0 60px rgba(0,230,118,0.2)",
+      zIndex: "2000",
+      color: "white",
+      fontFamily: "monospace",
+      minWidth: "340px",
+      maxWidth: "440px",
+      width: "92vw",
+      maxHeight: "90vh",
+      overflowY: "auto",
+    });
+
+    modal.innerHTML = this._buildMintModalHTML();
+    document.body.appendChild(modal);
+    this._wireMintModal(modal);
+  }
+
+  _buildMintModalHTML() {
+    const chainId = window.ethereum?.chainId || null;
+    const chainCfg = chainId ? getChainConfig(chainId) : null;
+    const savedAddr = localStorage.getItem("decentNFT_address") || "";
+    const contractAddr = savedAddr || chainCfg?.addresses?.DNFT || "";
+    const contractLabel = contractAddr
+      ? contractAddr.slice(0, 10) + "…" + contractAddr.slice(-4)
+      : "Not set — use 🔮 panel";
+
+    const templateBtns = MINT_TEMPLATES.map(
+      (t) => `
+      <button data-template-id="${t.id}" style="
+        padding:5px 10px;
+        border-radius:6px;
+        border:1px solid #00e676;
+        background:${t.id === "custom" ? "#00e676" : "#000"};
+        color:${t.id === "custom" ? "#000" : "#00e676"};
+        font-family:monospace;
+        font-size:0.72rem;
+        cursor:pointer;
+        transition:all 0.15s;
+      ">${t.label}</button>
+    `
+    ).join("");
+
+    return `
+      <!-- Header -->
+      <div style="
+        background: linear-gradient(90deg, #002200, #004400);
+        padding: 14px 18px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 1px solid #00e676;
+        border-radius: 12px 12px 0 0;
+      ">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:1.4rem;">🖼️</span>
+          <div>
+            <div style="font-size:1rem;font-weight:bold;color:#00e676;letter-spacing:0.05em;">Mint New DNFT</div>
+            <div style="font-size:0.62rem;color:#4caf50;">DecentNFT v0.2 — ERC-1155</div>
+          </div>
+        </div>
+        <button id="mint-modal-close" style="
+          background:none;border:none;color:#4caf50;font-size:1.2rem;cursor:pointer;line-height:1;padding:0;
+        ">✕</button>
+      </div>
+
+      <div style="padding:16px 18px;display:flex;flex-direction:column;gap:14px;">
+
+        <!-- Template selector -->
+        <div style="
+          background:rgba(0,230,118,0.05);
+          border:1px solid #00e67633;
+          border-radius:8px;
+          padding:10px 14px;
+        ">
+          <div style="font-size:0.62rem;color:#4caf50;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px;">
+            📋 Template
+          </div>
+          <div id="mint-template-btns" style="display:flex;gap:6px;flex-wrap:wrap;">
+            ${templateBtns}
+          </div>
+        </div>
+
+        <!-- Image upload -->
+        <div style="
+          background:rgba(0,230,118,0.03);
+          border:1px solid #00e67633;
+          border-radius:8px;
+          padding:10px 14px;
+        ">
+          <div style="font-size:0.62rem;color:#4caf50;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px;">
+            🖼️ Image
+          </div>
+
+          <!-- Drop zone -->
+          <div id="mint-dropzone" style="
+            border:2px dashed #00e676;
+            border-radius:8px;
+            padding:16px;
+            text-align:center;
+            color:#4caf50;
+            font-size:0.72rem;
+            cursor:pointer;
+            margin-bottom:8px;
+            transition:background 0.15s;
+          ">
+            <div style="font-size:1.6rem;margin-bottom:4px;">📁</div>
+            <div>Drag &amp; drop image here</div>
+            <div style="color:#888;font-size:0.65rem;margin-top:2px;">or click to browse</div>
+            <input id="mint-image-file" type="file" accept="image/*" style="display:none;"/>
+          </div>
+
+          <!-- Image preview -->
+          <div id="mint-image-preview" style="display:none;margin-bottom:8px;text-align:center;">
+            <img id="mint-preview-img" src="" alt="Preview" style="
+              max-width:100%;max-height:120px;border-radius:6px;
+              border:1px solid #00e676;object-fit:contain;
+            "/>
+            <div style="margin-top:4px;">
+              <button id="mint-clear-image" style="
+                background:#000;color:#f44;border:1px solid #f44;
+                border-radius:4px;padding:2px 8px;font-size:0.65rem;
+                font-family:monospace;cursor:pointer;
+              ">✕ Clear</button>
+            </div>
+          </div>
+
+          <!-- Separator -->
+          <div style="display:flex;align-items:center;gap:6px;margin:8px 0;color:#555;font-size:0.65rem;">
+            <div style="flex:1;height:1px;background:#333;"></div>OR<div style="flex:1;height:1px;background:#333;"></div>
+          </div>
+
+          <!-- Manual URI -->
+          <div style="font-size:0.65rem;color:#888;margin-bottom:4px;">Image URI (IPFS or HTTPS)</div>
+          <input id="mint-image-uri" type="text" placeholder="ipfs://… or https://…"
+            style="
+              width:100%;box-sizing:border-box;
+              background:#000;color:#00e5ff;
+              border:1px solid #00e67688;border-radius:4px;
+              padding:5px 7px;font-size:0.72rem;font-family:monospace;
+            "/>
+        </div>
+
+        <!-- Metadata -->
+        <div style="
+          background:rgba(0,230,118,0.03);
+          border:1px solid #00e67633;
+          border-radius:8px;
+          padding:10px 14px;
+        ">
+          <div style="font-size:0.62rem;color:#4caf50;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px;">
+            📝 Metadata
+          </div>
+          <div style="font-size:0.65rem;color:#888;margin-bottom:3px;">Name <span style="color:#f44;">*</span></div>
+          <input id="mint-name" type="text" placeholder="e.g. DecentHead #1"
+            style="
+              width:100%;box-sizing:border-box;margin-bottom:8px;
+              background:#000;color:#00e5ff;
+              border:1px solid #00e676;border-radius:4px;
+              padding:5px 7px;font-size:0.75rem;font-family:monospace;
+            "/>
+          <div style="font-size:0.65rem;color:#888;margin-bottom:3px;">Description</div>
+          <textarea id="mint-description" rows="2" placeholder="Describe your NFT…"
+            style="
+              width:100%;box-sizing:border-box;resize:vertical;
+              background:#000;color:#00e5ff;
+              border:1px solid #00e67688;border-radius:4px;
+              padding:5px 7px;font-size:0.72rem;font-family:monospace;
+            "></textarea>
+        </div>
+
+        <!-- Minting options -->
+        <div style="
+          background:rgba(0,230,118,0.03);
+          border:1px solid #00e67633;
+          border-radius:8px;
+          padding:10px 14px;
+        ">
+          <div style="font-size:0.62rem;color:#4caf50;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px;">
+            ⚙️ Options
+          </div>
+          <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <div style="flex:1;">
+              <div style="font-size:0.65rem;color:#888;margin-bottom:3px;">Kind</div>
+              <select id="mint-kind" style="
+                width:100%;background:#000;color:#00e676;
+                border:1px solid #00e67688;border-radius:4px;
+                padding:5px 7px;font-size:0.72rem;font-family:monospace;cursor:pointer;
+              ">
+                <option value="0">🔮 Product</option>
+                <option value="1">🏆 Achievement</option>
+              </select>
+            </div>
+            <div style="flex:1;">
+              <div style="font-size:0.65rem;color:#888;margin-bottom:3px;">Max Supply <span style="color:#555;">(0=∞)</span></div>
+              <input id="mint-max-supply" type="number" min="0" value="0"
+                style="
+                  width:100%;box-sizing:border-box;
+                  background:#000;color:#00e5ff;
+                  border:1px solid #00e67688;border-radius:4px;
+                  padding:5px 7px;font-size:0.72rem;font-family:monospace;
+                "/>
+            </div>
+          </div>
+          <div style="font-size:0.65rem;color:#888;margin-bottom:3px;">Mint to <span style="color:#555;">(leave blank for your wallet)</span></div>
+          <input id="mint-recipient" type="text" placeholder="0x… (defaults to connected wallet)"
+            style="
+              width:100%;box-sizing:border-box;
+              background:#000;color:#00e5ff;
+              border:1px solid #00e67688;border-radius:4px;
+              padding:5px 7px;font-size:0.72rem;font-family:monospace;
+            "/>
+        </div>
+
+        <!-- Contract info -->
+        <div style="
+          background:rgba(0,230,118,0.03);
+          border:1px solid #00e67622;
+          border-radius:8px;
+          padding:8px 14px;
+          font-size:0.65rem;
+          color:#555;
+        ">
+          📄 Contract: <span style="color:#00e676;">${contractLabel}</span>
+          ${!contractAddr ? `<br/><span style="color:#f80;">⚠️ Set contract in 🔮 panel first</span>` : ""}
+        </div>
+
+        <!-- Submit -->
+        <button id="mint-submit-btn" style="
+          width:100%;padding:10px;border-radius:8px;
+          border:2px solid #00e676;background:#000;
+          color:#00e676;font-family:monospace;font-size:0.85rem;
+          cursor:pointer;box-shadow:0 0 12px #00e676;
+          letter-spacing:0.05em;font-weight:bold;
+          transition:all 0.15s;
+        ">✨ Mint DNFT</button>
+
+        <!-- Status -->
+        <div id="mint-status" style="
+          min-height:20px;font-size:0.72rem;
+          color:#888;word-break:break-all;text-align:center;
+        "></div>
+
+      </div>
+    `;
+  }
+
+  _wireMintModal(modal) {
+    const ethers = window.ethers;
+
+    modal.querySelector("#mint-modal-close").onclick = () => modal.remove();
+
+    // Close on outside click
+    const _outsideClick = (e) => {
+      if (!modal.contains(e.target) && !e.target.closest("decent-right-toolbar")) {
+        modal.remove();
+        document.removeEventListener("click", _outsideClick);
+      }
+    };
+    setTimeout(() => document.addEventListener("click", _outsideClick), 0);
+
+    // ── Template selection ──────────────────────────────────────────────────
+    const templateBtns = modal.querySelectorAll("[data-template-id]");
+    const nameInput = modal.querySelector("#mint-name");
+    const descInput = modal.querySelector("#mint-description");
+    const kindSelect = modal.querySelector("#mint-kind");
+    const maxSupplyInput = modal.querySelector("#mint-max-supply");
+
+    const applyTemplate = (templateId) => {
+      const tmpl = MINT_TEMPLATES.find((t) => t.id === templateId) || MINT_TEMPLATES[0];
+      templateBtns.forEach((b) => {
+        const active = b.dataset.templateId === templateId;
+        b.style.background = active ? "#00e676" : "#000";
+        b.style.color = active ? "#000" : "#00e676";
+      });
+      if (tmpl.name !== undefined) nameInput.value = tmpl.name;
+      if (tmpl.description !== undefined) descInput.value = tmpl.description;
+      kindSelect.value = String(tmpl.kind);
+      maxSupplyInput.value = String(tmpl.maxSupply);
+    };
+
+    templateBtns.forEach((btn) => {
+      btn.addEventListener("click", () => applyTemplate(btn.dataset.templateId));
+    });
+
+    // ── Image upload / drag-drop ────────────────────────────────────────────
+    const dropzone = modal.querySelector("#mint-dropzone");
+    const fileInput = modal.querySelector("#mint-image-file");
+    const previewBox = modal.querySelector("#mint-image-preview");
+    const previewImg = modal.querySelector("#mint-preview-img");
+    const clearBtn = modal.querySelector("#mint-clear-image");
+    const imageUriInput = modal.querySelector("#mint-image-uri");
+    let selectedFile = null;
+
+    const showPreview = (file) => {
+      selectedFile = file;
+      const url = URL.createObjectURL(file);
+      previewImg.src = url;
+      previewBox.style.display = "block";
+      dropzone.style.display = "none";
+      imageUriInput.value = "";
+    };
+
+    const clearImage = () => {
+      selectedFile = null;
+      previewImg.src = "";
+      previewBox.style.display = "none";
+      dropzone.style.display = "block";
+      fileInput.value = "";
+    };
+
+    dropzone.addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", () => {
+      if (fileInput.files[0]) showPreview(fileInput.files[0]);
+    });
+    clearBtn.addEventListener("click", clearImage);
+
+    dropzone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropzone.style.background = "rgba(0,230,118,0.1)";
+    });
+    dropzone.addEventListener("dragleave", () => {
+      dropzone.style.background = "";
+    });
+    dropzone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropzone.style.background = "";
+      const file = e.dataTransfer.files[0];
+      if (file && file.type.startsWith("image/")) showPreview(file);
+    });
+
+    // ── Submit / Mint ───────────────────────────────────────────────────────
+    const submitBtn = modal.querySelector("#mint-submit-btn");
+    const statusEl = modal.querySelector("#mint-status");
+
+    const setStatus = (msg, color = "#888") => {
+      statusEl.style.color = color;
+      statusEl.textContent = msg;
+    };
+
+    submitBtn.addEventListener("click", async () => {
+      submitBtn.disabled = true;
+      submitBtn.style.opacity = "0.6";
+      statusEl.textContent = "";
+
+      try {
+        const name = nameInput.value.trim();
+        const description = descInput.value.trim();
+        const kind = parseInt(kindSelect.value);
+        const maxSupply = BigInt(maxSupplyInput.value || "0");
+        const recipientInput = modal.querySelector("#mint-recipient").value.trim();
+        const imageUri = imageUriInput.value.trim();
+
+        if (!name) throw new Error("Name is required.");
+
+        // ── Connect wallet ────────────────────────────────────────────────
+        if (!window.ethereum) throw new Error("MetaMask not found. Please install MetaMask.");
+        setStatus("🔗 Connecting wallet…");
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        await provider.send("eth_requestAccounts", []);
+        const signer = await provider.getSigner();
+        const account = await signer.getAddress();
+
+        // ── Resolve contract address ──────────────────────────────────────
+        const chainId = await window.ethereum.request({ method: "eth_chainId" });
+        const chainCfg = getChainConfig(chainId);
+        const contractAddr =
+          localStorage.getItem("decentNFT_address") || chainCfg?.addresses?.DNFT || "";
+        if (!contractAddr || !ethers.isAddress(contractAddr)) {
+          throw new Error("No contract address set. Use the 🔮 panel to set it first.");
+        }
+
+        // ── Upload image to IPFS (if file selected) ───────────────────────
+        let finalImageUri = imageUri;
+        if (selectedFile) {
+          setStatus("📤 Uploading image to IPFS…");
+          try {
+            finalImageUri = await this._uploadFileToIPFS(selectedFile);
+          } catch (ipfsErr) {
+            throw new Error(
+              `Image upload failed: ${ipfsErr.message}. Enter an image URI manually instead.`
+            );
+          }
+        }
+
+        // ── Build and upload metadata JSON ────────────────────────────────
+        const metadata = {
+          name,
+          description,
+          image: finalImageUri || "",
+        };
+
+        setStatus("📤 Uploading metadata to IPFS…");
+        let tokenUri;
+        try {
+          tokenUri = await this._uploadMetadataToIPFS(metadata);
+        } catch (metaErr) {
+          throw new Error(`Metadata upload failed: ${metaErr.message}`);
+        }
+
+        // ── Register token on-chain ───────────────────────────────────────
+        setStatus("📝 Registering token on-chain…");
+        const REGISTER_ABI = [
+          "function registerToken(uint256 maxSupply_, string tokenURI_, uint8 kind_, address royaltyReceiver, uint96 royaltyFeeBps) returns (uint256 tokenId)",
+          "event TokenRegistered(uint256 indexed tokenId, address indexed creator, uint256 maxSupply, uint8 kind, string uri)",
+        ];
+        const contract = new ethers.Contract(contractAddr, REGISTER_ABI, signer);
+
+        const regTx = await contract.registerToken(
+          maxSupply,
+          tokenUri,
+          kind,
+          ethers.ZeroAddress,
+          0
+        );
+        setStatus(`📝 Registering… tx ${regTx.hash.slice(0, 12)}…`);
+        const regReceipt = await regTx.wait();
+
+        // Parse tokenId from TokenRegistered event
+        const iface = new ethers.Interface(REGISTER_ABI);
+        const tokenRegisteredTopic = iface.getEvent("TokenRegistered").topicHash;
+        let tokenId = null;
+        for (const log of regReceipt.logs) {
+          if (log.topics[0] !== tokenRegisteredTopic) continue;
+          const parsed = iface.parseLog({ topics: log.topics, data: log.data });
+          if (parsed && parsed.name === "TokenRegistered") {
+            tokenId = parsed.args.tokenId;
+            break;
+          }
+        }
+        if (tokenId === null) {
+          throw new Error("Could not determine tokenId from transaction receipt.");
+        }
+
+        // ── Mint the registered token ─────────────────────────────────────
+        const recipient = recipientInput && ethers.isAddress(recipientInput)
+          ? recipientInput
+          : account;
+
+        const MINT_ABI = [
+          "function mintProduct(address to, uint256 tokenId, uint256 amount)",
+          "function mintAchievement(address to, uint256 tokenId, uint256 amount)",
+          "event EditionMinted(uint256 indexed tokenId, address indexed to, uint256 amount, address indexed minter)",
+        ];
+        const mintContract = new ethers.Contract(contractAddr, MINT_ABI, signer);
+        const mintFn = kind === 0 ? "mintProduct" : "mintAchievement";
+
+        setStatus(`🔮 Minting token #${tokenId}…`);
+        const mintTx = await mintContract[mintFn](recipient, tokenId, 1n);
+        setStatus(`🔮 Minting… tx ${mintTx.hash.slice(0, 12)}…`);
+        const mintReceipt = await mintTx.wait();
+
+        // ── Success! ──────────────────────────────────────────────────────
+        const successMsg = `✅ Minted! Token #${tokenId} · Block ${mintReceipt.blockNumber}`;
+        setStatus(successMsg, "#00e676");
+        submitBtn.textContent = "✅ Minted!";
+        submitBtn.style.borderColor = "#00e676";
+        submitBtn.style.color = "#00e676";
+
+        // Dispatch gallery-refresh event
+        document.dispatchEvent(
+          new CustomEvent("dnft:minted", {
+            detail: {
+              tokenId: tokenId.toString(),
+              tokenUri,
+              name,
+              description,
+              imageUri: finalImageUri,
+              txHash: mintReceipt.hash,
+              blockNumber: mintReceipt.blockNumber,
+            },
+          })
+        );
+
+        // Auto-close after 4 seconds, then show toast
+        setTimeout(() => {
+          modal.remove();
+          this._showMintToast({
+            name,
+            tokenId: tokenId.toString(),
+            txHash: mintReceipt.hash,
+          });
+        }, 4000);
+      } catch (err) {
+        setStatus(`✗ ${err.reason || err.message}`, "#f44");
+        submitBtn.disabled = false;
+        submitBtn.style.opacity = "1";
+      }
+    });
+  }
+
+  // ── IPFS upload helpers ──────────────────────────────────────────────────
+  async _uploadFileToIPFS(file) {
+    const client = await this._getW3upClient();
+    const cid = await client.uploadFile(file);
+    return `ipfs://${cid.toString()}`;
+  }
+
+  async _uploadMetadataToIPFS(metadata) {
+    const client = await this._getW3upClient();
+    const blob = new Blob([JSON.stringify(metadata, null, 2)], {
+      type: "application/json",
+    });
+    const metaFile = new File([blob], "metadata.json", { type: "application/json" });
+    const cid = await client.uploadFile(metaFile);
+    return `ipfs://${cid.toString()}`;
+  }
+
+  async _getW3upClient() {
+    if (!window.w3up) throw new Error("IPFS (w3up) library not loaded.");
+    // Try to reuse an already-initialised client stored globally
+    if (window._w3upClientInstance) return window._w3upClientInstance;
+    const { create } = window.w3up;
+    const client = await create();
+    const spaces = client.spaces();
+    if (!spaces || spaces.length === 0) {
+      throw new Error(
+        "No IPFS space found. Please set up web3.storage via the header's IPFS button first."
+      );
+    }
+    await client.setCurrentSpace(spaces[0].did());
+    window._w3upClientInstance = client;
+    return client;
+  }
+
+  // ── Success toast notification ──────────────────────────────────────────
+  _showMintToast({ name, tokenId, txHash }) {
+    const existing = document.getElementById("dnft-mint-toast");
+    if (existing) existing.remove();
+
+    const toast = document.createElement("div");
+    toast.id = "dnft-mint-toast";
+    Object.assign(toast.style, {
+      position: "fixed",
+      bottom: "30px",
+      right: "70px",
+      background: "rgba(0, 20, 10, 0.97)",
+      border: "2px solid #00e676",
+      borderRadius: "10px",
+      boxShadow: "0 0 20px #00e676",
+      padding: "12px 16px",
+      zIndex: "3000",
+      color: "#fff",
+      fontFamily: "monospace",
+      fontSize: "0.78rem",
+      maxWidth: "300px",
+      animation: "dnft-toast-in 0.3s ease",
+    });
+
+    // Inject keyframe animation once
+    if (!document.getElementById("dnft-toast-style")) {
+      const style = document.createElement("style");
+      style.id = "dnft-toast-style";
+      style.textContent = `
+        @keyframes dnft-toast-in {
+          from { opacity: 0; transform: translateY(20px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    toast.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+        <span style="font-size:1.4rem;">🖼️</span>
+        <div>
+          <div style="color:#00e676;font-weight:bold;">NFT Minted!</div>
+          <div style="color:#aaa;font-size:0.68rem;">${name || "DNFT"} — Token #${tokenId}</div>
+        </div>
+        <button id="toast-close" style="
+          margin-left:auto;background:none;border:none;color:#555;
+          font-size:1rem;cursor:pointer;line-height:1;padding:0;
+        ">✕</button>
+      </div>
+      <div style="color:#555;font-size:0.65rem;word-break:break-all;">
+        tx: ${txHash ? txHash.slice(0, 20) + "…" : "confirmed"}
+      </div>
+    `;
+
+    document.body.appendChild(toast);
+    toast.querySelector("#toast-close").onclick = () => toast.remove();
+
+    // Auto-dismiss after 8 seconds
+    setTimeout(() => toast.remove(), 8000);
   }
 
   // ── DNFT Control Panel Modal (main / PR #11) ────────────────────────────────
