@@ -1,3 +1,8 @@
+# Hardhat build artifacts (do not commit; run `npm run compile` to regenerate)
+artifacts/
+cache/
+typechain-types/
+
 # Logs
 logs
 *.log

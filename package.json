@@ -1,0 +1,20 @@
+{
+  "name": "decent-market-contracts",
+  "version": "0.2.0",
+  "description": "Smart contracts for DecentMarket — ERC-1155 editionable NFT for products and users",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:local": "hardhat run scripts/deploy_DecentNFT_v02.js --network localhost",
+    "deploy:amoy": "hardhat run scripts/deploy_DecentNFT_v02.js --network amoy",
+    "deploy:polygon": "hardhat run scripts/deploy_DecentNFT_v02.js --network polygon",
+    "export:abi": "node scripts/export_abi.js"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "hardhat": "^2.22.0"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.1.0"
+  }
+}
