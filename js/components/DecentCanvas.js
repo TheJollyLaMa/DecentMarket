@@ -14,6 +14,8 @@ class DecentCanvas extends HTMLElement {
     this.showCows = false;
     this.uiLayer = null;
     this.cannonAngle = 0;
+    this._productSprites = {}; // tokenId → { sprite, badge, x, z }
+    this._flyTarget = null;    // { x, y, z } target for smooth camera animation
   }
 
   connectedCallback() {
@@ -192,10 +194,40 @@ class DecentCanvas extends HTMLElement {
       this._openNFTDetailModal(e.detail);
     });
 
+    // ── Gallery: place Product DNFTs at depth positions on Z-axis ─────────────
+    document.addEventListener('gallery:products-loaded', (e) => {
+      this._placeGalleryProducts(e.detail.products);
+    });
+
+    // ── Gallery: fly camera to a product's position ───────────────────────────
+    document.addEventListener('gallery:fly-to', (e) => {
+      const { tokenId } = e.detail;
+      const entry = this._productSprites[tokenId];
+      if (entry) {
+        this._flyTarget = { x: entry.x, y: 0, z: entry.z };
+      }
+    });
+
     // Animation loop
     const animate = () => {
       requestAnimationFrame(animate);
       if (this.controls) this.controls.update();
+
+      // Smooth fly-to: lerp controls.target toward _flyTarget
+      if (this._flyTarget && this.controls) {
+        const t = 0.06;
+        this.controls.target.x += (this._flyTarget.x - this.controls.target.x) * t;
+        this.controls.target.y += (this._flyTarget.y - this.controls.target.y) * t;
+        this.controls.target.z += (this._flyTarget.z - this.controls.target.z) * t;
+        const dx = this._flyTarget.x - this.controls.target.x;
+        const dy = this._flyTarget.y - this.controls.target.y;
+        const dz = this._flyTarget.z - this.controls.target.z;
+        if (Math.sqrt(dx * dx + dy * dy + dz * dz) < 0.05) {
+          this.controls.target.set(this._flyTarget.x, this._flyTarget.y, this._flyTarget.z);
+          this._flyTarget = null;
+        }
+      }
+
       for (const sprite of this.starSprites) {
         const mat = sprite.material;
         mat.opacity = 0.5 + 0.5 * Math.sin(Date.now() * 0.002 + sprite.position.x);
@@ -442,6 +474,98 @@ class DecentCanvas extends HTMLElement {
           </a>
         </div>
       </div>`;
+  }
+
+  // ── Place Product DNFTs in the 3D scene at depth positions ─────────────────
+  // Products are sorted newest-first; newest appears closest to the camera (Z near 0),
+  // oldest is deepest (most negative Z). Each product is spaced 8 units apart.
+  _placeGalleryProducts(products) {
+    if (!this.scene) return;
+
+    // Remove previously placed gallery sprites
+    for (const { sprite, badge } of Object.values(this._productSprites)) {
+      this.scene.remove(sprite);
+      if (badge) this.scene.remove(badge);
+    }
+    this._productSprites = {};
+
+    const spacing = 8;
+    products.forEach((product, idx) => {
+      const x = 0;
+      const z = -(idx + 1) * spacing; // newest → -8, next → -16, …
+      const tokenId = product.tokenId;
+
+      const imageUri = product.metadata?.image || "";
+      const displayImg = this._resolveCanvasIpfsUrl(imageUri);
+      if (!displayImg) return;
+
+      const textureLoader = new THREE.TextureLoader();
+      textureLoader.load(displayImg, (texture) => {
+        const mat = new THREE.SpriteMaterial({ map: texture, transparent: true });
+        const sprite = new THREE.Sprite(mat);
+        sprite.position.set(x, 0.5, z);
+        sprite.scale.set(3, 3, 1);
+        sprite.userData = { tokenId, x, z, metadata: product.metadata, isProduct: true };
+
+        sprite.onClick = () => {
+          // Highlight the corresponding gallery card (canvas → panel sync)
+          document.dispatchEvent(new CustomEvent("gallery:highlight-card", { detail: { tokenId } }));
+          // Open NFT detail modal
+          if (typeof this.uiLayer.dispatchEvent === 'function') {
+            this.uiLayer.dispatchEvent(new CustomEvent('open-nft-modal', {
+              detail: { x, y: z, token: displayImg, metadata: product.metadata, isProduct: true },
+            }));
+          }
+        };
+
+        this.scene.add(sprite);
+
+        // Gold glow ring + label badge
+        const badgeCanvas = document.createElement('canvas');
+        badgeCanvas.width = 256;
+        badgeCanvas.height = 256;
+        const ctx = badgeCanvas.getContext('2d');
+        ctx.shadowColor = '#ffd700';
+        ctx.shadowBlur = 30;
+        ctx.strokeStyle = '#ffd700';
+        ctx.lineWidth = 10;
+        ctx.beginPath();
+        ctx.arc(128, 128, 110, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.shadowBlur = 8;
+        ctx.fillStyle = '#ffd700';
+        ctx.font = 'bold 24px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🗿 DNFT', 128, 200);
+        const badgeTexture = new THREE.CanvasTexture(badgeCanvas);
+        const badgeMat = new THREE.SpriteMaterial({ map: badgeTexture, transparent: true, opacity: 0.85 });
+        const badge = new THREE.Sprite(badgeMat);
+        badge.position.set(x, 2.1, z);
+        badge.scale.set(3.2, 3.2, 1);
+        this.scene.add(badge);
+
+        this._productSprites[tokenId] = { sprite, badge, x, z };
+      }, undefined, (err) => {
+        console.warn(`Gallery: failed to load image for token #${tokenId}:`, displayImg, err);
+      });
+    });
+  }
+
+  // ── Resolve ipfs:// URI to an HTTP gateway URL (canvas helper) ──────────────
+  _resolveCanvasIpfsUrl(uri) {
+    if (!uri) return "";
+    if (uri.startsWith("ipfs://")) {
+      const withoutProto = uri.slice(7);
+      const slashIdx = withoutProto.indexOf("/");
+      if (slashIdx === -1) {
+        return `https://${withoutProto}.ipfs.w3s.link/`;
+      }
+      const cid = withoutProto.slice(0, slashIdx);
+      const path = withoutProto.slice(slashIdx);
+      return `https://${cid}.ipfs.w3s.link${path}`;
+    }
+    return uri;
   }
 
   // Toggle between star and cow background

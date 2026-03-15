@@ -26,6 +26,8 @@ const DECENT_NFT_ABI = [
 
 class RightToolbar extends HTMLElement {
   connectedCallback() {
+    this._galleryCache = null;
+
     this.style.display = "flex";
     this.style.flexDirection = "column";
     this.style.alignItems = "center";
@@ -69,6 +71,36 @@ class RightToolbar extends HTMLElement {
     });
     settingsBtn.addEventListener("click", () => this._openSettingsPanel());
     this.appendChild(settingsBtn);
+
+    // ── Button 3: 🗿 Product Gallery ─────────────────────────────────────────
+    const galleryBtn = document.createElement("button");
+    galleryBtn.title = "Product Gallery";
+    galleryBtn.innerHTML = "🗿";
+    Object.assign(galleryBtn.style, {
+      width: "38px",
+      height: "38px",
+      borderRadius: "50%",
+      border: "1px solid #ffd700",
+      background: "#000",
+      boxShadow: "0 0 10px #ffd700",
+      cursor: "pointer",
+      fontSize: "1.2rem",
+    });
+    galleryBtn.addEventListener("click", () => this._openProductGallery());
+    this.appendChild(galleryBtn);
+
+    // ── Listen for dnft:minted to live-refresh gallery ────────────────────────
+    document.addEventListener("dnft:minted", (e) => {
+      this._galleryCache = null;
+      if (document.getElementById("modal-gallery")) {
+        this._refreshGalleryWithMint(e.detail);
+      }
+    });
+
+    // ── Listen for gallery:highlight-card to sync canvas → panel ─────────────
+    document.addEventListener("gallery:highlight-card", (e) => {
+      this._highlightGalleryCard(e.detail.tokenId);
+    });
   }
 
   _clearModals() {
@@ -1086,6 +1118,316 @@ class RightToolbar extends HTMLElement {
 
     // Auto-dismiss after 8 seconds
     setTimeout(() => toast.remove(), 8000);
+  }
+
+  // ── 🗿 Product Gallery ────────────────────────────────────────────────────
+
+  async _openProductGallery() {
+    // Toggle: if panel is already open, close it
+    const existing = document.getElementById("modal-gallery");
+    if (existing) {
+      existing.remove();
+      return;
+    }
+    this._clearModals();
+
+    const panel = document.createElement("div");
+    panel.id = "modal-gallery";
+    Object.assign(panel.style, {
+      position: "fixed",
+      top: "60px",
+      right: "60px",
+      width: "360px",
+      maxHeight: "calc(100vh - 120px)",
+      overflowY: "auto",
+      background: "rgba(0,5,20,0.97)",
+      border: "1px solid #ffd700",
+      borderRadius: "12px",
+      boxShadow: "0 0 24px #ffd700, 0 0 8px #b8860b",
+      zIndex: "2000",
+      color: "#fff",
+      fontFamily: "monospace",
+      fontSize: "0.78rem",
+      padding: "0",
+    });
+
+    panel.innerHTML = `
+      <div style="
+        background:linear-gradient(90deg,#1a1200,#2a2000);
+        padding:12px 16px;
+        display:flex;align-items:center;justify-content:space-between;
+        border-bottom:1px solid #ffd700;
+        border-radius:12px 12px 0 0;
+        position:sticky;top:0;z-index:1;
+      ">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:1.3rem;">🗿</span>
+          <div>
+            <div style="font-size:0.9rem;font-weight:bold;color:#ffd700;letter-spacing:0.05em;">Product Gallery</div>
+            <div style="font-size:0.6rem;color:#a07800;">Live on-chain DNFT browser</div>
+          </div>
+        </div>
+        <button id="gallery-close" style="background:none;border:none;color:#a07800;font-size:1.1rem;cursor:pointer;line-height:1;padding:0;">✕</button>
+      </div>
+      <div id="gallery-body" style="padding:12px;">
+        <div style="text-align:center;padding:24px;color:#888;">⏳ Loading on-chain products…</div>
+      </div>
+    `;
+
+    document.body.appendChild(panel);
+    panel.querySelector("#gallery-close").onclick = () => panel.remove();
+
+    try {
+      const products = await this._loadGalleryProducts();
+      this._renderGalleryCards(products);
+      // Signal canvas to place products at depth positions
+      document.dispatchEvent(new CustomEvent("gallery:products-loaded", { detail: { products } }));
+    } catch (err) {
+      const body = document.getElementById("gallery-body");
+      if (body) {
+        body.innerHTML = `<div style="color:#f44;padding:16px;text-align:center;">⚠️ Failed to load: ${err.message}</div>`;
+      }
+    }
+  }
+
+  // ── Fetch all Product DNFTs from the Optimism contract ───────────────────
+  async _loadGalleryProducts() {
+    if (this._galleryCache) return this._galleryCache;
+
+    const ethers = window.ethers;
+    if (!ethers) throw new Error("ethers.js not loaded");
+
+    const opCfg = CONTRACTS.optimism;
+    const contractAddr = opCfg.addresses.DNFT;
+
+    const QUERY_ABI = [
+      "event TokenRegistered(uint256 indexed tokenId, address indexed creator, uint256 maxSupply, uint8 kind, string uri)",
+      "function totalMinted(uint256 tokenId) view returns (uint256)",
+      "function maxSupply(uint256 tokenId) view returns (uint256)",
+    ];
+
+    const provider = new ethers.JsonRpcProvider(opCfg.rpcUrls[0]);
+    const contract = new ethers.Contract(contractAddr, QUERY_ABI, provider);
+
+    const filter = contract.filters.TokenRegistered();
+    const events = await contract.queryFilter(filter, 0, "latest");
+
+    const products = [];
+    for (const event of events) {
+      const { tokenId, creator, maxSupply, kind, uri } = event.args;
+      // kind 0 = Product, kind 1 = Achievement — only show Products
+      if (Number(kind) !== 0) continue;
+
+      let metadata = null;
+      try {
+        const metaUrl = this._resolveIpfsUrl(uri);
+        const resp = await fetch(metaUrl);
+        if (resp.ok) metadata = await resp.json();
+      } catch (err) {
+        console.warn(`Gallery: failed to fetch metadata for token #${tokenId} (${uri}):`, err);
+      }
+      if (!metadata) {
+        metadata = { name: `Token #${tokenId}`, description: "", image: "" };
+      }
+
+      let totalMintedCount = "0";
+      const maxSupplyCount = maxSupply.toString();
+      try {
+        const tm = await contract.totalMinted(tokenId);
+        totalMintedCount = tm.toString();
+      } catch (err) {
+        console.warn(`Gallery: failed to fetch totalMinted for token #${tokenId}:`, err);
+      }
+
+      products.push({
+        tokenId: tokenId.toString(),
+        creator,
+        maxSupply: maxSupplyCount,
+        totalMinted: totalMintedCount,
+        uri,
+        blockNumber: event.blockNumber,
+        transactionHash: event.transactionHash,
+        metadata,
+      });
+    }
+
+    // Newest first (highest block number)
+    products.sort((a, b) => b.blockNumber - a.blockNumber);
+    this._galleryCache = products;
+    return products;
+  }
+
+  // ── Render all gallery cards ──────────────────────────────────────────────
+  _renderGalleryCards(products) {
+    const body = document.getElementById("gallery-body");
+    if (!body) return;
+
+    if (products.length === 0) {
+      body.innerHTML = `<div style="text-align:center;padding:24px;color:#888;">No products minted yet</div>`;
+      return;
+    }
+
+    body.innerHTML = "";
+    for (const product of products) {
+      body.appendChild(this._buildGalleryCard(product));
+    }
+  }
+
+  // ── Build a single gallery card element ──────────────────────────────────
+  _buildGalleryCard(product) {
+    const { tokenId, blockNumber, maxSupply, totalMinted: tm, metadata } = product;
+    const name = metadata?.name || `Token #${tokenId}`;
+    const description = metadata?.description || "";
+    const imageUri = metadata?.image || "";
+    const displayImg = this._resolveIpfsUrl(imageUri);
+    const repoUrl = metadata?.properties?.product?.repo_url || "";
+    const artifactCid = metadata?.properties?.product?.artifact_cid || "";
+    const version = metadata?.properties?.product?.version || "";
+
+    const card = document.createElement("div");
+    card.id = `gallery-card-${tokenId}`;
+    card.dataset.tokenId = tokenId;
+    Object.assign(card.style, {
+      background: "rgba(255,215,0,0.04)",
+      border: "1px solid #ffd70033",
+      borderRadius: "8px",
+      padding: "10px",
+      marginBottom: "8px",
+      cursor: "pointer",
+      transition: "border-color 0.2s, box-shadow 0.2s",
+    });
+
+    card.addEventListener("mouseenter", () => {
+      if (!card.classList.contains("gallery-card-active")) {
+        card.style.borderColor = "#ffd70088";
+        card.style.boxShadow = "0 0 8px #ffd70033";
+      }
+    });
+    card.addEventListener("mouseleave", () => {
+      if (!card.classList.contains("gallery-card-active")) {
+        card.style.borderColor = "#ffd70033";
+        card.style.boxShadow = "none";
+      }
+    });
+
+    const safeRepo = repoUrl && this._isSafeGalleryUrl(repoUrl) ? repoUrl : "";
+    const safeArtifact = artifactCid ? this._resolveIpfsUrl(artifactCid) : "";
+
+    card.innerHTML = `
+      <div style="display:flex;gap:10px;align-items:flex-start;">
+        ${displayImg
+          ? `<img src="${displayImg}" alt="${name}" style="width:60px;height:60px;object-fit:contain;border-radius:6px;border:1px solid #ffd70044;flex-shrink:0;" loading="lazy">`
+          : `<div style="width:60px;height:60px;background:#111;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:1.6rem;flex-shrink:0;">🗿</div>`
+        }
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:bold;color:#ffd700;font-size:0.82rem;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${name}</div>
+          ${version ? `<div style="color:#a07800;font-size:0.65rem;margin-bottom:3px;">v${version}</div>` : ""}
+          ${description ? `<div style="color:#aaa;font-size:0.68rem;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${description}</div>` : ""}
+        </div>
+      </div>
+      <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+        <span style="color:#666;font-size:0.62rem;">Token #${tokenId}</span>
+        <span style="color:#444;font-size:0.62rem;">·</span>
+        <span style="color:#666;font-size:0.62rem;">Block ${Number(blockNumber).toLocaleString()}</span>
+        <span style="color:#444;font-size:0.62rem;">·</span>
+        <span style="color:#666;font-size:0.62rem;">${tm}/${maxSupply} minted</span>
+      </div>
+      <div style="margin-top:7px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        ${safeRepo ? `<a href="${safeRepo}" target="_blank" rel="noopener noreferrer" style="color:#00e5ff;font-size:0.65rem;text-decoration:none;">📦 Repo</a>` : ""}
+        ${safeArtifact ? `<a href="${safeArtifact}" target="_blank" rel="noopener noreferrer" style="color:#00e5ff;font-size:0.65rem;text-decoration:none;">⬇️ Artifact</a>` : ""}
+        <button data-fly-tokenid="${tokenId}" style="margin-left:auto;background:rgba(255,215,0,0.1);border:1px solid #ffd700;color:#ffd700;border-radius:4px;padding:2px 8px;font-size:0.65rem;cursor:pointer;font-family:monospace;">🚀 Fly to</button>
+      </div>
+    `;
+
+    card.querySelector(`[data-fly-tokenid="${tokenId}"]`).addEventListener("click", (e) => {
+      e.stopPropagation();
+      document.dispatchEvent(new CustomEvent("gallery:fly-to", { detail: { tokenId } }));
+      this._highlightGalleryCard(tokenId);
+    });
+
+    return card;
+  }
+
+  // ── Highlight a gallery card (canvas → panel sync) ────────────────────────
+  _highlightGalleryCard(tokenId) {
+    document.querySelectorAll(".gallery-card-active").forEach((c) => {
+      c.classList.remove("gallery-card-active");
+      c.style.borderColor = "#ffd70033";
+      c.style.boxShadow = "none";
+    });
+
+    const card = document.getElementById(`gallery-card-${tokenId}`);
+    if (card) {
+      card.classList.add("gallery-card-active");
+      card.style.borderColor = "#ffd700";
+      card.style.boxShadow = "0 0 14px #ffd70066";
+      card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }
+
+  // ── Prepend newly minted product without reload ───────────────────────────
+  _refreshGalleryWithMint(detail) {
+    const { tokenId, tokenUri, name, description, imageUri, repoUrl, artifactCid, blockNumber } = detail;
+
+    const newProduct = {
+      tokenId: tokenId.toString(),
+      uri: tokenUri || "",
+      blockNumber: blockNumber || 0,
+      maxSupply: "0",
+      totalMinted: "1",
+      metadata: {
+        name: name || `Token #${tokenId}`,
+        description: description || "",
+        image: imageUri || "",
+        properties: {
+          product: {
+            repo_url: repoUrl || "",
+            artifact_cid: artifactCid || "",
+          },
+        },
+      },
+    };
+
+    if (this._galleryCache) {
+      this._galleryCache.unshift(newProduct);
+    }
+
+    const body = document.getElementById("gallery-body");
+    if (body) {
+      // Replace "no products" placeholder if present
+      if (body.querySelector("[data-no-products]")) body.innerHTML = "";
+      body.insertBefore(this._buildGalleryCard(newProduct), body.firstChild);
+    }
+
+    document.dispatchEvent(new CustomEvent("gallery:products-loaded", {
+      detail: { products: this._galleryCache || [newProduct] },
+    }));
+  }
+
+  // ── Resolve ipfs:// URI to an HTTP gateway URL ────────────────────────────
+  _resolveIpfsUrl(uri) {
+    if (!uri) return "";
+    if (uri.startsWith("ipfs://")) {
+      const withoutProto = uri.slice(7);
+      const slashIdx = withoutProto.indexOf("/");
+      if (slashIdx === -1) {
+        return `https://${withoutProto}.ipfs.w3s.link/`;
+      }
+      const cid = withoutProto.slice(0, slashIdx);
+      const path = withoutProto.slice(slashIdx);
+      return `https://${cid}.ipfs.w3s.link${path}`;
+    }
+    return uri;
+  }
+
+  // ── Safe URL check (prevents XSS via javascript: etc.) ───────────────────
+  _isSafeGalleryUrl(url) {
+    try {
+      const u = new URL(url);
+      return u.protocol === "https:" || u.protocol === "http:";
+    } catch {
+      return false;
+    }
   }
 }
 
