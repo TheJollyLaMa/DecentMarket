@@ -1191,6 +1191,8 @@ class RightToolbar extends HTMLElement {
   }
 
   // ── Fetch all Product DNFTs from the Optimism contract ───────────────────
+  // Uses view functions (nextTokenId, kindOf, uri, totalMinted, maxSupply) instead
+  // of eth_getLogs so we never hit the RPC block-range limit.
   async _loadGalleryProducts() {
     if (this._galleryCache) return this._galleryCache;
 
@@ -1201,57 +1203,72 @@ class RightToolbar extends HTMLElement {
     const contractAddr = opCfg.addresses.DNFT;
 
     const QUERY_ABI = [
-      "event TokenRegistered(uint256 indexed tokenId, address indexed creator, uint256 maxSupply, uint8 kind, string uri)",
+      "function nextTokenId() view returns (uint256)",
+      "function kindOf(uint256 tokenId) view returns (uint8)",
+      "function uri(uint256 tokenId) view returns (string)",
       "function totalMinted(uint256 tokenId) view returns (uint256)",
       "function maxSupply(uint256 tokenId) view returns (uint256)",
+      "function creatorOf(uint256 tokenId) view returns (address)",
     ];
 
     const provider = new ethers.JsonRpcProvider(opCfg.rpcUrls[0]);
     const contract = new ethers.Contract(contractAddr, QUERY_ABI, provider);
 
-    const filter = contract.filters.TokenRegistered();
-    const events = await contract.queryFilter(filter, 0, "latest");
+    const nextId = await contract.nextTokenId();
+    const count = Number(nextId);
 
     const products = [];
-    for (const event of events) {
-      const { tokenId, creator, maxSupply, kind, uri } = event.args;
+    for (let i = 0; i < count; i++) {
+      const tokenId = BigInt(i);
+      let kind;
+      try {
+        kind = await contract.kindOf(tokenId);
+      } catch (err) {
+        console.warn(`Gallery: failed to fetch kindOf for token #${i}:`, err);
+        continue;
+      }
       // kind 0 = Product, kind 1 = Achievement — only show Products
       if (Number(kind) !== 0) continue;
 
-      let metadata = null;
+      let uri = "";
+      let maxSupplyCount = "0";
+      let totalMintedCount = "0";
       try {
-        const metaUrl = this._resolveIpfsUrl(uri);
-        const resp = await fetch(metaUrl);
-        if (resp.ok) metadata = await resp.json();
+        [uri, maxSupplyCount, totalMintedCount] = await Promise.all([
+          contract.uri(tokenId).then(v => v).catch(() => ""),
+          contract.maxSupply(tokenId).then(v => v.toString()).catch(() => "0"),
+          contract.totalMinted(tokenId).then(v => v.toString()).catch(() => "0"),
+        ]);
       } catch (err) {
-        console.warn(`Gallery: failed to fetch metadata for token #${tokenId} (${uri}):`, err);
-      }
-      if (!metadata) {
-        metadata = { name: `Token #${tokenId}`, description: "", image: "" };
+        console.warn(`Gallery: failed to fetch data for token #${i}:`, err);
       }
 
-      let totalMintedCount = "0";
-      const maxSupplyCount = maxSupply.toString();
-      try {
-        const tm = await contract.totalMinted(tokenId);
-        totalMintedCount = tm.toString();
-      } catch (err) {
-        console.warn(`Gallery: failed to fetch totalMinted for token #${tokenId}:`, err);
+      let metadata = null;
+      if (uri) {
+        try {
+          const metaUrl = this._resolveIpfsUrl(uri);
+          const resp = await fetch(metaUrl);
+          if (resp.ok) metadata = await resp.json();
+        } catch (err) {
+          console.warn(`Gallery: failed to fetch metadata for token #${i} (${uri}):`, err);
+        }
+      }
+      if (!metadata) {
+        metadata = { name: `Token #${i}`, description: "", image: "" };
       }
 
       products.push({
-        tokenId: tokenId.toString(),
-        creator,
+        tokenId: i.toString(),
         maxSupply: maxSupplyCount,
         totalMinted: totalMintedCount,
         uri,
-        blockNumber: event.blockNumber,
-        transactionHash: event.transactionHash,
+        // tokenId is registration order — lower = older; sort newest-first below
+        blockNumber: i,
         metadata,
       });
     }
 
-    // Newest first (highest block number)
+    // Newest first (highest tokenId registered last)
     products.sort((a, b) => b.blockNumber - a.blockNumber);
     this._galleryCache = products;
     return products;
@@ -1275,7 +1292,7 @@ class RightToolbar extends HTMLElement {
 
   // ── Build a single gallery card element ──────────────────────────────────
   _buildGalleryCard(product) {
-    const { tokenId, blockNumber, maxSupply, totalMinted: tm, metadata } = product;
+    const { tokenId, maxSupply, totalMinted: tm, metadata } = product;
     const name = metadata?.name || `Token #${tokenId}`;
     const description = metadata?.description || "";
     const imageUri = metadata?.image || "";
@@ -1327,8 +1344,6 @@ class RightToolbar extends HTMLElement {
       </div>
       <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
         <span style="color:#666;font-size:0.62rem;">Token #${tokenId}</span>
-        <span style="color:#444;font-size:0.62rem;">·</span>
-        <span style="color:#666;font-size:0.62rem;">Block ${Number(blockNumber).toLocaleString()}</span>
         <span style="color:#444;font-size:0.62rem;">·</span>
         <span style="color:#666;font-size:0.62rem;">${tm}/${maxSupply} minted</span>
       </div>
