@@ -6,6 +6,7 @@ import {
   buildDNFTMetadata,
   validateDNFTFields,
 } from '../../ipfs.js';
+import { PRODUCT_REGISTRY } from '../../config/products.config.js';
 
 // js/components/DecentCanvas/RightToolbar.js
 // Right-side toolbar.
@@ -13,46 +14,6 @@ import {
 // Button 2 opens the DecentNFT Control Panel (config/versions) modal (main / PR #11).
 // Button 3 opens the "Mint New DNFT" modal (Issue #7).
 // Button 4 opens the "Product Gallery" panel (Issue #5).
-
-// ── Known Product DNFTs (seed registry) ─────────────────────────────────────
-// This registry drives the Product Gallery panel (Issue #5).
-// Each entry describes a product DNFT that has been (or will be) minted.
-// tokenId is null until the token is minted on-chain; fill it in after minting.
-const PRODUCT_REGISTRY = [
-  {
-    id:          "decenthead-v1",
-    name:        "DecentHead v1.0",
-    description: "DecentHead v1.0 is the first Product DNFT minted in DecentMarket. It represents the DecentHead software artifact — a Web3-native digital good licensed and distributed on-chain.",
-    version:     "1.0",
-    repo_url:    "https://github.com/TheJollyLaMa/DecentHead",
-    commit:      "https://github.com/TheJollyLaMa/DecentHead/commit/30920a061ea30db6deacbff26c1b6542bbcfb313",
-    artifact_cid: "",   // fill in after uploading artifact to IPFS
-    image_cid:   "",    // fill in after uploading product image to IPFS
-    opensea_url: "",    // fill in after minting
-    tokenId:     null,  // fill in after registerToken on-chain
-    maxSupply:   100,
-  },
-];
-
-// ── Predefined templates for Product NFTs ────────────────────────────────────
-const MINT_TEMPLATES = [
-  {
-    id: "custom",
-    label: "✏️ Custom",
-    name: "",
-    description: "",
-    kind: 0,
-    maxSupply: 0,
-  },
-  {
-    id: "decent-head",
-    label: "🗿 DecentHead",
-    name: "DecentHead #",
-    description: "A limited-edition DecentHead collectible from DecentMarket.",
-    kind: 0,
-    maxSupply: 100,
-  },
-];
 
 // ── Minimal ABI subset used by the mint/control panel ────────────────────────
 const DECENT_NFT_ABI = [
@@ -286,45 +247,13 @@ class RightToolbar extends HTMLElement {
           Ownership grants access to the artifact and source snapshot.
         </div>
         <div id="pg-product-list"></div>
-        <details id="pg-seed-section" style="border:1px solid #ffd70033;border-radius:8px;overflow:hidden;">
-          <summary style="
-            cursor:pointer;padding:8px 12px;
-            background:rgba(255,215,0,0.05);
-            color:#ffd700;font-size:0.72rem;
-          ">⚙️ Admin: Seed DecentHead v1.0</summary>
-          <div id="pg-seed-form" style="padding:12px 14px;display:flex;flex-direction:column;gap:8px;">
-            <div style="font-size:0.62rem;color:#888;">
-              Upload image + artifact to IPFS, then register &amp; mint the token on-chain.
-              Requires <span style="color:#8247e5;">DEFAULT_ADMIN_ROLE</span>.
-            </div>
-            <div style="font-size:0.65rem;color:#aaa;margin-bottom:2px;">Product Image</div>
-            <div id="pg-dropzone" style="
-              border:2px dashed #ffd700;border-radius:6px;padding:12px;
-              text-align:center;color:#a08000;font-size:0.7rem;cursor:pointer;
-            ">
-              <div style="font-size:1.4rem;margin-bottom:2px;">📁</div>
-              <div>Drag &amp; drop or click to select image</div>
-              <input id="pg-image-file" type="file" accept="image/*" style="display:none;"/>
-            </div>
-            <div id="pg-image-preview" style="display:none;text-align:center;">
-              <img id="pg-preview-img" src="" alt="Preview" style="max-width:100%;max-height:80px;border-radius:4px;border:1px solid #ffd700;"/>
-              <button id="pg-clear-img" style="display:block;margin:4px auto 0;background:#000;color:#f44;border:1px solid #f44;border-radius:3px;padding:2px 6px;font-size:0.62rem;font-family:monospace;cursor:pointer;">✕ Clear</button>
-            </div>
-            <div style="font-size:0.65rem;color:#aaa;">Artifact CID (ipfs://… or leave blank)</div>
-            <input id="pg-artifact-cid" type="text" placeholder="ipfs://bafybei…"
-              style="width:100%;box-sizing:border-box;background:#000;color:#00e5ff;border:1px solid #ffd70055;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;"/>
-            <div style="font-size:0.65rem;color:#aaa;">Max Supply</div>
-            <input id="pg-max-supply" type="number" min="0" value="100"
-              style="width:80px;background:#000;color:#00e5ff;border:1px solid #ffd70055;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;"/>
-            <button id="pg-seed-btn" style="
-              width:100%;padding:8px;border-radius:6px;
-              border:2px solid #ffd700;background:#000;color:#ffd700;
-              font-family:monospace;font-size:0.78rem;cursor:pointer;
-              box-shadow:0 0 10px #ffd700;font-weight:bold;
-            ">⭐ Seed Mint DecentHead v1.0</button>
-            <div id="pg-seed-status" style="min-height:16px;font-size:0.68rem;color:#888;word-break:break-all;"></div>
-          </div>
-        </details>
+        <div style="
+          border:1px solid #ffd70022;border-radius:8px;padding:10px 12px;
+          font-size:0.65rem;color:#666;text-align:center;
+        ">
+          🌿 To mint a new product, use the <span style="color:#00e676;">Mint New DNFT</span> button in the toolbar.<br/>
+          After minting, add its entry to <code style="color:#00e5ff;">js/config/products.config.js</code> so it appears here.
+        </div>
       </div>
     `;
 
@@ -344,9 +273,6 @@ class RightToolbar extends HTMLElement {
 
     // Render product cards
     this._renderProductCards(panel);
-
-    // Wire seed form
-    this._wireProductSeedForm(panel);
   }
 
   // Render product NFT cards with ownership-gated CTAs
@@ -457,160 +383,6 @@ class RightToolbar extends HTMLElement {
   }
 
   // Wire the admin seed form for DecentHead v1.0
-  _wireProductSeedForm(panel) {
-    const ethers = window.ethers;
-    const dropzone = panel.querySelector("#pg-dropzone");
-    const fileInput = panel.querySelector("#pg-image-file");
-    const previewBox = panel.querySelector("#pg-image-preview");
-    const previewImg = panel.querySelector("#pg-preview-img");
-    const clearBtn = panel.querySelector("#pg-clear-img");
-    const seedBtn = panel.querySelector("#pg-seed-btn");
-    const statusEl = panel.querySelector("#pg-seed-status");
-    let selectedFile = null;
-
-    const showPreview = (file) => {
-      selectedFile = file;
-      previewImg.src = URL.createObjectURL(file);
-      previewBox.style.display = "block";
-      dropzone.style.display = "none";
-    };
-
-    const clearImage = () => {
-      selectedFile = null;
-      previewImg.src = "";
-      previewBox.style.display = "none";
-      dropzone.style.display = "block";
-      fileInput.value = "";
-    };
-
-    dropzone.addEventListener("click", () => fileInput.click());
-    fileInput.addEventListener("change", () => { if (fileInput.files[0]) showPreview(fileInput.files[0]); });
-    clearBtn.addEventListener("click", clearImage);
-    dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.style.background = "rgba(255,215,0,0.08)"; });
-    dropzone.addEventListener("dragleave", () => { dropzone.style.background = ""; });
-    dropzone.addEventListener("drop", (e) => {
-      e.preventDefault(); dropzone.style.background = "";
-      const f = e.dataTransfer.files[0];
-      if (f && f.type.startsWith("image/")) showPreview(f);
-    });
-
-    seedBtn.addEventListener("click", async () => {
-      seedBtn.disabled = true;
-      seedBtn.style.opacity = "0.6";
-      const setStatus = (msg, color = "#888") => { statusEl.style.color = color; statusEl.textContent = msg; };
-
-      try {
-        if (!window.ethereum) throw new Error("MetaMask not found");
-        setStatus("🔗 Connecting wallet…");
-        const provider = new ethers.BrowserProvider(window.ethereum);
-        await provider.send("eth_requestAccounts", []);
-        const signer = await provider.getSigner();
-        const account = await signer.getAddress();
-
-        const contractAddr = localStorage.getItem("decentNFT_address") || "";
-        if (!contractAddr || !ethers.isAddress(contractAddr)) {
-          throw new Error("Set contract address in the 🔮 panel first.");
-        }
-
-        // ── Upload image to IPFS ──────────────────────────────────────────
-        let imageUri = "";
-        if (selectedFile) {
-          setStatus("📤 Uploading product image to IPFS…");
-          imageUri = await uploadFileToIPFS(selectedFile);
-        } else {
-          throw new Error("Please select a product image to upload.");
-        }
-
-        // ── Build metadata (Product DNFT schema) ──────────────────────────
-        const artifactCid = panel.querySelector("#pg-artifact-cid").value.trim();
-        const productDef = PRODUCT_REGISTRY[0]; // DecentHead v1.0
-        // Note: buildDNFTMetadata auto-adds a "Version" attribute from product.version,
-        // so only pass additional attributes beyond Kind and Version here.
-        const metadata = buildDNFTMetadata({
-          name:        productDef.name,
-          description: productDef.description,
-          image:       imageUri,
-          kind:        "Product",
-          externalUrl: productDef.repo_url,
-          extraAttributes: [
-            { trait_type: "Collection", value: "DecentHead" },
-          ],
-          product: {
-            version:      productDef.version,
-            repo_url:     productDef.repo_url,
-            commit:       productDef.commit,
-            artifact_cid: artifactCid || productDef.artifact_cid,
-            opensea_url:  "",
-          },
-        });
-
-        setStatus("📤 Uploading metadata to IPFS…");
-        const tokenUri = await uploadMetadataToIPFS(metadata);
-
-        // ── Register token on-chain ───────────────────────────────────────
-        setStatus("📝 Registering token on-chain…");
-        const maxSupply = BigInt(panel.querySelector("#pg-max-supply").value || "100");
-        const REGISTER_ABI = [
-          "function registerToken(uint256 maxSupply_, string tokenURI_, uint8 kind_, address royaltyReceiver, uint96 royaltyFeeBps) returns (uint256 tokenId)",
-          "event TokenRegistered(uint256 indexed tokenId, address indexed creator, uint256 maxSupply, uint8 kind, string uri)",
-        ];
-        const contract = new ethers.Contract(contractAddr, REGISTER_ABI, signer);
-        const regTx = await contract.registerToken(maxSupply, tokenUri, 0, ethers.ZeroAddress, 0);
-        setStatus(`📝 Registering… ${regTx.hash.slice(0, 14)}…`);
-        const regReceipt = await regTx.wait();
-
-        // Parse tokenId from event
-        const iface = new ethers.Interface(REGISTER_ABI);
-        const topic = iface.getEvent("TokenRegistered").topicHash;
-        let tokenId = null;
-        for (const log of regReceipt.logs) {
-          if (log.topics[0] !== topic) continue;
-          const parsed = iface.parseLog({ topics: log.topics, data: log.data });
-          if (parsed?.name === "TokenRegistered") { tokenId = parsed.args.tokenId; break; }
-        }
-        if (tokenId === null) throw new Error("Could not read tokenId from receipt.");
-
-        // ── Mint the product token ────────────────────────────────────────
-        setStatus(`🔮 Minting token #${tokenId}…`);
-        const MINT_ABI = ["function mintProduct(address to, uint256 tokenId, uint256 amount)"];
-        const mintContract = new ethers.Contract(contractAddr, MINT_ABI, signer);
-        const mintTx = await mintContract.mintProduct(account, tokenId, 1n);
-        setStatus(`🔮 Minting… ${mintTx.hash.slice(0, 14)}…`);
-        const mintReceipt = await mintTx.wait();
-
-        // Update the in-memory registry entry with the new tokenId
-        PRODUCT_REGISTRY[0].tokenId = Number(tokenId);
-        PRODUCT_REGISTRY[0].image_cid = imageUri;
-
-        setStatus(`✅ Minted! Token #${tokenId} — Block ${mintReceipt.blockNumber}`, "#ffd700");
-        seedBtn.textContent = "✅ Minted!";
-        seedBtn.style.borderColor = "#00e676";
-        seedBtn.style.color = "#00e676";
-
-        // Dispatch gallery-refresh event so other components can react
-        document.dispatchEvent(new CustomEvent("dnft:minted", {
-          detail: { tokenId: tokenId.toString(), tokenUri, name: productDef.name, imageUri },
-        }));
-
-        // Plot the product NFT on the 3D canvas
-        const canvas = document.querySelector("decent-canvas");
-        const uiLayer = canvas?.querySelector("decent-ui-layer");
-        if (uiLayer) {
-          const displaySrc = imageUri.startsWith("ipfs://")
-            ? `https://${imageUri.replace("ipfs://", "")}.ipfs.w3s.link/`
-            : imageUri;
-          uiLayer.dispatchEvent(new CustomEvent("add-plot", {
-            detail: { x: 0, y: 0, token: displaySrc, metadata: { ...metadata, tokenId: Number(tokenId) } },
-          }));
-        }
-      } catch (err) {
-        setStatus(`✗ ${err.reason || err.message}`, "#f44");
-        seedBtn.disabled = false;
-        seedBtn.style.opacity = "1";
-      }
-    });
-  }
-
   // ── Placeholder modal for unused buttons ────────────────────────────────────
   _showPlaceholder(id) {
     this._clearModals();
@@ -1103,22 +875,6 @@ class RightToolbar extends HTMLElement {
       ? contractAddr.slice(0, 10) + "…" + contractAddr.slice(-4)
       : "Not set — use 🔮 panel";
 
-    const templateBtns = MINT_TEMPLATES.map(
-      (t) => `
-      <button data-template-id="${t.id}" style="
-        padding:5px 10px;
-        border-radius:6px;
-        border:1px solid #00e676;
-        background:${t.id === "custom" ? "#00e676" : "#000"};
-        color:${t.id === "custom" ? "#000" : "#00e676"};
-        font-family:monospace;
-        font-size:0.72rem;
-        cursor:pointer;
-        transition:all 0.15s;
-      ">${t.label}</button>
-    `
-    ).join("");
-
     return `
       <!-- Header -->
       <div style="
@@ -1143,21 +899,6 @@ class RightToolbar extends HTMLElement {
       </div>
 
       <div style="padding:16px 18px;display:flex;flex-direction:column;gap:14px;">
-
-        <!-- Template selector -->
-        <div style="
-          background:rgba(0,230,118,0.05);
-          border:1px solid #00e67633;
-          border-radius:8px;
-          padding:10px 14px;
-        ">
-          <div style="font-size:0.62rem;color:#4caf50;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px;">
-            📋 Template
-          </div>
-          <div id="mint-template-btns" style="display:flex;gap:6px;flex-wrap:wrap;">
-            ${templateBtns}
-          </div>
-        </div>
 
         <!-- Image upload -->
         <div style="
@@ -1219,6 +960,54 @@ class RightToolbar extends HTMLElement {
             "/>
         </div>
 
+        <!-- Artifact upload -->
+        <div style="
+          background:rgba(0,230,118,0.03);
+          border:1px solid #00e67633;
+          border-radius:8px;
+          padding:10px 14px;
+        ">
+          <div style="font-size:0.62rem;color:#4caf50;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px;">
+            📦 Artifact
+          </div>
+
+          <!-- Artifact drop zone -->
+          <div id="mint-artifact-dropzone" style="
+            border:2px dashed #00e676;
+            border-radius:8px;
+            padding:12px;
+            text-align:center;
+            color:#4caf50;
+            font-size:0.72rem;
+            cursor:pointer;
+            margin-bottom:8px;
+            transition:background 0.15s;
+          ">
+            <div style="font-size:1.4rem;margin-bottom:4px;">🗜️</div>
+            <div>Drag &amp; drop artifact here</div>
+            <div style="color:#888;font-size:0.65rem;margin-top:2px;">zip/tar/any file — or paste CID below</div>
+            <input id="mint-artifact-file" type="file" style="display:none;"/>
+          </div>
+
+          <!-- Artifact upload status -->
+          <div id="mint-artifact-status" style="display:none;font-size:0.65rem;color:#00e676;margin-bottom:6px;word-break:break-all;"></div>
+
+          <!-- Separator -->
+          <div style="display:flex;align-items:center;gap:6px;margin:8px 0;color:#555;font-size:0.65rem;">
+            <div style="flex:1;height:1px;background:#333;"></div>OR<div style="flex:1;height:1px;background:#333;"></div>
+          </div>
+
+          <!-- Manual Artifact CID -->
+          <div style="font-size:0.65rem;color:#888;margin-bottom:4px;">Artifact CID (ipfs://…)</div>
+          <input id="mint-artifact-cid" type="text" placeholder="ipfs://bafybei…"
+            style="
+              width:100%;box-sizing:border-box;
+              background:#000;color:#00e5ff;
+              border:1px solid #00e67688;border-radius:4px;
+              padding:5px 7px;font-size:0.72rem;font-family:monospace;
+            "/>
+        </div>
+
         <!-- Metadata -->
         <div style="
           background:rgba(0,230,118,0.03);
@@ -1230,21 +1019,29 @@ class RightToolbar extends HTMLElement {
             📝 Metadata
           </div>
           <div style="font-size:0.65rem;color:#888;margin-bottom:3px;">Name <span style="color:#f44;">*</span></div>
-          <input id="mint-name" type="text" placeholder="e.g. DecentHead #1"
+          <input id="mint-name" type="text" placeholder="e.g. BigNuten v1.0"
             style="
               width:100%;box-sizing:border-box;margin-bottom:8px;
               background:#000;color:#00e5ff;
               border:1px solid #00e676;border-radius:4px;
               padding:5px 7px;font-size:0.75rem;font-family:monospace;
             "/>
-          <div style="font-size:0.65rem;color:#888;margin-bottom:3px;">Description</div>
-          <textarea id="mint-description" rows="2" placeholder="Describe your NFT…"
+          <div style="font-size:0.65rem;color:#888;margin-bottom:3px;">Description <span style="color:#f44;">*</span></div>
+          <textarea id="mint-description" rows="2" placeholder="Describe your product or achievement…"
             style="
-              width:100%;box-sizing:border-box;resize:vertical;
+              width:100%;box-sizing:border-box;resize:vertical;margin-bottom:8px;
               background:#000;color:#00e5ff;
               border:1px solid #00e67688;border-radius:4px;
               padding:5px 7px;font-size:0.72rem;font-family:monospace;
             "></textarea>
+          <div style="font-size:0.65rem;color:#888;margin-bottom:3px;">GitHub / Repo URL</div>
+          <input id="mint-repo-url" type="text" placeholder="https://github.com/…"
+            style="
+              width:100%;box-sizing:border-box;
+              background:#000;color:#00e5ff;
+              border:1px solid #00e67688;border-radius:4px;
+              padding:5px 7px;font-size:0.72rem;font-family:monospace;
+            "/>
         </div>
 
         <!-- Minting options -->
@@ -1337,30 +1134,6 @@ class RightToolbar extends HTMLElement {
     };
     setTimeout(() => document.addEventListener("click", _outsideClick), 0);
 
-    // ── Template selection ──────────────────────────────────────────────────
-    const templateBtns = modal.querySelectorAll("[data-template-id]");
-    const nameInput = modal.querySelector("#mint-name");
-    const descInput = modal.querySelector("#mint-description");
-    const kindSelect = modal.querySelector("#mint-kind");
-    const maxSupplyInput = modal.querySelector("#mint-max-supply");
-
-    const applyTemplate = (templateId) => {
-      const tmpl = MINT_TEMPLATES.find((t) => t.id === templateId) || MINT_TEMPLATES[0];
-      templateBtns.forEach((b) => {
-        const active = b.dataset.templateId === templateId;
-        b.style.background = active ? "#00e676" : "#000";
-        b.style.color = active ? "#000" : "#00e676";
-      });
-      if (tmpl.name !== undefined) nameInput.value = tmpl.name;
-      if (tmpl.description !== undefined) descInput.value = tmpl.description;
-      kindSelect.value = String(tmpl.kind);
-      maxSupplyInput.value = String(tmpl.maxSupply);
-    };
-
-    templateBtns.forEach((btn) => {
-      btn.addEventListener("click", () => applyTemplate(btn.dataset.templateId));
-    });
-
     // ── Image upload / drag-drop ────────────────────────────────────────────
     const dropzone = modal.querySelector("#mint-dropzone");
     const fileInput = modal.querySelector("#mint-image-file");
@@ -1407,6 +1180,39 @@ class RightToolbar extends HTMLElement {
       if (file && file.type.startsWith("image/")) showPreview(file);
     });
 
+    // ── Artifact upload / drag-drop ─────────────────────────────────────────
+    const artifactDropzone = modal.querySelector("#mint-artifact-dropzone");
+    const artifactFileInput = modal.querySelector("#mint-artifact-file");
+    const artifactStatusEl = modal.querySelector("#mint-artifact-status");
+    const artifactCidInput = modal.querySelector("#mint-artifact-cid");
+    let selectedArtifactFile = null;
+
+    const showArtifactSelected = (file) => {
+      selectedArtifactFile = file;
+      artifactDropzone.style.background = "rgba(0,230,118,0.06)";
+      artifactStatusEl.style.display = "block";
+      artifactStatusEl.textContent = `📦 Selected: ${file.name} — will upload on mint`;
+      artifactCidInput.value = "";
+    };
+
+    artifactDropzone.addEventListener("click", () => artifactFileInput.click());
+    artifactFileInput.addEventListener("change", () => {
+      if (artifactFileInput.files[0]) showArtifactSelected(artifactFileInput.files[0]);
+    });
+    artifactDropzone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      artifactDropzone.style.background = "rgba(0,230,118,0.1)";
+    });
+    artifactDropzone.addEventListener("dragleave", () => {
+      if (!selectedArtifactFile) artifactDropzone.style.background = "";
+    });
+    artifactDropzone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      artifactDropzone.style.background = "";
+      const file = e.dataTransfer.files[0];
+      if (file) showArtifactSelected(file);
+    });
+
     // ── Submit / Mint ───────────────────────────────────────────────────────
     const submitBtn = modal.querySelector("#mint-submit-btn");
     const statusEl = modal.querySelector("#mint-status");
@@ -1422,11 +1228,12 @@ class RightToolbar extends HTMLElement {
       statusEl.textContent = "";
 
       try {
-        const name = nameInput.value.trim();
-        const description = descInput.value.trim();
-        const kind = parseInt(kindSelect.value);
+        const name = modal.querySelector("#mint-name").value.trim();
+        const description = modal.querySelector("#mint-description").value.trim();
+        const repoUrl = modal.querySelector("#mint-repo-url").value.trim();
+        const kind = parseInt(modal.querySelector("#mint-kind").value);
         const kindLabel = kind === 0 ? "Product" : "Achievement";
-        const maxSupply = BigInt(maxSupplyInput.value || "0");
+        const maxSupply = BigInt(modal.querySelector("#mint-max-supply").value || "0");
         const recipientInput = modal.querySelector("#mint-recipient").value.trim();
         const imageUri = imageUriInput.value.trim();
 
@@ -1462,17 +1269,41 @@ class RightToolbar extends HTMLElement {
           }
         }
 
+        // ── Upload artifact to IPFS (if file selected) ────────────────────
+        let finalArtifactCid = artifactCidInput.value.trim();
+        if (selectedArtifactFile) {
+          setStatus("📤 Uploading artifact to IPFS…");
+          try {
+            finalArtifactCid = await uploadFileToIPFS(selectedArtifactFile);
+          } catch (artifactErr) {
+            throw new Error(
+              `Artifact upload failed: ${artifactErr.message}. Enter an artifact CID manually instead.`
+            );
+          }
+        }
+
         // ── Validate required fields before uploading metadata ────────────
         // Validates name, description, and image (must be non-empty; ipfs:// preferred).
         validateDNFTFields({ name, description, image: finalImageUri });
 
         // ── Build OpenSea-compliant metadata JSON ─────────────────────────
-        // buildDNFTMetadata includes stub fields for future 3D/layout support.
+        // Include repo_url and artifact_cid under properties.product for Product tokens.
+        // version, commit, and opensea_url are left empty — they are filled in post-mint
+        // (commit hash permalink and OpenSea URL are not known at mint time).
         const metadata = buildDNFTMetadata({
           name,
           description,
           image: finalImageUri,  // always an ipfs:// URI when a file was uploaded
           kind: kindLabel,
+          ...(kindLabel === "Product" && {
+            product: {
+              version:      "",
+              repo_url:     repoUrl,
+              commit:       "",
+              artifact_cid: finalArtifactCid,
+              opensea_url:  "",
+            },
+          }),
         });
 
         setStatus("📤 Uploading metadata to IPFS…");
@@ -1552,6 +1383,8 @@ class RightToolbar extends HTMLElement {
               name,
               description,
               imageUri: finalImageUri,
+              repoUrl,
+              artifactCid: finalArtifactCid,
               txHash: mintReceipt.hash,
               blockNumber: mintReceipt.blockNumber,
             },
