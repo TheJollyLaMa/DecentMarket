@@ -78,7 +78,70 @@ The 🗿 button in the right toolbar opens the **Product Gallery** panel, which:
 - Lists all known Product DNFTs with a gold `⭐ PRODUCT` badge
 - Displays name, version, repo URL, and artifact CID
 - Checks on-chain ownership (`balanceOf`): owners see a "✅ You own this NFT" indicator; non-owners see **Purchase on OpenSea** and **View Access** buttons
-- Admins (DEFAULT_ADMIN_ROLE) can use the "Seed Mint" section to register and mint the first DecentHead v1.0 DNFT directly from the UI
+- To add a newly-minted product to the gallery, see [How to mint a new Decent product](#how-to-mint-a-new-decent-product) below
+
+---
+
+## How to mint a new Decent product
+
+Any Decent product (e.g. BigNuten v1.0, DecentHead v1.0, …) can be immortalised on-chain as a
+Product DNFT in a few steps — no code changes required.
+
+### Prerequisites
+
+- A connected MetaMask wallet with DEFAULT_ADMIN_ROLE on the target DecentNFT contract
+- The contract address set in the 🔮 panel (auto-filled for supported networks)
+- The product image and artifact zip uploaded to IPFS (or ready to upload via the form)
+
+### Step-by-step
+
+1. **Open the Mint modal** — click the **🌿** button in the right toolbar.
+
+2. **Upload or paste the Image CID**
+   - Drag & drop the product image into the 🖼️ Image drop zone to upload it to IPFS automatically, _or_
+   - Paste an existing `ipfs://…` or `https://…` CID/URL into the Image CID field.
+
+3. **Upload or paste the Artifact CID**
+   - Drag & drop the repo `.zip` / `.tar.gz` into the 📦 Artifact drop zone to upload it automatically, _or_
+   - Paste an existing `ipfs://bafybei…` CID into the Artifact CID field.
+
+4. **Fill in the Metadata fields**
+   - **Product Name** — e.g. `BigNuten v1.0`
+   - **Description** — e.g. `BigNuten v1.0 — a privacy-first fitness tracker…`
+   - **GitHub / Repo URL** — e.g. `https://github.com/TheJollyLaMa/BigNuten_Vanilla`
+
+5. **Set Options**
+   - **Kind** — `🔮 Product` (or `🏆 Achievement`)
+   - **Max Supply** — `1` for a unique genesis mint, `0` for unlimited, or any edition size
+   - **Mint to** — leave blank to mint to your own wallet, or enter a specific address
+
+6. **Click ✨ Mint DNFT**
+   The modal will:
+   - Upload any pending files to IPFS
+   - Build the OpenSea-compliant metadata JSON (including `repo_url` and `artifact_cid`)
+   - Upload the metadata JSON to IPFS
+   - Call `registerToken` on-chain → receive a `tokenId`
+   - Call `mintProduct` (or `mintAchievement`) to mint the token to the recipient
+
+7. **Copy the tokenId** from the success message.
+
+8. **Add the product to the gallery** — open `js/config/products.config.js` and append a new
+   entry to `PRODUCT_REGISTRY` with the minted `tokenId`, image CID, and artifact CID.
+   The Product Gallery (🗿) will then display the new card on next load.
+
+### Example — BigNuten v1.0
+
+| Field | Value |
+|-------|-------|
+| Product Name | `BigNuten v1.0` |
+| Description | `BigNuten v1.0 — a privacy-first fitness tracker with IPFS data persistence and MetaMask wallet integration. Minted at v1.0.0 to mark the release on-chain.` |
+| GitHub / Repo URL | `https://github.com/TheJollyLaMa/BigNuten_Vanilla` |
+| Image CID | _(upload product image to IPFS via drop zone)_ |
+| Artifact CID | _(upload repo zip to IPFS via drop zone)_ |
+| Max Supply | `1` _(unique genesis mint)_ |
+| Kind | `🔮 Product` |
+
+---
 
 ### Metadata JSON fields
 
