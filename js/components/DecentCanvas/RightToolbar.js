@@ -46,6 +46,7 @@ const ESCROW_ABI = [
   "function purchaseWithETH(uint256 listingId, uint256 amount) payable",
   "function purchaseWithToken(uint256 listingId, uint256 amount)",
   "function createPlan(string name, address paymentToken, uint256 pricePerPeriod, uint256 periodSeconds) returns (uint256 planId)",
+  "function deactivatePlan(uint256 planId)",
   "function subscribe(uint256 planId) payable",
   "function withdrawNFT(address nftContract, uint256 tokenId, uint256 amount, address to)",
 ];
@@ -1593,8 +1594,24 @@ class RightToolbar extends HTMLElement {
             </div>
           </div>
 
+          <!-- Withdraw ERC-20 -->
+          <div style="background:rgba(0,255,136,0.03);border:1px solid #00ff8811;border-radius:6px;padding:8px 10px;margin-bottom:8px;">
+            <div style="font-size:0.65rem;color:#008844;margin-bottom:4px;">Withdraw ERC-20</div>
+            <div style="display:flex;flex-direction:column;gap:4px;">
+              <input id="escrow-withdraw-token-address" placeholder="token contract address" style="background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
+              <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                <input id="escrow-withdraw-token-amount" placeholder="amount (in token units)" style="flex:1;min-width:80px;background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
+                <input id="escrow-withdraw-token-decimals" placeholder="decimals (e.g. 6)" style="width:80px;background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
+              </div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                <input id="escrow-withdraw-token-reason" placeholder="reason" style="flex:1;min-width:120px;background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
+                <button id="escrow-withdraw-token-btn" style="background:rgba(0,255,136,0.15);border:1px solid #00ff88;color:#00ff88;border-radius:4px;padding:4px 10px;font-size:0.7rem;cursor:pointer;font-family:monospace;">↑ Withdraw</button>
+              </div>
+            </div>
+          </div>
+
           <!-- List DNFT -->
-          <div style="background:rgba(0,255,136,0.03);border:1px solid #00ff8811;border-radius:6px;padding:8px 10px;">
+          <div style="background:rgba(0,255,136,0.03);border:1px solid #00ff8811;border-radius:6px;padding:8px 10px;margin-bottom:8px;">
             <div style="font-size:0.65rem;color:#008844;margin-bottom:4px;">List a DNFT for Purchase</div>
             <div style="display:flex;flex-direction:column;gap:4px;">
               <input id="escrow-list-nft-contract" placeholder="NFT contract address" style="background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
@@ -1608,6 +1625,55 @@ class RightToolbar extends HTMLElement {
               </div>
               <input id="escrow-list-note" placeholder='note, e.g. "DecentHead v1.0 Supporter DNFT"' style="background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
               <button id="escrow-list-btn" style="background:rgba(0,255,136,0.15);border:1px solid #00ff88;color:#00ff88;border-radius:4px;padding:5px 10px;font-size:0.7rem;cursor:pointer;font-family:monospace;">+ Create Listing</button>
+            </div>
+          </div>
+
+          <!-- Delist DNFT -->
+          <div style="background:rgba(0,255,136,0.03);border:1px solid #00ff8811;border-radius:6px;padding:8px 10px;margin-bottom:8px;">
+            <div style="font-size:0.65rem;color:#008844;margin-bottom:4px;">Delist DNFT</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <input id="escrow-delist-id" placeholder="listingId" style="flex:1;min-width:80px;background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
+              <button id="escrow-delist-btn" style="background:rgba(0,255,136,0.15);border:1px solid #00ff88;color:#00ff88;border-radius:4px;padding:4px 10px;font-size:0.7rem;cursor:pointer;font-family:monospace;">✕ Delist</button>
+            </div>
+          </div>
+
+          <!-- Withdraw NFT -->
+          <div style="background:rgba(0,255,136,0.03);border:1px solid #00ff8811;border-radius:6px;padding:8px 10px;margin-bottom:8px;">
+            <div style="font-size:0.65rem;color:#008844;margin-bottom:4px;">Withdraw NFT (reclaim unsold)</div>
+            <div style="display:flex;flex-direction:column;gap:4px;">
+              <input id="escrow-withdraw-nft-contract" placeholder="NFT contract address" style="background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
+              <div style="display:flex;gap:6px;">
+                <input id="escrow-withdraw-nft-token-id" placeholder="tokenId" style="flex:1;background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
+                <input id="escrow-withdraw-nft-amount" placeholder="amount" style="flex:1;background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
+              </div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                <input id="escrow-withdraw-nft-to" placeholder="recipient address" style="flex:1;min-width:120px;background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
+                <button id="escrow-withdraw-nft-btn" style="background:rgba(0,255,136,0.15);border:1px solid #00ff88;color:#00ff88;border-radius:4px;padding:4px 10px;font-size:0.7rem;cursor:pointer;font-family:monospace;">↑ Withdraw NFT</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Create Subscription Plan -->
+          <div style="background:rgba(0,255,136,0.03);border:1px solid #00ff8811;border-radius:6px;padding:8px 10px;margin-bottom:8px;">
+            <div style="font-size:0.65rem;color:#008844;margin-bottom:4px;">Create Subscription Plan</div>
+            <div style="display:flex;flex-direction:column;gap:4px;">
+              <input id="escrow-plan-name" placeholder='plan name, e.g. "Pro Monthly"' style="background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
+              <input id="escrow-plan-token" placeholder="payment token address (0x0…0 for ETH)" style="background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
+              <div style="display:flex;gap:6px;">
+                <input id="escrow-plan-price" placeholder="price (ETH or token units)" style="flex:1;background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
+                <input id="escrow-plan-decimals" placeholder="decimals (e.g. 6)" style="width:80px;background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
+                <input id="escrow-plan-period" placeholder="period (seconds)" style="flex:1;background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
+              </div>
+              <button id="escrow-plan-create-btn" style="background:rgba(0,255,136,0.15);border:1px solid #00ff88;color:#00ff88;border-radius:4px;padding:5px 10px;font-size:0.7rem;cursor:pointer;font-family:monospace;">+ Create Plan</button>
+            </div>
+          </div>
+
+          <!-- Deactivate Subscription Plan -->
+          <div style="background:rgba(0,255,136,0.03);border:1px solid #00ff8811;border-radius:6px;padding:8px 10px;">
+            <div style="font-size:0.65rem;color:#008844;margin-bottom:4px;">Deactivate Plan</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <input id="escrow-plan-deactivate-id" placeholder="planId" style="flex:1;min-width:80px;background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
+              <button id="escrow-plan-deactivate-btn" style="background:rgba(0,255,136,0.15);border:1px solid #00ff88;color:#00ff88;border-radius:4px;padding:4px 10px;font-size:0.7rem;cursor:pointer;font-family:monospace;">✕ Deactivate</button>
             </div>
           </div>
         </div>
@@ -1826,6 +1892,33 @@ class RightToolbar extends HTMLElement {
       }
     };
 
+    panel.querySelector("#escrow-withdraw-token-btn").onclick = async () => {
+      const statusEl = panel.querySelector("#escrow-status");
+      const tokenAddress = panel.querySelector("#escrow-withdraw-token-address").value.trim();
+      const amtStr = panel.querySelector("#escrow-withdraw-token-amount").value.trim();
+      const decimalsStr = panel.querySelector("#escrow-withdraw-token-decimals").value.trim();
+      const reason = panel.querySelector("#escrow-withdraw-token-reason").value.trim();
+      if (!tokenAddress || !amtStr || !reason) { statusEl.textContent = "⚠ Enter token address, amount and reason"; return; }
+      const decimals = decimalsStr ? parseInt(decimalsStr, 10) : 18;
+      try {
+        statusEl.textContent = "⏳ Sending ERC-20 withdrawal…";
+        const ethers = window.ethers;
+        if (!ethers) { statusEl.textContent = "⚠ ethers.js not loaded"; return; }
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const signer = await provider.getSigner();
+        const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, signer);
+        const tx = await escrow.withdrawToken(tokenAddress, ethers.parseUnits(amtStr, decimals), reason);
+        await tx.wait();
+        statusEl.style.color = "#00ff88";
+        statusEl.textContent = `✅ Withdrawn ${amtStr} tokens. Tx: ${tx.hash.slice(0,10)}…`;
+        panel.querySelector("#escrow-withdraw-token-address").value = "";
+        panel.querySelector("#escrow-withdraw-token-amount").value = "";
+        panel.querySelector("#escrow-withdraw-token-reason").value = "";
+      } catch (err) {
+        statusEl.textContent = `⚠ ${err.reason || err.message?.slice(0, 80)}`;
+      }
+    };
+
     panel.querySelector("#escrow-list-btn").onclick = async () => {
       const statusEl = panel.querySelector("#escrow-status");
       const nftContract = panel.querySelector("#escrow-list-nft-contract").value.trim();
@@ -1854,6 +1947,107 @@ class RightToolbar extends HTMLElement {
         await tx.wait();
         statusEl.style.color = "#00ff88";
         statusEl.textContent = `✅ Listing created! Tx: ${tx.hash.slice(0,10)}…`;
+      } catch (err) {
+        statusEl.textContent = `⚠ ${err.reason || err.message?.slice(0, 80)}`;
+      }
+    };
+
+    panel.querySelector("#escrow-delist-btn").onclick = async () => {
+      const statusEl = panel.querySelector("#escrow-status");
+      const listingId = panel.querySelector("#escrow-delist-id").value.trim();
+      if (!listingId) { statusEl.textContent = "⚠ Enter a listingId"; return; }
+      try {
+        statusEl.textContent = "⏳ Delisting…";
+        const ethers = window.ethers;
+        if (!ethers) { statusEl.textContent = "⚠ ethers.js not loaded"; return; }
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const signer = await provider.getSigner();
+        const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, signer);
+        const tx = await escrow.delistDNFT(listingId);
+        await tx.wait();
+        statusEl.style.color = "#00ff88";
+        statusEl.textContent = `✅ Listing ${listingId} delisted. Tx: ${tx.hash.slice(0,10)}…`;
+        panel.querySelector("#escrow-delist-id").value = "";
+      } catch (err) {
+        statusEl.textContent = `⚠ ${err.reason || err.message?.slice(0, 80)}`;
+      }
+    };
+
+    panel.querySelector("#escrow-withdraw-nft-btn").onclick = async () => {
+      const statusEl = panel.querySelector("#escrow-status");
+      const nftContract = panel.querySelector("#escrow-withdraw-nft-contract").value.trim();
+      const tokenId = panel.querySelector("#escrow-withdraw-nft-token-id").value.trim();
+      const amount = panel.querySelector("#escrow-withdraw-nft-amount").value.trim();
+      const to = panel.querySelector("#escrow-withdraw-nft-to").value.trim();
+      if (!nftContract || !tokenId || !amount || !to) { statusEl.textContent = "⚠ Fill in all NFT withdrawal fields"; return; }
+      try {
+        statusEl.textContent = "⏳ Withdrawing NFT…";
+        const ethers = window.ethers;
+        if (!ethers) { statusEl.textContent = "⚠ ethers.js not loaded"; return; }
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const signer = await provider.getSigner();
+        const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, signer);
+        const tx = await escrow.withdrawNFT(nftContract, tokenId, amount, to);
+        await tx.wait();
+        statusEl.style.color = "#00ff88";
+        statusEl.textContent = `✅ NFT withdrawn. Tx: ${tx.hash.slice(0,10)}…`;
+        panel.querySelector("#escrow-withdraw-nft-contract").value = "";
+        panel.querySelector("#escrow-withdraw-nft-token-id").value = "";
+        panel.querySelector("#escrow-withdraw-nft-amount").value = "";
+        panel.querySelector("#escrow-withdraw-nft-to").value = "";
+      } catch (err) {
+        statusEl.textContent = `⚠ ${err.reason || err.message?.slice(0, 80)}`;
+      }
+    };
+
+    panel.querySelector("#escrow-plan-create-btn").onclick = async () => {
+      const statusEl = panel.querySelector("#escrow-status");
+      const name = panel.querySelector("#escrow-plan-name").value.trim();
+      const paymentToken = panel.querySelector("#escrow-plan-token").value.trim();
+      const priceStr = panel.querySelector("#escrow-plan-price").value.trim();
+      const periodStr = panel.querySelector("#escrow-plan-period").value.trim();
+      if (!name || !paymentToken || !priceStr || !periodStr) { statusEl.textContent = "⚠ Fill in all plan fields"; return; }
+      try {
+        statusEl.textContent = "⏳ Creating plan…";
+        const ethers = window.ethers;
+        if (!ethers) { statusEl.textContent = "⚠ ethers.js not loaded"; return; }
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const signer = await provider.getSigner();
+        const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, signer);
+        const isEthPlan = paymentToken === ethers.ZeroAddress || paymentToken === "0x0000000000000000000000000000000000000000";
+        const decimalsStr = panel.querySelector("#escrow-plan-decimals").value.trim();
+        const decimals = isEthPlan ? 18 : (decimalsStr ? parseInt(decimalsStr, 10) : 18);
+        const price = ethers.parseUnits(priceStr, decimals);
+        const tx = await escrow.createPlan(name, isEthPlan ? ethers.ZeroAddress : paymentToken, price, periodStr);
+        await tx.wait();
+        statusEl.style.color = "#00ff88";
+        statusEl.textContent = `✅ Plan created! Tx: ${tx.hash.slice(0,10)}…`;
+        panel.querySelector("#escrow-plan-name").value = "";
+        panel.querySelector("#escrow-plan-token").value = "";
+        panel.querySelector("#escrow-plan-price").value = "";
+        panel.querySelector("#escrow-plan-decimals").value = "";
+        panel.querySelector("#escrow-plan-period").value = "";
+      } catch (err) {
+        statusEl.textContent = `⚠ ${err.reason || err.message?.slice(0, 80)}`;
+      }
+    };
+
+    panel.querySelector("#escrow-plan-deactivate-btn").onclick = async () => {
+      const statusEl = panel.querySelector("#escrow-status");
+      const planId = panel.querySelector("#escrow-plan-deactivate-id").value.trim();
+      if (!planId) { statusEl.textContent = "⚠ Enter a planId"; return; }
+      try {
+        statusEl.textContent = "⏳ Deactivating plan…";
+        const ethers = window.ethers;
+        if (!ethers) { statusEl.textContent = "⚠ ethers.js not loaded"; return; }
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const signer = await provider.getSigner();
+        const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, signer);
+        const tx = await escrow.deactivatePlan(planId);
+        await tx.wait();
+        statusEl.style.color = "#00ff88";
+        statusEl.textContent = `✅ Plan ${planId} deactivated. Tx: ${tx.hash.slice(0,10)}…`;
+        panel.querySelector("#escrow-plan-deactivate-id").value = "";
       } catch (err) {
         statusEl.textContent = `⚠ ${err.reason || err.message?.slice(0, 80)}`;
       }
