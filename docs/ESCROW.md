@@ -1,6 +1,6 @@
-# DecentEscrow — Community Treasury v1
+# DecentEscrow v0.1 — DNFT Escrow + Community Treasury
 
-On-chain escrow contract for Decent Agency DNFT supporter sale proceeds.
+On-chain escrow for Decent Agency DNFT supporter sales, subscription management, and community treasury.
 
 ---
 
@@ -8,12 +8,56 @@ On-chain escrow contract for Decent Agency DNFT supporter sale proceeds.
 
 | Network | Address | Explorer |
 |---------|---------|----------|
-| Optimism Mainnet | _(pending deployment — fill in after `npm run deploy:escrow:optimism`)_ | [Optimistic Etherscan](https://optimistic.etherscan.io) |
+| Optimism Mainnet | _(deploy via Remix — fill in after deployment)_ | [Optimistic Etherscan](https://optimistic.etherscan.io) |
 
 Once deployed, update:
 - This file (`docs/ESCROW.md`)
-- `js/config/contracts.js` → `addresses.ESCROW`
+- `js/config/contracts.js` → `optimism.addresses.ESCROW`
 - `DEPLOYMENTS.md` (new row in the table)
+
+---
+
+## Deploying via Remix IDE
+
+This contract is designed to be deployed through [Remix IDE](https://remix.ethereum.org) — no CLI tooling required.
+
+### Steps
+
+1. **Open Remix** → [remix.ethereum.org](https://remix.ethereum.org)
+
+2. **Load the contract** — paste the contents of `contracts/DecentEscrow.sol` into a new file, or upload the file directly.
+
+3. **Compile**
+   - In the Solidity Compiler tab, select compiler version **0.8.26**
+   - Enable optimizer: **200 runs**
+   - EVM version: **cancun** (or paris if cancun is unavailable)
+   - Click **Compile DecentEscrow.sol**
+
+4. **Deploy**
+   - In the Deploy & Run Transactions tab, select **Injected Provider — MetaMask**
+   - Make sure MetaMask is on **Optimism Mainnet** (chain ID 10)
+   - Set the constructor argument: `initialOwner` — paste your wallet address (TheJollyLaMa's)
+   - Click **Deploy**
+
+5. **Confirm in MetaMask** — approve the deployment transaction
+
+6. **Copy the deployed address** from the Remix console
+
+### Post-deployment checklist
+
+After deploying, complete these steps to wire the contract into the dapp:
+
+- [ ] Copy the deployed address from Remix
+- [ ] Paste it into `js/config/contracts.js` → `optimism.addresses.ESCROW`
+- [ ] Update the table above in `docs/ESCROW.md`
+- [ ] Add a row to `DEPLOYMENTS.md`
+- [ ] Verify on Optimistic Etherscan:
+  - Go to `https://optimistic.etherscan.io/address/<YOUR_ADDRESS>`
+  - Click **Contract → Verify and Publish**
+  - Compiler: `0.8.26`, Optimizer: enabled 200 runs, EVM: cancun
+  - Paste the flattened source (use the **"Flattener"** plugin in Remix — enable it via Plugin Manager, then right-click the file → Flatten)
+- [ ] In the 🏦 Escrow panel in the dapp, connect wallet and verify the owner is correct
+- [ ] Do a test DNFT listing with 1 edition to confirm the purchase flow
 
 ---
 
@@ -21,8 +65,8 @@ Once deployed, update:
 
 All ETH and USDC deposited into this contract come from early supporter DNFT sales:
 
-- **DecentHead v1.0** supporter editions — first-ever Decent product release
-- **BigNuten v1.0** supporter editions — privacy-first fitness tracker with IPFS + MetaMask
+- **DecentHead v1.0** supporter editions
+- **BigNuten v1.0** supporter editions
 - Future Decent product releases (one escrow serves all)
 
 Funds are used for:
@@ -32,98 +76,99 @@ Funds are used for:
 3. **Community experiments** — building in public, funding community-proposed features
 4. **Operational reserves** — keeping the lights on while the community grows
 
-These are **community funds**, not personal income. Every withdrawal is documented on-chain with a `reason` string visible to anyone on Etherscan.
+Every withdrawal is documented on-chain with a `reason` string visible to anyone on Etherscan.
 
 ---
 
-## Contract Interface
+## Contract Capabilities (v0.1)
 
-```solidity
-// DecentEscrow — Community Treasury v1
-// SPDX-License-Identifier: MIT
+### 1. DNFT Marketplace
 
-// ── Deposits (anyone can call) ───────────────────────────────────────────────
+Owner deposits ERC-1155 DNFTs into the contract, then creates listings with ETH and/or USDC prices. Buyers call `purchaseWithETH` or `purchaseWithToken` and receive the DNFT immediately.
 
-// Deposit ETH with a note labelling the sale source
-function depositETH(string calldata note) external payable;
+**Flow:**
+1. Owner calls `safeTransferFrom(owner, escrow, tokenId, qty, "")` on the DNFT contract
+2. Owner calls `listDNFT(nftContract, tokenId, priceETH, priceToken, priceAmount, qty, note)`
+3. Buyer calls `purchaseWithETH(listingId, 1)` with exact ETH attached → receives DNFT
 
-// Deposit ERC-20 tokens (e.g. USDC); caller must approve first
-function deposit(address token, uint256 amount, string calldata note) external;
+### 2. Treasury
 
-// Plain ETH transfer also accepted (note defaults to empty string)
-receive() external payable;
+Accepts plain ETH transfers and labelled `depositETH(note)` / `depositToken(token, amount, note)` calls.  
+Owner can withdraw with `withdrawETH(amount, reason)` or `withdrawToken(token, amount, reason)`.
 
-// ── Withdrawals (owner only) ─────────────────────────────────────────────────
+### 3. Subscriptions
 
-// Withdraw ETH — reason required for on-chain accountability
-function withdrawETH(uint256 amount, string calldata reason) external;
-
-// Withdraw ERC-20 tokens — reason required
-function withdraw(address token, uint256 amount, string calldata reason) external;
-
-// ── View functions ────────────────────────────────────────────────────────────
-
-function owner() external view returns (address);
-function getETHBalance() external view returns (uint256);
-function getBalance(address token) external view returns (uint256);
-
-// ── Events ────────────────────────────────────────────────────────────────────
-
-event Deposited(address indexed sender, address indexed token, uint256 amount, string note);
-event Withdrawn(address indexed token, address indexed to, uint256 amount, string reason);
-```
+Owner creates Plans with a name, payment token, price, and period. Users call `subscribe(planId)` to pay for one period. Dapps call `isSubscribed(planId, user)` to gate features.
 
 ---
 
-## Withdrawal Policy
+## Function Reference
 
-All withdrawals must include a non-empty `reason` string stored on-chain. Examples:
+### Deposits (anyone can call)
 
-| Type | Example reason |
-|------|---------------|
-| Bounty | `"Bounty payout — DecentMarket TheJollyLaMa/DecentMarket#45"` |
-| Infrastructure | `"IPFS pinning — web3.storage Q1 2025"` |
-| Development | `"Dev expenses — DecentHead v1.1 release sprint"` |
-| Operational | `"Domain renewal — decentmarket.io 2025"` |
+| Function | Description |
+|----------|-------------|
+| `receive() payable` | Plain ETH transfer → emits `Deposited` with empty note |
+| `depositETH(note) payable` | ETH deposit with label |
+| `depositToken(token, amount, note)` | ERC-20 deposit (caller must approve first) |
 
-The `reason` is permanently recorded in the `Withdrawn` event log and visible to anyone on Etherscan. This is the accountability mechanism that replaces traditional audits for Phase 1.
+### DNFT Marketplace (owner: listing; anyone: purchase)
+
+| Function | Who | Description |
+|----------|-----|-------------|
+| `listDNFT(nftContract, tokenId, priceETH, priceToken, priceAmount, qty, note)` | Owner | Create a listing |
+| `delistDNFT(listingId)` | Owner | Deactivate a listing |
+| `purchaseWithETH(listingId, amount)` | Anyone | Buy with ETH |
+| `purchaseWithToken(listingId, amount)` | Anyone | Buy with ERC-20 |
+| `withdrawNFT(nftContract, tokenId, amount, to)` | Owner | Reclaim unsold NFTs |
+
+### Withdrawals (owner only)
+
+| Function | Description |
+|----------|-------------|
+| `withdrawETH(amount, reason)` | Withdraw ETH with on-chain reason |
+| `withdrawToken(token, amount, reason)` | Withdraw ERC-20 with on-chain reason |
+
+### Subscriptions (owner: plans; anyone: subscribe)
+
+| Function | Who | Description |
+|----------|-----|-------------|
+| `createPlan(name, paymentToken, pricePerPeriod, periodSeconds)` | Owner | Define a new plan |
+| `deactivatePlan(planId)` | Owner | Stop new subscriptions |
+| `subscribe(planId)` | Anyone | Pay for one period |
+| `isSubscribed(planId, account)` | Anyone | Check subscription status |
+
+### View functions
+
+| Function | Returns |
+|----------|---------|
+| `getETHBalance()` | ETH held (wei) |
+| `getBalance(token)` | ERC-20 balance |
+| `getNFTBalance(nftContract, tokenId)` | ERC-1155 editions held |
+| `getListing(listingId)` | Full listing struct |
+| `getPlan(planId)` | Full plan struct |
+| `owner()` | Current owner address |
 
 ---
 
 ## Upgrade Roadmap
 
 ### Phase 1 — Simple Ownable (Current)
+- Single owner (TheJollyLaMa wallet)
+- DNFT marketplace + treasury + subscription skeleton
+- Verified on Optimistic Etherscan
 
-- Single owner (TheJollyLaMa deployer wallet)
-- All withdrawals require a documented `reason`
-- Contract verified on Optimistic Etherscan
-- Source code in `contracts/DecentEscrow.sol`
+### Phase 2 — Multi-Sig
+- `transferOwnership(gnosisSafe)` to a Gnosis Safe
+- 2-of-3 or 3-of-5 signers, list published publicly
 
-### Phase 2 — Multi-Sig (Next)
-
-- `transferOwnership(gnosisSafe)` to a Gnosis Safe with 2-of-3 or 3-of-5 signers
-- Publish signer list publicly
-- Link to Gnosis Safe UI for transparency
-
-### Phase 3 — DAO Governance (Future)
-
-- Integrate with BigNuten governance contract (issue #47)
+### Phase 3 — DAO Governance
+- Integrate with BigNuten governance (#47)
 - `$BNUT` holders vote on treasury disbursements
-- Automatic bounty payouts via BigNutenTreasury (issue #39)
-
----
-
-## Related Contracts
-
-| Contract | Network | Purpose |
-|----------|---------|---------|
-| `DecentNFT_v0_2` | Optimism `0xe870f7b1D10C41dbc6b75598a5308B9a2Bb52958` | ERC-1155 DNFT — sale proceeds flow to this escrow |
-| `BigNutenTreasury` | TBD (issue #39) | $BNUT-specific payout contract (separate concern) |
 
 ---
 
 ## Source Code
 
 - Contract: [`contracts/DecentEscrow.sol`](../contracts/DecentEscrow.sol)
-- Deploy script: [`scripts/deployEscrow.js`](../scripts/deployEscrow.js)
-- Tests: [`test/DecentEscrow.test.js`](../test/DecentEscrow.test.js)
+- ABI (generated after deploy): `abis/DecentEscrow.json` _(create after Remix deploy)_

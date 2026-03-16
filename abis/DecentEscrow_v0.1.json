@@ -1,0 +1,46 @@
+[
+  "constructor(address initialOwner)",
+  "function owner() view returns (address)",
+  "function transferOwnership(address newOwner)",
+  "function renounceOwnership()",
+
+  "receive() external payable",
+  "function depositETH(string note) payable",
+  "function depositToken(address token, uint256 amount, string note)",
+
+  "function withdrawETH(uint256 amount, string reason)",
+  "function withdrawToken(address token, uint256 amount, string reason)",
+  "function withdrawNFT(address nftContract, uint256 tokenId, uint256 amount, address to)",
+
+  "function listDNFT(address nftContract, uint256 tokenId, uint256 priceETH, address priceToken, uint256 priceAmount, uint256 quantity, string note) returns (uint256 listingId)",
+  "function delistDNFT(uint256 listingId)",
+  "function purchaseWithETH(uint256 listingId, uint256 amount) payable",
+  "function purchaseWithToken(uint256 listingId, uint256 amount)",
+
+  "function createPlan(string name, address paymentToken, uint256 pricePerPeriod, uint256 periodSeconds) returns (uint256 planId)",
+  "function deactivatePlan(uint256 planId)",
+  "function subscribe(uint256 planId) payable",
+
+  "function getETHBalance() view returns (uint256)",
+  "function getBalance(address token) view returns (uint256)",
+  "function getNFTBalance(address nftContract, uint256 tokenId) view returns (uint256)",
+  "function getListing(uint256 listingId) view returns (tuple(address nftContract, uint256 tokenId, uint256 priceETH, address priceToken, uint256 priceAmount, uint256 available, bool active, string note))",
+  "function getPlan(uint256 planId) view returns (tuple(string name, address paymentToken, uint256 pricePerPeriod, uint256 periodSeconds, bool active))",
+  "function isSubscribed(uint256 planId, address account) view returns (bool)",
+  "function nextListingId() view returns (uint256)",
+  "function nextPlanId() view returns (uint256)",
+  "function listings(uint256) view returns (address nftContract, uint256 tokenId, uint256 priceETH, address priceToken, uint256 priceAmount, uint256 available, bool active, string note)",
+  "function plans(uint256) view returns (string name, address paymentToken, uint256 pricePerPeriod, uint256 periodSeconds, bool active)",
+  "function subscriptions(address, uint256) view returns (uint256)",
+
+  "event Deposited(address indexed sender, address indexed token, uint256 amount, string note)",
+  "event Withdrawn(address indexed token, address indexed to, uint256 amount, string reason)",
+  "event NFTDeposited(address indexed sender, address indexed nftContract, uint256 indexed tokenId, uint256 amount)",
+  "event NFTWithdrawn(address indexed nftContract, uint256 indexed tokenId, address indexed to, uint256 amount)",
+  "event Listed(uint256 indexed listingId, address indexed nftContract, uint256 indexed tokenId, uint256 priceETH, address priceToken, uint256 priceAmount, uint256 quantity, string note)",
+  "event Delisted(uint256 indexed listingId)",
+  "event Purchased(uint256 indexed listingId, address indexed buyer, uint256 amount, address indexed paymentToken, uint256 totalPaid)",
+  "event PlanCreated(uint256 indexed planId, string name, address paymentToken, uint256 pricePerPeriod, uint256 periodSeconds)",
+  "event Subscribed(uint256 indexed planId, address indexed subscriber, uint256 expiresAt)",
+  "event OwnershipTransferred(address indexed previousOwner, address indexed newOwner)"
+]

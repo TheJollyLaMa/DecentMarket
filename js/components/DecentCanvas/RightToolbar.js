@@ -7,9 +7,11 @@ import {
 } from '../../ipfs.js';
 
 // js/components/DecentCanvas/RightToolbar.js
-// Right-side toolbar with 2 main buttons:
+// Right-side toolbar with 4 main buttons:
 // Button 1: 📜 Mint New DNFT (primary action)
 // Button 2: ⚙️ Settings (power users / admin)
+// Button 3: 🗿 Product Gallery
+// Button 4: 🏦 Escrow Panel (DNFT marketplace + treasury)
 
 // ── Minimal ABI subset used by the mint/role-check flow ──────────────────────
 const DECENT_NFT_ABI = [
@@ -23,6 +25,33 @@ const DECENT_NFT_ABI = [
   // Registration
   "function registerToken(uint256 maxSupply_, string tokenURI_, uint8 kind_, address royaltyReceiver, uint96 royaltyFeeBps) returns (uint256 tokenId)",
 ];
+
+// ── Minimal ABI for DecentEscrow v0.1 ────────────────────────────────────────
+const ESCROW_ABI = [
+  "function owner() view returns (address)",
+  "function getETHBalance() view returns (uint256)",
+  "function getBalance(address token) view returns (uint256)",
+  "function getNFTBalance(address nftContract, uint256 tokenId) view returns (uint256)",
+  "function nextListingId() view returns (uint256)",
+  "function nextPlanId() view returns (uint256)",
+  "function getListing(uint256 listingId) view returns (tuple(address nftContract, uint256 tokenId, uint256 priceETH, address priceToken, uint256 priceAmount, uint256 available, bool active, string note))",
+  "function getPlan(uint256 planId) view returns (tuple(string name, address paymentToken, uint256 pricePerPeriod, uint256 periodSeconds, bool active))",
+  "function isSubscribed(uint256 planId, address account) view returns (bool)",
+  "function depositETH(string note) payable",
+  "function depositToken(address token, uint256 amount, string note)",
+  "function withdrawETH(uint256 amount, string reason)",
+  "function withdrawToken(address token, uint256 amount, string reason)",
+  "function listDNFT(address nftContract, uint256 tokenId, uint256 priceETH, address priceToken, uint256 priceAmount, uint256 quantity, string note) returns (uint256 listingId)",
+  "function delistDNFT(uint256 listingId)",
+  "function purchaseWithETH(uint256 listingId, uint256 amount) payable",
+  "function purchaseWithToken(uint256 listingId, uint256 amount)",
+  "function createPlan(string name, address paymentToken, uint256 pricePerPeriod, uint256 periodSeconds) returns (uint256 planId)",
+  "function subscribe(uint256 planId) payable",
+  "function withdrawNFT(address nftContract, uint256 tokenId, uint256 amount, address to)",
+];
+
+// ── Known token addresses ─────────────────────────────────────────────────────
+const USDC_OPTIMISM = "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85";
 
 class RightToolbar extends HTMLElement {
   connectedCallback() {
@@ -88,6 +117,23 @@ class RightToolbar extends HTMLElement {
     });
     galleryBtn.addEventListener("click", () => this._openProductGallery());
     this.appendChild(galleryBtn);
+
+    // ── Button 4: 🏦 Escrow Panel ─────────────────────────────────────────────
+    const escrowBtn = document.createElement("button");
+    escrowBtn.title = "DecentEscrow — DNFT Marketplace & Treasury";
+    escrowBtn.innerHTML = "🏦";
+    Object.assign(escrowBtn.style, {
+      width: "38px",
+      height: "38px",
+      borderRadius: "50%",
+      border: "1px solid #00ff88",
+      background: "#000",
+      boxShadow: "0 0 10px #00ff88",
+      cursor: "pointer",
+      fontSize: "1.2rem",
+    });
+    escrowBtn.addEventListener("click", () => this._openEscrowPanel());
+    this.appendChild(escrowBtn);
 
     // ── Listen for dnft:minted to live-refresh gallery ────────────────────────
     document.addEventListener("dnft:minted", (e) => {
@@ -1443,6 +1489,375 @@ class RightToolbar extends HTMLElement {
     } catch {
       return false;
     }
+  }
+
+  // ── 🏦 Escrow Panel ───────────────────────────────────────────────────────
+
+  async _openEscrowPanel() {
+    // Toggle
+    const existing = document.getElementById("modal-escrow");
+    if (existing) { existing.remove(); return; }
+    this._clearModals();
+
+    const chainId = window.ethereum?.chainId || null;
+    const chainCfg = chainId ? getChainConfig(chainId) : null;
+    const escrowAddress = chainCfg?.addresses?.ESCROW || "";
+    const userAddress = window.ethereum?.selectedAddress || null;
+
+    const panel = document.createElement("div");
+    panel.id = "modal-escrow";
+    Object.assign(panel.style, {
+      position: "fixed",
+      top: "60px",
+      right: "60px",
+      width: "380px",
+      maxHeight: "calc(100vh - 120px)",
+      overflowY: "auto",
+      background: "rgba(0,5,20,0.97)",
+      border: "1px solid #00ff88",
+      borderRadius: "12px",
+      boxShadow: "0 0 24px #00ff88, 0 0 8px #00cc66",
+      zIndex: "2000",
+      color: "#fff",
+      fontFamily: "monospace",
+      fontSize: "0.78rem",
+      padding: "0",
+    });
+
+    panel.innerHTML = `
+      <div style="
+        background:linear-gradient(90deg,#001508,#002510);
+        padding:12px 16px;
+        display:flex;align-items:center;justify-content:space-between;
+        border-bottom:1px solid #00ff88;
+        border-radius:12px 12px 0 0;
+      ">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:1.4rem;">🏦</span>
+          <div>
+            <div style="font-size:0.9rem;font-weight:bold;color:#00ff88;letter-spacing:0.05em;">DecentEscrow</div>
+            <div style="font-size:0.6rem;color:#008844;">DNFT Marketplace + Treasury</div>
+          </div>
+        </div>
+        <button id="escrow-close" style="background:none;border:none;color:#008844;font-size:1.1rem;cursor:pointer;line-height:1;padding:0;">✕</button>
+      </div>
+
+      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px;">
+
+        <!-- Contract address -->
+        <div style="background:rgba(0,255,136,0.05);border:1px solid #00ff8833;border-radius:8px;padding:10px 12px;">
+          <div style="font-size:0.65rem;color:#008844;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">📍 Contract Address</div>
+          ${escrowAddress
+            ? `<div style="color:#00ff88;font-size:0.7rem;word-break:break-all;">${escrowAddress}</div>
+               <a href="https://optimistic.etherscan.io/address/${escrowAddress}" target="_blank" rel="noopener noreferrer"
+                  style="color:#00cc66;font-size:0.65rem;text-decoration:none;display:inline-block;margin-top:4px;">↗ Optimistic Etherscan</a>`
+            : `<div style="color:#888;font-size:0.7rem;">⚠ Not yet deployed — see <a href="docs/ESCROW.md" style="color:#00cc66;">docs/ESCROW.md</a> for Remix instructions</div>`
+          }
+        </div>
+
+        <!-- Balances -->
+        <div id="escrow-balances" style="background:rgba(0,255,136,0.04);border:1px solid #00ff8822;border-radius:8px;padding:10px 12px;">
+          <div style="font-size:0.65rem;color:#008844;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">💰 Balances</div>
+          <div id="escrow-balance-body" style="color:#888;font-size:0.7rem;">
+            ${escrowAddress ? "Loading…" : "Connect wallet & deploy contract first"}
+          </div>
+        </div>
+
+        <!-- Active Listings -->
+        <div style="background:rgba(0,255,136,0.04);border:1px solid #00ff8822;border-radius:8px;padding:10px 12px;">
+          <div style="font-size:0.65rem;color:#008844;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">🛒 DNFT Listings</div>
+          <div id="escrow-listings" style="color:#888;font-size:0.7rem;">
+            ${escrowAddress ? "Loading…" : "—"}
+          </div>
+        </div>
+
+        <!-- Subscriptions -->
+        <div style="background:rgba(0,255,136,0.04);border:1px solid #00ff8822;border-radius:8px;padding:10px 12px;">
+          <div style="font-size:0.65rem;color:#008844;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">🔁 Subscription Plans</div>
+          <div id="escrow-plans" style="color:#888;font-size:0.7rem;">
+            ${escrowAddress ? "Loading…" : "—"}
+          </div>
+        </div>
+
+        <!-- Owner actions -->
+        <div id="escrow-owner-section" style="display:none;">
+          <div style="font-size:0.65rem;color:#008844;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px;">🔑 Owner Actions</div>
+
+          <!-- Withdraw ETH -->
+          <div style="background:rgba(0,255,136,0.03);border:1px solid #00ff8811;border-radius:6px;padding:8px 10px;margin-bottom:8px;">
+            <div style="font-size:0.65rem;color:#008844;margin-bottom:4px;">Withdraw ETH</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <input id="escrow-withdraw-eth-amount" placeholder="amount (ETH)" style="flex:1;min-width:80px;background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
+              <input id="escrow-withdraw-eth-reason" placeholder="reason" style="flex:2;min-width:120px;background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
+              <button id="escrow-withdraw-eth-btn" style="background:rgba(0,255,136,0.15);border:1px solid #00ff88;color:#00ff88;border-radius:4px;padding:4px 10px;font-size:0.7rem;cursor:pointer;font-family:monospace;">↑ Withdraw</button>
+            </div>
+          </div>
+
+          <!-- List DNFT -->
+          <div style="background:rgba(0,255,136,0.03);border:1px solid #00ff8811;border-radius:6px;padding:8px 10px;">
+            <div style="font-size:0.65rem;color:#008844;margin-bottom:4px;">List a DNFT for Purchase</div>
+            <div style="display:flex;flex-direction:column;gap:4px;">
+              <input id="escrow-list-nft-contract" placeholder="NFT contract address" style="background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
+              <div style="display:flex;gap:6px;">
+                <input id="escrow-list-token-id" placeholder="tokenId" style="flex:1;background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
+                <input id="escrow-list-qty" placeholder="qty" style="flex:1;background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
+              </div>
+              <div style="display:flex;gap:6px;">
+                <input id="escrow-list-price-eth" placeholder="priceETH (ETH, 0=none)" style="flex:1;background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
+                <input id="escrow-list-price-usdc" placeholder="priceUSDC (0=none)" style="flex:1;background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
+              </div>
+              <input id="escrow-list-note" placeholder='note, e.g. "DecentHead v1.0 Supporter DNFT"' style="background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
+              <button id="escrow-list-btn" style="background:rgba(0,255,136,0.15);border:1px solid #00ff88;color:#00ff88;border-radius:4px;padding:5px 10px;font-size:0.7rem;cursor:pointer;font-family:monospace;">+ Create Listing</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Status / feedback -->
+        <div id="escrow-status" style="font-size:0.68rem;color:#888;min-height:1rem;text-align:center;"></div>
+
+      </div>
+    `;
+
+    document.body.appendChild(panel);
+
+    panel.querySelector("#escrow-close").onclick = () => panel.remove();
+    document.addEventListener("keydown", function _esc(e) {
+      if (e.key === "Escape") { panel.remove(); document.removeEventListener("keydown", _esc); }
+    });
+
+    if (escrowAddress && window.ethereum) {
+      this._loadEscrowData(panel, escrowAddress, userAddress);
+    }
+
+    // Wire owner-action buttons once data is loaded (they may appear after async)
+    this._wireEscrowOwnerActions(panel, escrowAddress);
+  }
+
+  async _loadEscrowData(panel, escrowAddress, userAddress) {
+    const statusEl = panel.querySelector("#escrow-status");
+    const balanceEl = panel.querySelector("#escrow-balance-body");
+    const listingsEl = panel.querySelector("#escrow-listings");
+    const plansEl = panel.querySelector("#escrow-plans");
+    const ownerSection = panel.querySelector("#escrow-owner-section");
+
+    try {
+      const ethers = window.ethers;
+      if (!ethers) {
+        statusEl.textContent = "⚠ ethers.js not loaded — ensure the script tag is present in index.html";
+        return;
+      }
+
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, provider);
+
+      // ── Balances ──────────────────────────────────────────────────────────
+      const [ethBal, ownerAddr] = await Promise.all([
+        escrow.getETHBalance(),
+        escrow.owner(),
+      ]);
+
+      let usdcBal = 0n;
+      try { usdcBal = await escrow.getBalance(USDC_OPTIMISM); } catch { /* ignore */ }
+
+      balanceEl.innerHTML = `
+        <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
+          <span style="color:#888;">ETH</span>
+          <span style="color:#00ff88;">${parseFloat(ethers.formatEther(ethBal)).toFixed(4)} ETH</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;">
+          <span style="color:#888;">USDC</span>
+          <span style="color:#00ff88;">${(Number(usdcBal / 1000n) / 1000).toFixed(2)} USDC</span>
+        </div>
+        <div style="margin-top:6px;font-size:0.62rem;color:#555;">Owner: <span style="color:#00cc66;">${ownerAddr.slice(0,6)}…${ownerAddr.slice(-4)}</span></div>
+      `;
+
+      // Show owner section if connected wallet is owner
+      if (userAddress && ownerAddr.toLowerCase() === userAddress.toLowerCase()) {
+        ownerSection.style.display = "block";
+      }
+
+      // ── Listings ──────────────────────────────────────────────────────────
+      const listingCount = await escrow.nextListingId();
+      const listings = [];
+      for (let i = 0; i < Number(listingCount); i++) {
+        const l = await escrow.getListing(i);
+        if (l.active) listings.push({ id: i, ...l });
+      }
+
+      if (listings.length === 0) {
+        listingsEl.innerHTML = `<div style="color:#555;font-style:italic;">No active listings</div>`;
+      } else {
+        listingsEl.innerHTML = listings.map(l => `
+          <div style="border:1px solid #00ff8822;border-radius:6px;padding:8px;margin-bottom:6px;">
+            <div style="color:#00ff88;font-weight:bold;font-size:0.75rem;margin-bottom:2px;">${l.note || `Listing #${l.id}`}</div>
+            <div style="color:#888;font-size:0.65rem;">TokenID: ${l.tokenId} · Available: ${l.available}</div>
+            <div style="color:#888;font-size:0.65rem;">NFT: ${l.nftContract.slice(0,6)}…${l.nftContract.slice(-4)}</div>
+            ${l.priceETH > 0n ? `<div style="color:#aaa;font-size:0.65rem;">ETH price: ${ethers.formatEther(l.priceETH)} ETH</div>` : ""}
+            ${l.priceAmount > 0n ? `<div style="color:#aaa;font-size:0.65rem;">USDC price: ${(Number(l.priceAmount) / 1e6).toFixed(2)} USDC</div>` : ""}
+            <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
+              ${l.priceETH > 0n ? `<button data-buy-eth="${l.id}" style="background:rgba(0,255,136,0.15);border:1px solid #00ff88;color:#00ff88;border-radius:4px;padding:3px 8px;font-size:0.65rem;cursor:pointer;font-family:monospace;">Buy with ETH</button>` : ""}
+              ${l.priceAmount > 0n ? `<button data-buy-usdc="${l.id}" style="background:rgba(0,200,100,0.1);border:1px solid #00cc66;color:#00cc66;border-radius:4px;padding:3px 8px;font-size:0.65rem;cursor:pointer;font-family:monospace;">Buy with USDC</button>` : ""}
+            </div>
+          </div>
+        `).join("");
+
+        // Wire purchase buttons — capture listing in closure to avoid redundant search
+        listingsEl.querySelectorAll("[data-buy-eth]").forEach(btn => {
+          const id = parseInt(btn.dataset.buyEth);
+          const l = listings.find(x => x.id === id);
+          btn.onclick = () => this._purchaseWithETH(escrowAddress, id, l, statusEl);
+        });
+        listingsEl.querySelectorAll("[data-buy-usdc]").forEach(btn => {
+          btn.onclick = () => this._purchaseWithToken(escrowAddress, parseInt(btn.dataset.buyUsdc), statusEl);
+        });
+      }
+
+      // ── Plans ─────────────────────────────────────────────────────────────
+      const planCount = await escrow.nextPlanId();
+      const activePlans = [];
+      for (let i = 0; i < Number(planCount); i++) {
+        const p = await escrow.getPlan(i);
+        if (p.active) {
+          const isSubbed = userAddress ? await escrow.isSubscribed(i, userAddress) : false;
+          activePlans.push({ id: i, ...p, isSubbed });
+        }
+      }
+
+      if (activePlans.length === 0) {
+        plansEl.innerHTML = `<div style="color:#555;font-style:italic;">No subscription plans yet</div>`;
+      } else {
+        plansEl.innerHTML = activePlans.map(p => {
+          const periodLabel = p.periodSeconds >= 86400n
+            ? `${Number(p.periodSeconds) / 86400} day(s)`
+            : `${Number(p.periodSeconds) / 3600} hour(s)`;
+          const isEthPlan = p.paymentToken === ethers.ZeroAddress;
+          const priceLabel = isEthPlan
+            ? `${ethers.formatEther(p.pricePerPeriod)} ETH`
+            : `${(Number(p.pricePerPeriod / 1000n) / 1000).toFixed(2)} USDC`;
+          return `
+            <div style="border:1px solid #00ff8822;border-radius:6px;padding:8px;margin-bottom:6px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div style="color:#00ff88;font-size:0.75rem;font-weight:bold;">${p.name}</div>
+                ${p.isSubbed ? `<span style="color:#00ff88;font-size:0.65rem;">✅ Active</span>` : `<span style="color:#888;font-size:0.65rem;">Not subscribed</span>`}
+              </div>
+              <div style="color:#888;font-size:0.65rem;margin-top:2px;">${priceLabel} / ${periodLabel}</div>
+              ${!p.isSubbed ? `<button data-subscribe="${p.id}" data-eth="${isEthPlan}" data-price="${p.pricePerPeriod.toString()}" style="margin-top:6px;background:rgba(0,255,136,0.15);border:1px solid #00ff88;color:#00ff88;border-radius:4px;padding:3px 8px;font-size:0.65rem;cursor:pointer;font-family:monospace;">Subscribe</button>` : ""}
+            </div>
+          `;
+        }).join("");
+
+        plansEl.querySelectorAll("[data-subscribe]").forEach(btn => {
+          btn.onclick = () => this._subscribeToPlan(escrowAddress, parseInt(btn.dataset.subscribe), btn.dataset.eth === "true", BigInt(btn.dataset.price), statusEl);
+        });
+      }
+
+    } catch (err) {
+      console.error("EscrowPanel:", err);
+      statusEl.textContent = `⚠ Error: ${err.message?.slice(0, 80) || err}`;
+    }
+  }
+
+  async _purchaseWithETH(escrowAddress, listingId, listing, statusEl) {
+    try {
+      statusEl.textContent = "⏳ Sending purchase transaction…";
+      const ethers = window.ethers;
+      if (!ethers) { statusEl.textContent = "⚠ ethers.js not loaded"; return; }
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, signer);
+      const tx = await escrow.purchaseWithETH(listingId, 1, { value: listing.priceETH });
+      statusEl.textContent = `⏳ Waiting for confirmation…`;
+      await tx.wait();
+      statusEl.style.color = "#00ff88";
+      statusEl.textContent = `✅ DNFT purchased! Tx: ${tx.hash.slice(0,10)}…`;
+    } catch (err) {
+      statusEl.textContent = `⚠ Purchase failed: ${err.reason || err.message?.slice(0, 60)}`;
+    }
+  }
+
+  async _purchaseWithToken(escrowAddress, listingId, statusEl) {
+    statusEl.textContent = "ℹ Token purchases require a prior ERC-20 approval — see contract on Etherscan.";
+  }
+
+  async _subscribeToPlan(escrowAddress, planId, isEthPlan, price, statusEl) {
+    try {
+      statusEl.textContent = "⏳ Sending subscription transaction…";
+      const ethers = window.ethers;
+      if (!ethers) { statusEl.textContent = "⚠ ethers.js not loaded"; return; }
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, signer);
+      const tx = isEthPlan
+        ? await escrow.subscribe(planId, { value: price })
+        : await escrow.subscribe(planId);
+      statusEl.textContent = "⏳ Waiting for confirmation…";
+      await tx.wait();
+      statusEl.style.color = "#00ff88";
+      statusEl.textContent = `✅ Subscribed! Tx: ${tx.hash.slice(0,10)}…`;
+    } catch (err) {
+      statusEl.textContent = `⚠ Subscribe failed: ${err.reason || err.message?.slice(0, 60)}`;
+    }
+  }
+
+  _wireEscrowOwnerActions(panel, escrowAddress) {
+    if (!escrowAddress) return;
+
+    panel.querySelector("#escrow-withdraw-eth-btn").onclick = async () => {
+      const statusEl = panel.querySelector("#escrow-status");
+      const amtInput = panel.querySelector("#escrow-withdraw-eth-amount");
+      const reasonInput = panel.querySelector("#escrow-withdraw-eth-reason");
+      const amt = amtInput.value.trim();
+      const reason = reasonInput.value.trim();
+      if (!amt || !reason) { statusEl.textContent = "⚠ Enter amount and reason"; return; }
+      try {
+        statusEl.textContent = "⏳ Sending withdrawal…";
+        const ethers = window.ethers;
+        if (!ethers) { statusEl.textContent = "⚠ ethers.js not loaded"; return; }
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const signer = await provider.getSigner();
+        const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, signer);
+        const tx = await escrow.withdrawETH(ethers.parseEther(amt), reason);
+        await tx.wait();
+        statusEl.style.color = "#00ff88";
+        statusEl.textContent = `✅ Withdrawn ${amt} ETH. Tx: ${tx.hash.slice(0,10)}…`;
+        amtInput.value = ""; reasonInput.value = "";
+      } catch (err) {
+        statusEl.textContent = `⚠ ${err.reason || err.message?.slice(0, 80)}`;
+      }
+    };
+
+    panel.querySelector("#escrow-list-btn").onclick = async () => {
+      const statusEl = panel.querySelector("#escrow-status");
+      const nftContract = panel.querySelector("#escrow-list-nft-contract").value.trim();
+      const tokenId = panel.querySelector("#escrow-list-token-id").value.trim();
+      const qty = panel.querySelector("#escrow-list-qty").value.trim();
+      const priceEthStr = panel.querySelector("#escrow-list-price-eth").value.trim();
+      const priceUsdcStr = panel.querySelector("#escrow-list-price-usdc").value.trim();
+      const note = panel.querySelector("#escrow-list-note").value.trim();
+
+      if (!nftContract || !tokenId || !qty) { statusEl.textContent = "⚠ Fill in contract, tokenId, and qty"; return; }
+
+      try {
+        statusEl.textContent = "⏳ Creating listing…";
+        const ethers = window.ethers;
+        if (!ethers) { statusEl.textContent = "⚠ ethers.js not loaded"; return; }
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const signer = await provider.getSigner();
+        const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, signer);
+
+        const priceETH = priceEthStr ? ethers.parseEther(priceEthStr) : 0n;
+        // Use ethers.parseUnits for USDC (6 decimals) to avoid float precision loss
+        const priceUSDC = priceUsdcStr ? ethers.parseUnits(priceUsdcStr, 6) : 0n;
+        const priceToken = priceUSDC > 0n ? USDC_OPTIMISM : ethers.ZeroAddress;
+
+        const tx = await escrow.listDNFT(nftContract, tokenId, priceETH, priceToken, priceUSDC, qty, note || "DNFT listing");
+        await tx.wait();
+        statusEl.style.color = "#00ff88";
+        statusEl.textContent = `✅ Listing created! Tx: ${tx.hash.slice(0,10)}…`;
+      } catch (err) {
+        statusEl.textContent = `⚠ ${err.reason || err.message?.slice(0, 80)}`;
+      }
+    };
   }
 }
 

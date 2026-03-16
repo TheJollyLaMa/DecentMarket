@@ -8,8 +8,6 @@
     "deploy:local": "hardhat run scripts/deploy_DecentNFT_v02.js --network localhost",
     "deploy:amoy": "hardhat run scripts/deploy_DecentNFT_v02.js --network amoy",
     "deploy:polygon": "hardhat run scripts/deploy_DecentNFT_v02.js --network polygon",
-    "deploy:escrow:local": "hardhat run scripts/deployEscrow.js --network localhost",
-    "deploy:escrow:optimism": "hardhat run scripts/deployEscrow.js --network optimism",
     "export:abi": "node scripts/export_abi.js"
   },
   "devDependencies": {
