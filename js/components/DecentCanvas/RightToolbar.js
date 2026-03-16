@@ -1865,7 +1865,58 @@ class RightToolbar extends HTMLElement {
   }
 
   async _purchaseWithToken(escrowAddress, listingId, statusEl) {
-    statusEl.textContent = "ℹ Token purchases require a prior ERC-20 approval — see contract on Etherscan.";
+    try {
+      const ethers = window.ethers;
+      if (!ethers) { statusEl.textContent = "⚠ ethers.js not loaded"; return; }
+
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+
+      // Fetch listing to get priceToken and priceAmount
+      const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, signer);
+      const raw = await escrow.getListing(listingId);
+      const priceToken  = raw[3]; // address priceToken
+      const priceAmount = raw[4]; // uint256 priceAmount
+
+      // Step 1 — Approve
+      statusEl.style.color = "";
+      statusEl.textContent = "⏳ Step 1/2 — Approving USDC spend…";
+      const ERC20_ABI = [
+        "function approve(address spender, uint256 amount) returns (bool)",
+        "function allowance(address owner, address spender) view returns (uint256)",
+      ];
+      const token = new ethers.Contract(priceToken, ERC20_ABI, signer);
+
+      // Check existing allowance — skip approve if already sufficient
+      const buyerAddress = await signer.getAddress();
+      const allowance = await token.allowance(buyerAddress, escrowAddress);
+      if (allowance < priceAmount) {
+        const approveTx = await token.approve(escrowAddress, priceAmount);
+        statusEl.textContent = "⏳ Step 1/2 — Waiting for approval confirmation…";
+        await approveTx.wait();
+      }
+
+      // Step 2 — Purchase
+      statusEl.textContent = "⏳ Step 2/2 — Sending purchase transaction…";
+      const purchaseTx = await escrow.purchaseWithToken(listingId, 1);
+      statusEl.textContent = "⏳ Step 2/2 — Waiting for confirmation…";
+      await purchaseTx.wait();
+
+      statusEl.style.color = "#00ff88";
+      statusEl.textContent = `✅ DNFT purchased! Tx: ${purchaseTx.hash.slice(0, 10)}…`;
+
+      // Reload listings to reflect updated available count
+      this._loadEscrowData(
+        document.getElementById("modal-escrow"),
+        escrowAddress,
+        buyerAddress
+      );
+
+    } catch (err) {
+      console.error("purchaseWithToken:", err);
+      statusEl.style.color = "#ff4444";
+      statusEl.textContent = `⚠ Purchase failed: ${err.reason || err.message?.slice(0, 80)}`;
+    }
   }
 
   async _subscribeToPlan(escrowAddress, planId, isEthPlan, price, statusEl) {
