@@ -36,7 +36,7 @@ import "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
  *   Constructor argument: `initialOwner` — the wallet that controls the escrow.
  *   After deployment update `js/config/contracts.js` → `addresses.ESCROW`.
  */
-contract DecentEscrow is Ownable, ERC1155Holder {
+contract DecentEscrow_v001 is Ownable, ERC1155Holder {
     using SafeERC20 for IERC20;
 
     // =========================================================================
