@@ -26,11 +26,17 @@ module.exports = {
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
       chainId: 137,
     },
+    optimism: {
+      url: process.env.OPTIMISM_RPC_URL || "https://mainnet.optimism.io",
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      chainId: 10,
+    },
   },
   etherscan: {
     apiKey: {
       polygon: process.env.POLYGONSCAN_API_KEY || "",
       polygonAmoy: process.env.POLYGONSCAN_API_KEY || "",
+      optimisticEthereum: process.env.OPTIMISM_ETHERSCAN_KEY || "",
     },
   },
   paths: {

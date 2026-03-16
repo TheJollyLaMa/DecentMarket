@@ -11,6 +11,16 @@ A Decent Market With a Decent Head, a Decent Canvas, and a Decent Foot in a Web3
 The DecentNFT v0.2 contract is live on Optimism at `0xe870f7b1D10C41dbc6b75598a5308B9a2Bb52958`.
 Use the right toolbar panel to switch networks; the contract address will be auto-filled for supported networks.
 
+## Community Escrow Treasury
+
+Early supporter DNFT sale proceeds route to the **DecentEscrow** contract — a transparent, on-chain community treasury visible to everyone on Optimistic Etherscan.
+
+See [`docs/ESCROW.md`](./docs/ESCROW.md) for:
+- Contract address and Etherscan link
+- What the funds are used for (bounties, infrastructure, community)
+- Withdrawal policy (every withdrawal requires an on-chain `reason` string)
+- Upgrade roadmap (single owner → Gnosis Safe → DAO governance)
+
 ---
 
 ## DNFT Metadata Standard

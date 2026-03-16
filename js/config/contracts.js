@@ -21,6 +21,7 @@ export const CONTRACTS = {
     blockExplorerUrls: ['https://optimistic.etherscan.io'],
     addresses: {
       DNFT: '0xe870f7b1D10C41dbc6b75598a5308B9a2Bb52958',
+      ESCROW: '', // pending deployment — fill in after running: npm run deploy:escrow:optimism
     },
   },
   // Future chains — uncomment and fill in when support is added:
