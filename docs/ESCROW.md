@@ -8,12 +8,7 @@ On-chain escrow for Decent Agency DNFT supporter sales, subscription management,
 
 | Network | Address | Explorer |
 |---------|---------|----------|
-| Optimism Mainnet | _(deploy via Remix — fill in after deployment)_ | [Optimistic Etherscan](https://optimistic.etherscan.io) |
-
-Once deployed, update:
-- This file (`docs/ESCROW.md`)
-- `js/config/contracts.js` → `optimism.addresses.ESCROW`
-- `DEPLOYMENTS.md` (new row in the table)
+| Optimism Mainnet | `0x23A457AD3C33d68E4fAd2FCa7c5d9a511E0C350e` | [Optimistic Etherscan](https://optimistic.etherscan.io/address/0x23A457AD3C33d68E4fAd2FCa7c5d9a511E0C350e) |
 
 ---
 
@@ -47,12 +42,12 @@ This contract is designed to be deployed through [Remix IDE](https://remix.ether
 
 After deploying, complete these steps to wire the contract into the dapp:
 
-- [ ] Copy the deployed address from Remix
-- [ ] Paste it into `js/config/contracts.js` → `optimism.addresses.ESCROW`
-- [ ] Update the table above in `docs/ESCROW.md`
-- [ ] Add a row to `DEPLOYMENTS.md`
+- [x] Copy the deployed address from Remix
+- [x] Paste it into `js/config/contracts.js` → `optimism.addresses.ESCROW`
+- [x] Update the table above in `docs/ESCROW.md`
+- [x] Add a row to `DEPLOYMENTS.md`
 - [ ] Verify on Optimistic Etherscan:
-  - Go to `https://optimistic.etherscan.io/address/<YOUR_ADDRESS>`
+  - Go to `https://optimistic.etherscan.io/address/0x23A457AD3C33d68E4fAd2FCa7c5d9a511E0C350e`
   - Click **Contract → Verify and Publish**
   - Compiler: `0.8.26`, Optimizer: enabled 200 runs, EVM: cancun
   - Paste the flattened source (use the **"Flattener"** plugin in Remix — enable it via Plugin Manager, then right-click the file → Flatten)
