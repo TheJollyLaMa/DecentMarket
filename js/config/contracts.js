@@ -21,7 +21,7 @@ export const CONTRACTS = {
     blockExplorerUrls: ['https://optimistic.etherscan.io'],
     addresses: {
       DNFT: '0xe870f7b1D10C41dbc6b75598a5308B9a2Bb52958',
-      ESCROW: '', // pending deployment — deploy via Remix, then fill in address here
+      ESCROW: '0x23A457AD3C33d68E4fAd2FCa7c5d9a511E0C350e', // pending deployment — deploy via Remix, then fill in address here
     },
   },
   // Future chains — uncomment and fill in when support is added:
