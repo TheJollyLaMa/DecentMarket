@@ -1746,8 +1746,21 @@ class RightToolbar extends HTMLElement {
       const listingCount = await escrow.nextListingId();
       const listings = [];
       for (let i = 0; i < Number(listingCount); i++) {
-        const l = await escrow.getListing(i);
-        if (l.active) listings.push({ id: i, ...l });
+        const raw = await escrow.getListing(i);
+        // ethers.js v6 returns structs as Result (array-like); spread copies only
+        // numeric indices, not named fields. Explicitly extract each named field.
+        const l = {
+          id:          i,
+          nftContract: raw.nftContract,
+          tokenId:     raw.tokenId,
+          priceETH:    raw.priceETH,
+          priceToken:  raw.priceToken,
+          priceAmount: raw.priceAmount,
+          available:   raw.available,
+          active:      raw.active,
+          note:        raw.note,
+        };
+        if (l.active) listings.push(l);
       }
 
       if (listings.length === 0) {
@@ -1782,10 +1795,20 @@ class RightToolbar extends HTMLElement {
       const planCount = await escrow.nextPlanId();
       const activePlans = [];
       for (let i = 0; i < Number(planCount); i++) {
-        const p = await escrow.getPlan(i);
+        const raw = await escrow.getPlan(i);
+        // ethers.js v6 returns structs as Result (array-like); spread copies only
+        // numeric indices, not named fields. Explicitly extract each named field.
+        const p = {
+          id:             i,
+          name:           raw.name,
+          paymentToken:   raw.paymentToken,
+          pricePerPeriod: raw.pricePerPeriod,
+          periodSeconds:  raw.periodSeconds,
+          active:         raw.active,
+        };
         if (p.active) {
           const isSubbed = userAddress ? await escrow.isSubscribed(i, userAddress) : false;
-          activePlans.push({ id: i, ...p, isSubbed });
+          activePlans.push({ ...p, isSubbed });
         }
       }
 
