@@ -1729,6 +1729,15 @@ class RightToolbar extends HTMLElement {
       const provider = new ethers.BrowserProvider(window.ethereum);
       const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, provider);
 
+      // ── Resolve actual connected address asynchronously ──────────────────
+      // window.ethereum.selectedAddress is not reliably populated in modern wallets;
+      // use provider.listAccounts() to get the current address.
+      let resolvedUserAddress = userAddress;
+      try {
+        const accounts = await provider.listAccounts();
+        if (accounts.length > 0) resolvedUserAddress = await accounts[0].getAddress();
+      } catch { /* keep the passed value if the call fails */ }
+
       // ── Balances ──────────────────────────────────────────────────────────
       const [ethBal, ownerAddr] = await Promise.all([
         escrow.getETHBalance(),
@@ -1751,7 +1760,7 @@ class RightToolbar extends HTMLElement {
       `;
 
       // Show owner section if connected wallet is owner
-      if (userAddress && ownerAddr.toLowerCase() === userAddress.toLowerCase()) {
+      if (resolvedUserAddress && ownerAddr.toLowerCase() === resolvedUserAddress.toLowerCase()) {
         ownerSection.style.display = "block";
       }
 
@@ -1834,7 +1843,7 @@ class RightToolbar extends HTMLElement {
           active:         raw.active,
         };
         if (p.active) {
-          const isSubbed = userAddress ? await escrow.isSubscribed(i, userAddress) : false;
+          const isSubbed = resolvedUserAddress ? await escrow.isSubscribed(i, resolvedUserAddress) : false;
           activePlans.push({ ...p, isSubbed });
         }
       }
