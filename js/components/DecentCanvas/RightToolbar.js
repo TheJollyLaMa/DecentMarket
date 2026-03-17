@@ -55,7 +55,14 @@ const ESCROW_ABI = [
 ];
 
 // ── Known token addresses ─────────────────────────────────────────────────────
-const USDC_OPTIMISM = "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85";
+const USDC_OPTIMISM  = "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85"; // native USDC (Circle)
+const USDCE_OPTIMISM = "0x7F5c764cBc14f9669B88837ca1490cCa17c31607"; // USDCe (bridged)
+
+// Human-readable labels for known Optimism tokens
+const KNOWN_TOKENS = {
+  [USDC_OPTIMISM.toLowerCase()]:  "native USDC (Circle)",
+  [USDCE_OPTIMISM.toLowerCase()]: "USDCe (bridged)",
+};
 
 // Values >= this threshold are displayed with an ETH equivalent (1 trillion wei = 0.000001 ETH).
 const WEI_DISPLAY_THRESHOLD = 1_000_000_000_000n;
@@ -1808,17 +1815,20 @@ class RightToolbar extends HTMLElement {
 
         listingsEl.innerHTML = listings.map((l, idx) => {
           const hasStock = nftBalances[idx] > 0n;
+          const tokenLabel = l.priceToken
+            ? (KNOWN_TOKENS[l.priceToken.toLowerCase()] || `token ${l.priceToken.slice(0,6)}…${l.priceToken.slice(-4)}`)
+            : "token";
           return `
             <div style="border:1px solid #00ff8822;border-radius:6px;padding:8px;margin-bottom:6px;">
               <div style="color:#00ff88;font-weight:bold;font-size:0.75rem;margin-bottom:2px;">${l.note || `Listing #${l.id}`}</div>
               <div style="color:#888;font-size:0.65rem;">TokenID: ${l.tokenId} · Available: ${l.available} · In escrow: ${nftBalances[idx]}</div>
               <div style="color:#888;font-size:0.65rem;">NFT: ${l.nftContract.slice(0,6)}…${l.nftContract.slice(-4)}</div>
               ${l.priceETH > 0n ? `<div style="color:#aaa;font-size:0.65rem;">ETH price: ${ethers.formatEther(l.priceETH)} ETH</div>` : ""}
-              ${l.priceAmount > 0n ? `<div style="color:#aaa;font-size:0.65rem;">USDC price: ${(Number(l.priceAmount) / 1e6).toFixed(2)} USDC</div>` : ""}
+              ${l.priceAmount > 0n ? `<div style="color:#aaa;font-size:0.65rem;">Token price: ${(Number(l.priceAmount) / 1e6).toFixed(2)} ${tokenLabel}</div>` : ""}
               <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
                 ${hasStock
                   ? `${l.priceETH > 0n ? `<button data-buy-eth="${l.id}" style="background:rgba(0,255,136,0.15);border:1px solid #00ff88;color:#00ff88;border-radius:4px;padding:3px 8px;font-size:0.65rem;cursor:pointer;font-family:monospace;">Buy with ETH</button>` : ""}
-                     ${l.priceAmount > 0n ? `<button data-buy-usdc="${l.id}" style="background:rgba(0,200,100,0.1);border:1px solid #00cc66;color:#00cc66;border-radius:4px;padding:3px 8px;font-size:0.65rem;cursor:pointer;font-family:monospace;">Buy with USDC</button>` : ""}`
+                     ${l.priceAmount > 0n ? `<button data-buy-usdc="${l.id}" style="background:rgba(0,200,100,0.1);border:1px solid #00cc66;color:#00cc66;border-radius:4px;padding:3px 8px;font-size:0.65rem;cursor:pointer;font-family:monospace;">Buy with ${tokenLabel}</button>` : ""}`
                   : `<span style="color:#ff8844;font-size:0.65rem;">⚠ NFT stock not yet loaded into escrow</span>`
                 }
               </div>
@@ -1948,15 +1958,29 @@ class RightToolbar extends HTMLElement {
       }
 
       // Step 1 — Approve
-      statusEl.textContent = "⏳ Step 1/2 — Approving USDC spend…";
+      statusEl.textContent = "⏳ Step 1/2 — Approving token spend…";
       const ERC20_ABI = [
         "function approve(address spender, uint256 amount) returns (bool)",
         "function allowance(address owner, address spender) view returns (uint256)",
+        "function balanceOf(address account) view returns (uint256)",
       ];
       const token = new ethers.Contract(priceToken, ERC20_ABI, signer);
 
-      // Check existing allowance — skip approve if already sufficient
+      // Pre-flight: verify buyer has enough of the required token
       const buyerAddress = await signer.getAddress();
+      const buyerBal = await token.balanceOf(buyerAddress);
+      if (buyerBal < priceAmount) {
+        const tokenLabel = KNOWN_TOKENS[priceToken.toLowerCase()] || priceToken;
+        const needed  = (Number(priceAmount) / 1e6).toFixed(6);
+        const have    = (Number(buyerBal)    / 1e6).toFixed(6);
+        statusEl.style.color = "#ff8844";
+        statusEl.textContent =
+          `⚠ Insufficient token balance. Listing requires ${needed} ${tokenLabel}` +
+          ` (${priceToken.slice(0,6)}…${priceToken.slice(-4)}), you have ${have}.`;
+        return;
+      }
+
+      // Check existing allowance — skip approve if already sufficient
       const allowance = await token.allowance(buyerAddress, escrowAddress);
       if (allowance < priceAmount) {
         const approveTx = await token.approve(escrowAddress, priceAmount);
