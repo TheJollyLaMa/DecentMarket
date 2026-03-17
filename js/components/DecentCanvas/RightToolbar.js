@@ -1610,9 +1610,22 @@ class RightToolbar extends HTMLElement {
             </div>
           </div>
 
+          <!-- Deposit NFT into Escrow -->
+          <div style="background:rgba(0,255,136,0.03);border:1px solid #00ff8811;border-radius:6px;padding:8px 10px;margin-bottom:8px;">
+            <div style="font-size:0.65rem;color:#008844;margin-bottom:4px;">Deposit NFT into Escrow <span style="color:#555;">(Step 1 — send NFTs before listing)</span></div>
+            <div style="display:flex;flex-direction:column;gap:4px;">
+              <input id="escrow-deposit-nft-contract" placeholder="NFT contract address" style="background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
+              <div style="display:flex;gap:6px;">
+                <input id="escrow-deposit-nft-token-id" placeholder="tokenId" style="flex:1;background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
+                <input id="escrow-deposit-nft-amount" placeholder="qty" style="flex:1;background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
+              </div>
+              <button id="escrow-deposit-nft-btn" style="background:rgba(0,255,136,0.15);border:1px solid #00ff88;color:#00ff88;border-radius:4px;padding:5px 10px;font-size:0.7rem;cursor:pointer;font-family:monospace;">↓ Deposit NFT to Escrow</button>
+            </div>
+          </div>
+
           <!-- List DNFT -->
           <div style="background:rgba(0,255,136,0.03);border:1px solid #00ff8811;border-radius:6px;padding:8px 10px;margin-bottom:8px;">
-            <div style="font-size:0.65rem;color:#008844;margin-bottom:4px;">List a DNFT for Purchase</div>
+            <div style="font-size:0.65rem;color:#008844;margin-bottom:4px;">List a DNFT for Purchase <span style="color:#555;">(Step 2 — after depositing NFTs)</span></div>
             <div style="display:flex;flex-direction:column;gap:4px;">
               <input id="escrow-list-nft-contract" placeholder="NFT contract address" style="background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
               <div style="display:flex;gap:6px;">
@@ -1766,19 +1779,33 @@ class RightToolbar extends HTMLElement {
       if (listings.length === 0) {
         listingsEl.innerHTML = `<div style="color:#555;font-style:italic;">No active listings</div>`;
       } else {
-        listingsEl.innerHTML = listings.map(l => `
-          <div style="border:1px solid #00ff8822;border-radius:6px;padding:8px;margin-bottom:6px;">
-            <div style="color:#00ff88;font-weight:bold;font-size:0.75rem;margin-bottom:2px;">${l.note || `Listing #${l.id}`}</div>
-            <div style="color:#888;font-size:0.65rem;">TokenID: ${l.tokenId} · Available: ${l.available}</div>
-            <div style="color:#888;font-size:0.65rem;">NFT: ${l.nftContract.slice(0,6)}…${l.nftContract.slice(-4)}</div>
-            ${l.priceETH > 0n ? `<div style="color:#aaa;font-size:0.65rem;">ETH price: ${ethers.formatEther(l.priceETH)} ETH</div>` : ""}
-            ${l.priceAmount > 0n ? `<div style="color:#aaa;font-size:0.65rem;">USDC price: ${(Number(l.priceAmount) / 1e6).toFixed(2)} USDC</div>` : ""}
-            <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
-              ${l.priceETH > 0n ? `<button data-buy-eth="${l.id}" style="background:rgba(0,255,136,0.15);border:1px solid #00ff88;color:#00ff88;border-radius:4px;padding:3px 8px;font-size:0.65rem;cursor:pointer;font-family:monospace;">Buy with ETH</button>` : ""}
-              ${l.priceAmount > 0n ? `<button data-buy-usdc="${l.id}" style="background:rgba(0,200,100,0.1);border:1px solid #00cc66;color:#00cc66;border-radius:4px;padding:3px 8px;font-size:0.65rem;cursor:pointer;font-family:monospace;">Buy with USDC</button>` : ""}
+        // Check escrow's actual NFT balance for each listing before rendering buy buttons
+        const nftBalances = await Promise.all(
+          listings.map(l => escrow.getNFTBalance(l.nftContract, l.tokenId).catch(err => {
+            console.warn(`getNFTBalance failed for listing ${l.id}:`, err);
+            return 0n;
+          }))
+        );
+
+        listingsEl.innerHTML = listings.map((l, idx) => {
+          const hasStock = nftBalances[idx] > 0n;
+          return `
+            <div style="border:1px solid #00ff8822;border-radius:6px;padding:8px;margin-bottom:6px;">
+              <div style="color:#00ff88;font-weight:bold;font-size:0.75rem;margin-bottom:2px;">${l.note || `Listing #${l.id}`}</div>
+              <div style="color:#888;font-size:0.65rem;">TokenID: ${l.tokenId} · Available: ${l.available} · In escrow: ${nftBalances[idx]}</div>
+              <div style="color:#888;font-size:0.65rem;">NFT: ${l.nftContract.slice(0,6)}…${l.nftContract.slice(-4)}</div>
+              ${l.priceETH > 0n ? `<div style="color:#aaa;font-size:0.65rem;">ETH price: ${ethers.formatEther(l.priceETH)} ETH</div>` : ""}
+              ${l.priceAmount > 0n ? `<div style="color:#aaa;font-size:0.65rem;">USDC price: ${(Number(l.priceAmount) / 1e6).toFixed(2)} USDC</div>` : ""}
+              <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
+                ${hasStock
+                  ? `${l.priceETH > 0n ? `<button data-buy-eth="${l.id}" style="background:rgba(0,255,136,0.15);border:1px solid #00ff88;color:#00ff88;border-radius:4px;padding:3px 8px;font-size:0.65rem;cursor:pointer;font-family:monospace;">Buy with ETH</button>` : ""}
+                     ${l.priceAmount > 0n ? `<button data-buy-usdc="${l.id}" style="background:rgba(0,200,100,0.1);border:1px solid #00cc66;color:#00cc66;border-radius:4px;padding:3px 8px;font-size:0.65rem;cursor:pointer;font-family:monospace;">Buy with USDC</button>` : ""}`
+                  : `<span style="color:#ff8844;font-size:0.65rem;">⚠ NFT stock not yet loaded into escrow</span>`
+                }
+              </div>
             </div>
-          </div>
-        `).join("");
+          `;
+        }).join("");
 
         // Wire purchase buttons — capture listing in closure to avoid redundant search
         listingsEl.querySelectorAll("[data-buy-eth]").forEach(btn => {
@@ -1848,18 +1875,29 @@ class RightToolbar extends HTMLElement {
 
   async _purchaseWithETH(escrowAddress, listingId, listing, statusEl) {
     try {
+      statusEl.style.color = "";
       statusEl.textContent = "⏳ Sending purchase transaction…";
       const ethers = window.ethers;
       if (!ethers) { statusEl.textContent = "⚠ ethers.js not loaded"; return; }
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
       const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, signer);
+
+      // Pre-flight: verify escrow holds NFT stock before sending ETH
+      const nftBal = await escrow.getNFTBalance(listing.nftContract, listing.tokenId);
+      if (nftBal === 0n) {
+        statusEl.style.color = "#ff8844";
+        statusEl.textContent = "⚠ Purchase aborted: NFT stock not yet loaded into escrow. Owner must deposit NFTs first.";
+        return;
+      }
+
       const tx = await escrow.purchaseWithETH(listingId, 1, { value: listing.priceETH });
       statusEl.textContent = `⏳ Waiting for confirmation…`;
       await tx.wait();
       statusEl.style.color = "#00ff88";
       statusEl.textContent = `✅ DNFT purchased! Tx: ${tx.hash.slice(0,10)}…`;
     } catch (err) {
+      statusEl.style.color = "#ff4444";
       statusEl.textContent = `⚠ Purchase failed: ${err.reason || err.message?.slice(0, 60)}`;
     }
   }
@@ -1872,14 +1910,25 @@ class RightToolbar extends HTMLElement {
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
 
-      // Fetch listing to get priceToken and priceAmount
+      // Fetch listing to get priceToken, priceAmount, and NFT details
       const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, signer);
       const raw = await escrow.getListing(listingId);
+      const nftContract = raw[0]; // address nftContract
+      const tokenId     = raw[1]; // uint256 tokenId
       const priceToken  = raw[3]; // address priceToken
       const priceAmount = raw[4]; // uint256 priceAmount
 
-      // Step 1 — Approve
+      // Pre-flight: verify escrow holds NFT stock before spending any USDC
       statusEl.style.color = "";
+      statusEl.textContent = "⏳ Checking escrow NFT stock…";
+      const nftBal = await escrow.getNFTBalance(nftContract, tokenId);
+      if (nftBal === 0n) {
+        statusEl.style.color = "#ff8844";
+        statusEl.textContent = "⚠ Purchase aborted: NFT stock not yet loaded into escrow. Owner must deposit NFTs first.";
+        return;
+      }
+
+      // Step 1 — Approve
       statusEl.textContent = "⏳ Step 1/2 — Approving USDC spend…";
       const ERC20_ABI = [
         "function approve(address spender, uint256 amount) returns (bool)",
@@ -1989,6 +2038,48 @@ class RightToolbar extends HTMLElement {
         panel.querySelector("#escrow-withdraw-token-amount").value = "";
         panel.querySelector("#escrow-withdraw-token-reason").value = "";
       } catch (err) {
+        statusEl.textContent = `⚠ ${err.reason || err.message?.slice(0, 80)}`;
+      }
+    };
+
+    panel.querySelector("#escrow-deposit-nft-btn").onclick = async () => {
+      const statusEl = panel.querySelector("#escrow-status");
+      const nftContract = panel.querySelector("#escrow-deposit-nft-contract").value.trim();
+      const tokenId = panel.querySelector("#escrow-deposit-nft-token-id").value.trim();
+      const amount = panel.querySelector("#escrow-deposit-nft-amount").value.trim();
+      if (!nftContract || !tokenId || !amount) { statusEl.textContent = "⚠ Fill in all deposit NFT fields"; return; }
+      try {
+        statusEl.style.color = "";
+        statusEl.textContent = "⏳ Depositing NFT to escrow…";
+        const ethers = window.ethers;
+        if (!ethers) { statusEl.textContent = "⚠ ethers.js not loaded"; return; }
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const signer = await provider.getSigner();
+        const ownerAddress = await signer.getAddress();
+        const ERC1155_ABI = [
+          "function safeTransferFrom(address from, address to, uint256 id, uint256 amount, bytes data)",
+          "function balanceOf(address account, uint256 id) view returns (uint256)",
+        ];
+        const nft = new ethers.Contract(nftContract, ERC1155_ABI, signer);
+
+        // Pre-check: confirm the owner holds enough NFTs before attempting transfer
+        const ownerBal = await nft.balanceOf(ownerAddress, tokenId);
+        if (ownerBal < BigInt(amount)) {
+          statusEl.style.color = "#ff8844";
+          statusEl.textContent = `⚠ Insufficient NFT balance: you hold ${ownerBal} but tried to deposit ${amount}`;
+          return;
+        }
+
+        const tx = await nft.safeTransferFrom(ownerAddress, escrowAddress, tokenId, amount, "0x");
+        statusEl.textContent = "⏳ Waiting for confirmation…";
+        await tx.wait();
+        statusEl.style.color = "#00ff88";
+        statusEl.textContent = `✅ ${amount} NFT(s) deposited to escrow. Tx: ${tx.hash.slice(0,10)}…`;
+        panel.querySelector("#escrow-deposit-nft-contract").value = "";
+        panel.querySelector("#escrow-deposit-nft-token-id").value = "";
+        panel.querySelector("#escrow-deposit-nft-amount").value = "";
+      } catch (err) {
+        statusEl.style.color = "#ff4444";
         statusEl.textContent = `⚠ ${err.reason || err.message?.slice(0, 80)}`;
       }
     };
