@@ -2236,6 +2236,8 @@ class RightToolbar extends HTMLElement {
         statusEl.textContent = `⚠ ${err.reason || err.message?.slice(0, 80)}`;
       }
     };
+  }
+
   // ── 📋 Contract Function Explorer ─────────────────────────────────────────
   // Renders a collapsible list of every contract function with inputs + Call/Send buttons.
   _wireEscrowFnExplorer(panel, escrowAddress) {
