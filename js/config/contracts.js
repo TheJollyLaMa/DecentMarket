@@ -59,6 +59,19 @@ export function getChainConfig(chainIdHex) {
 }
 
 /**
+ * PayPal configuration for DNFT purchases.
+ * Replace clientId with your live PayPal app client ID.
+ * adminEmail receives mailto: fallback notifications when no webhook is set.
+ * adminWebhookUrl (optional) — POST endpoint that receives purchase details as JSON.
+ */
+export const PAYPAL_CONFIG = {
+  clientId:        'YOUR_PAYPAL_CLIENT_ID',   // Replace with live PayPal client ID
+  adminEmail:      'admin@decentmarket.io',    // Admin email for purchase notifications
+  adminWebhookUrl: '',                         // Optional: POST webhook URL for admin alerts
+  dnftPriceUSD:    '100.00',                   // Fixed price in USD for PayPal purchases
+};
+
+/**
  * Application version registry.
  * Each entry describes a released (or upcoming) version of the app.
  * Set `available: false` for versions not yet deployed.
