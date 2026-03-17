@@ -1,4 +1,4 @@
-import { CONTRACTS, getChainConfig } from '../../config/contracts.js';
+import { CONTRACTS, getChainConfig, PAYPAL_CONFIG } from '../../config/contracts.js';
 import {
   uploadFileToIPFS,
   uploadMetadataToIPFS,
@@ -1856,10 +1856,18 @@ class RightToolbar extends HTMLElement {
               <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
                 ${hasStock
                   ? `${l.priceETH > 0n ? `<button data-buy-eth="${l.id}" style="background:rgba(0,255,136,0.15);border:1px solid #00ff88;color:#00ff88;border-radius:4px;padding:3px 8px;font-size:0.65rem;cursor:pointer;font-family:monospace;">Buy with ETH</button>` : ""}
-                     ${l.priceAmount > 0n ? `<button data-buy-usdc="${l.id}" style="background:rgba(0,200,100,0.1);border:1px solid #00cc66;color:#00cc66;border-radius:4px;padding:3px 8px;font-size:0.65rem;cursor:pointer;font-family:monospace;">Buy with ${tokenLabel}</button>` : ""}`
+                     ${l.priceAmount > 0n ? `<button data-buy-usdc="${l.id}" style="background:rgba(0,200,100,0.1);border:1px solid #00cc66;color:#00cc66;border-radius:4px;padding:3px 8px;font-size:0.65rem;cursor:pointer;font-family:monospace;">Buy with ${tokenLabel}</button>` : ""}
+                     <button data-buy-paypal="${l.id}" style="background:rgba(100,150,255,0.15);border:1px solid #6699ff;color:#6699ff;border-radius:4px;padding:3px 8px;font-size:0.65rem;cursor:pointer;font-family:monospace;">💳 Buy with PayPal — $${PAYPAL_CONFIG.dnftPriceUSD}</button>`
                   : `<span style="color:#ff8844;font-size:0.65rem;">⚠ NFT stock not yet loaded into escrow</span>`
                 }
               </div>
+              ${hasStock ? `
+              <div id="paypal-form-${l.id}" style="display:none;margin-top:6px;padding:6px 8px;border:1px solid #6699ff33;border-radius:4px;background:rgba(100,150,255,0.05);">
+                <div style="color:#6699ff;font-size:0.65rem;margin-bottom:4px;">Enter your wallet address to receive the DNFT:</div>
+                <input id="paypal-wallet-${l.id}" type="text" placeholder="0x… wallet address" style="width:100%;background:#001508;color:#aaa;border:1px solid #6699ff44;border-radius:4px;padding:4px 6px;font-size:0.65rem;font-family:monospace;box-sizing:border-box;margin-bottom:6px;" />
+                <div id="paypal-btn-container-${l.id}"></div>
+                <div id="paypal-status-${l.id}" style="font-size:0.65rem;margin-top:4px;min-height:1em;"></div>
+              </div>` : ""}
             </div>
           `;
         }).join("");
@@ -1872,6 +1880,26 @@ class RightToolbar extends HTMLElement {
         });
         listingsEl.querySelectorAll("[data-buy-usdc]").forEach(btn => {
           btn.onclick = () => this._purchaseWithToken(escrowAddress, parseInt(btn.dataset.buyUsdc), statusEl);
+        });
+        listingsEl.querySelectorAll("[data-buy-paypal]").forEach(btn => {
+          const id = parseInt(btn.dataset.buyPaypal);
+          const l = listings.find(x => x.id === id);
+          let paypalInitialized = false;
+          btn.onclick = async () => {
+            const formEl = listingsEl.querySelector(`#paypal-form-${id}`);
+            if (!formEl) return;
+            if (formEl.style.display === "none") {
+              formEl.style.display = "block";
+              btn.textContent = "✕ Close PayPal";
+              if (!paypalInitialized) {
+                paypalInitialized = true;
+                await this._renderPayPalButton(id, l, statusEl);
+              }
+            } else {
+              formEl.style.display = "none";
+              btn.textContent = `💳 Buy with PayPal — $${PAYPAL_CONFIG.dnftPriceUSD}`;
+            }
+          };
         });
       }
 
@@ -2037,6 +2065,169 @@ class RightToolbar extends HTMLElement {
       statusEl.style.color = "#ff4444";
       statusEl.textContent = `⚠ Purchase failed: ${err.reason || err.message?.slice(0, 80)}`;
     }
+  }
+
+  // ── 💳 PayPal Purchase Helpers ────────────────────────────────────────────
+
+  /**
+   * Lazily loads the PayPal JS SDK and renders a PayPal button into the
+   * per-listing container.  Called the first time the buyer expands the
+   * PayPal form for a given listing.
+   *
+   * @param {number} listingId  - Numeric listing ID (used for element IDs)
+   * @param {object} listing    - The listing object from _loadEscrowData
+   * @param {Element} statusEl  - Shared status bar element in the escrow panel
+   */
+  async _renderPayPalButton(listingId, listing, statusEl) {
+    const containerEl = document.getElementById(`paypal-btn-container-${listingId}`);
+    const paypalStatusEl = document.getElementById(`paypal-status-${listingId}`);
+    if (!containerEl) return;
+
+    // Validate that a real client ID has been configured
+    if (!PAYPAL_CONFIG.clientId || PAYPAL_CONFIG.clientId === 'YOUR_PAYPAL_CLIENT_ID') {
+      if (paypalStatusEl) {
+        paypalStatusEl.style.color = "#ff8844";
+        paypalStatusEl.textContent = "⚠ PayPal is not configured. Contact the site admin.";
+      }
+      return;
+    }
+
+    // Load the PayPal JS SDK once per page
+    if (!window.paypal) {
+      try {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(PAYPAL_CONFIG.clientId)}&currency=USD`;
+          script.onload = resolve;
+          script.onerror = () => reject(new Error('Failed to load PayPal SDK'));
+          document.head.appendChild(script);
+        });
+      } catch (e) {
+        console.error("PayPal SDK load error:", e);
+        if (paypalStatusEl) {
+          paypalStatusEl.style.color = "#ff4444";
+          paypalStatusEl.textContent = "⚠ Could not load PayPal. Check your internet connection and try again.";
+        }
+        return;
+      }
+    }
+
+    window.paypal.Buttons({
+      style: { layout: 'vertical', color: 'blue', shape: 'rect', label: 'pay', height: 30 },
+
+      createOrder: (_data, actions) => {
+        // Require a wallet address before allowing PayPal checkout
+        const walletInput = document.getElementById(`paypal-wallet-${listingId}`);
+        const walletAddress = walletInput ? walletInput.value.trim() : '';
+        if (!/^0x[0-9a-fA-F]{40}$/.test(walletAddress)) {
+          if (paypalStatusEl) {
+            paypalStatusEl.style.color = "#ff8844";
+            paypalStatusEl.textContent = "⚠ Enter a valid wallet address (0x…) before checking out.";
+          }
+          return Promise.reject(new Error('Wallet address required'));
+        }
+        if (paypalStatusEl) paypalStatusEl.textContent = "";
+        return actions.order.create({
+          purchase_units: [{
+            amount: { value: PAYPAL_CONFIG.dnftPriceUSD, currency_code: 'USD' },
+            description: listing.note || `DNFT Listing #${listingId}`,
+          }],
+        });
+      },
+
+      onApprove: async (_data, actions) => {
+        if (paypalStatusEl) {
+          paypalStatusEl.style.color = "#aaa";
+          paypalStatusEl.textContent = "⏳ Capturing payment…";
+        }
+        const order = await actions.order.capture();
+        const txId = order.id;
+        const walletInput = document.getElementById(`paypal-wallet-${listingId}`);
+        const walletAddress = walletInput ? walletInput.value.trim() : '';
+
+        if (paypalStatusEl) {
+          paypalStatusEl.style.color = "#00ff88";
+          paypalStatusEl.textContent =
+            `✅ Payment received! PayPal transaction ID: ${txId}. ` +
+            `Submit your wallet address to complete your order.`;
+        }
+        statusEl.style.color = "#00ff88";
+        statusEl.textContent = `✅ PayPal payment received! Tx: ${txId.slice(0, 10)}…`;
+
+        await this._notifyAdminPayPalPurchase(txId, walletAddress, listingId, listing.note || `Listing #${listingId}`);
+      },
+
+      onCancel: () => {
+        if (paypalStatusEl) {
+          paypalStatusEl.style.color = "#ff8844";
+          paypalStatusEl.textContent = "Payment cancelled.";
+        }
+      },
+
+      onError: (err) => {
+        console.error("PayPal error:", err);
+        if (paypalStatusEl) {
+          paypalStatusEl.style.color = "#ff4444";
+          paypalStatusEl.textContent = `⚠ PayPal error. Please try again or contact support.`;
+        }
+      },
+    }).render(`#paypal-btn-container-${listingId}`);
+  }
+
+  /**
+   * Notifies the admin about a completed PayPal DNFT purchase.
+   * Tries the configured webhook URL first (HTTPS only); falls back to a mailto: link.
+   *
+   * @param {string} txId          - PayPal order/capture ID
+   * @param {string} walletAddress - Buyer's wallet address (may be empty)
+   * @param {number} listingId     - Listing ID
+   * @param {string} listingNote   - Human-readable listing description
+   */
+  async _notifyAdminPayPalPurchase(txId, walletAddress, listingId, listingNote) {
+    const payload = {
+      txId,
+      walletAddress,
+      listingId,
+      listingNote,
+      amount: PAYPAL_CONFIG.dnftPriceUSD,
+    };
+
+    // Attempt webhook notification — require HTTPS to protect payment data
+    if (PAYPAL_CONFIG.adminWebhookUrl) {
+      if (!PAYPAL_CONFIG.adminWebhookUrl.startsWith('https://')) {
+        console.warn("PayPal admin webhook skipped: URL must start with https://");
+      } else {
+        try {
+          await fetch(PAYPAL_CONFIG.adminWebhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          return;
+        } catch (e) {
+          console.warn("PayPal admin webhook failed:", e);
+        }
+      }
+    }
+
+    // Fall back to a mailto: link so the browser composes a notification email.
+    // Sanitize the admin email to prevent URL injection (allow only safe RFC-5321 chars).
+    const safeEmail = (PAYPAL_CONFIG.adminEmail || '').replace(/[^a-zA-Z0-9._%+\-@]/g, '');
+    if (!safeEmail) { console.warn("PayPal admin notification skipped: no valid adminEmail configured"); return; }
+
+    const subject = encodeURIComponent(`PayPal DNFT Purchase — Listing #${listingId}`);
+    const body = encodeURIComponent(
+      `PayPal DNFT Purchase\n\n` +
+      `Transaction ID : ${txId}\n` +
+      `Wallet Address : ${walletAddress || '(not provided)'}\n` +
+      `Listing ID     : ${listingId}\n` +
+      `Listing        : ${listingNote}\n` +
+      `Amount         : $${PAYPAL_CONFIG.dnftPriceUSD}\n\n` +
+      `Please verify the PayPal payment on the PayPal dashboard, then call\n` +
+      `safeTransferFrom (via the DNFT Contract Functions explorer or Etherscan)\n` +
+      `to deliver the DNFT to the buyer's wallet address.`
+    );
+    window.open(`mailto:${safeEmail}?subject=${subject}&body=${body}`, '_blank');
   }
 
   async _subscribeToPlan(escrowAddress, planId, isEthPlan, price, statusEl) {
