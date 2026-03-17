@@ -219,6 +219,15 @@ class DecentCanvas extends HTMLElement {
       this._clearEscrowSprites();
     });
 
+    // ── Escrow: fly camera to an escrowed DNFT's spiral position ─────────────
+    document.addEventListener('escrow:fly-to', (e) => {
+      const { tokenId } = e.detail;
+      const entry = this._escrowSprites[tokenId];
+      if (entry) {
+        this._flyTarget = { x: entry.x, y: 0, z: entry.z };
+      }
+    });
+
     // ── Gallery: fly camera to a product's position ───────────────────────────
     document.addEventListener('gallery:fly-to', (e) => {
       const { tokenId } = e.detail;
@@ -605,6 +614,8 @@ class DecentCanvas extends HTMLElement {
   // dnfts: [{ tokenId, imageUrl, isListed, metadata }]
   // isListed=true → green glow (listed for sale)
   // isListed=false → red glow (in escrow, not yet listed)
+  // Layout: helical spiral around the Z axis — items wind in a helix as depth
+  // increases so the user can fly through the spiral using OrbitControls.
   _placeEscrowDNFTs(dnfts) {
     if (!this.scene) return;
 
@@ -618,21 +629,40 @@ class DecentCanvas extends HTMLElement {
     // Clear any previous escrow sprites
     this._clearEscrowSprites();
 
-    const spacing = 8;
+    // Helix parameters: items spiral around the Z axis as depth increases.
+    const HELIX_RADIUS     = 6;            // radius of the helix circle (XY plane)
+    const HELIX_ANGLE_STEP = Math.PI * 0.72; // angular step per item (≈ 130°, golden-ish)
+    const Z_STEP           = 6;            // depth spacing per item along -Z
+
     dnfts.forEach((dnft, idx) => {
-      const x = 0;
-      const z = -(idx + 1) * spacing;
+      const angle = idx * HELIX_ANGLE_STEP;
+      const x = HELIX_RADIUS * Math.cos(angle);
+      const y = 0.5;
+      const z = -(idx + 1) * Z_STEP;
       const { tokenId, imageUrl, isListed } = dnft;
 
-      if (!imageUrl) return;
+      if (!imageUrl) {
+        // Still record position so fly-to works even without an image
+        this._escrowSprites[tokenId] = { sprite: null, badge: null, x, z };
+        return;
+      }
 
       const textureLoader = new THREE.TextureLoader();
       textureLoader.load(imageUrl, (texture) => {
         const mat = new THREE.SpriteMaterial({ map: texture, transparent: true });
         const sprite = new THREE.Sprite(mat);
-        sprite.position.set(x, 0.5, z);
+        sprite.position.set(x, y, z);
         sprite.scale.set(3, 3, 1);
         sprite.userData = { tokenId, x, z, isEscrow: true, isListed };
+
+        // Click: fly camera here + broadcast selection to escrow panel
+        sprite.onClick = () => {
+          this._flyTarget = { x, y: 0, z };
+          document.dispatchEvent(new CustomEvent('escrow:sprite-selected', {
+            detail: { tokenId, isListed, metadata: dnft.metadata, imageUrl },
+          }));
+        };
+
         this.scene.add(sprite);
 
         // Color-coded glow badge: green = listed for sale, red = escrow only
@@ -661,7 +691,7 @@ class DecentCanvas extends HTMLElement {
         const badgeTexture = new THREE.CanvasTexture(badgeCanvas);
         const badgeMat = new THREE.SpriteMaterial({ map: badgeTexture, transparent: true, opacity: 0.85 });
         const badge = new THREE.Sprite(badgeMat);
-        badge.position.set(x, 2.1, z);
+        badge.position.set(x, y + 1.6, z);
         badge.scale.set(3.2, 3.2, 1);
         this.scene.add(badge);
 
