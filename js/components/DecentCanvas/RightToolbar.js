@@ -1320,6 +1320,8 @@ class RightToolbar extends HTMLElement {
       return;
     }
     this._clearModals();
+    // Signal canvas to clear any escrow sprites before placing gallery products
+    document.dispatchEvent(new CustomEvent("escrow:cleared"));
 
     const panel = document.createElement("div");
     panel.id = "modal-gallery";
@@ -1642,6 +1644,8 @@ class RightToolbar extends HTMLElement {
     const existing = document.getElementById("modal-escrow");
     if (existing) { existing.remove(); return; }
     this._clearModals();
+    // Signal canvas to clear gallery sprites — escrow view takes over the 3D space
+    document.dispatchEvent(new CustomEvent("gallery:cleared"));
 
     const chainId = window.ethereum?.chainId || null;
     const chainCfg = chainId ? getChainConfig(chainId) : null;
@@ -2073,10 +2077,68 @@ class RightToolbar extends HTMLElement {
         });
       }
 
+      // ── Populate 3D canvas with escrowed DNFTs (non-blocking) ─────────────
+      // Fire-and-forget so the panel doesn't stall waiting for extra RPC calls.
+      this._dispatchEscrowDNFTs(escrow, listings).catch(err =>
+        console.warn("EscrowPanel: failed to populate 3D escrow view:", err)
+      );
+
     } catch (err) {
       console.error("EscrowPanel:", err);
       statusEl.textContent = `⚠ Error: ${err.message?.slice(0, 80) || err}`;
     }
+  }
+
+  // ── Fetch escrowed DNFTs and dispatch event for canvas visualization ───────
+  // Iterates product DNFTs from the DNFT contract, checks each one's balance
+  // held by the escrow contract, and emits escrow:dnfts-loaded with metadata
+  // and isListed flags so the canvas can render color-coded 3D sprites.
+  async _dispatchEscrowDNFTs(escrow, listings) {
+    const ethers = window.ethers;
+    if (!ethers) return;
+
+    const opCfg   = CONTRACTS.optimism;
+    const dnftAddr = opCfg.addresses.DNFT;
+    if (!dnftAddr) return;
+
+    // Build set of listed tokenIds for quick lookup.
+    // listings is already filtered to active-only by _loadEscrowData, but
+    // also filter here defensively in case the caller passes a wider set.
+    const listedTokenIds = new Set(
+      listings.filter(l => l.active).map(l => l.tokenId.toString())
+    );
+
+    // Reuse (or load) cached gallery products which carry metadata + image URIs
+    let allProducts;
+    try {
+      allProducts = await this._loadGalleryProducts();
+    } catch {
+      allProducts = [];
+    }
+
+    // Batch all getNFTBalance calls in parallel to reduce round-trip latency
+    const balances = await Promise.allSettled(
+      allProducts.map(p => escrow.getNFTBalance(dnftAddr, BigInt(p.tokenId)))
+    );
+
+    const escrowedDNFTs = [];
+    allProducts.forEach((product, idx) => {
+      const result = balances[idx];
+      if (result.status !== "fulfilled" || result.value <= 0n) return;
+
+      const imageUrl = product.metadata?.image
+        ? this._resolveIpfsUrl(product.metadata.image)
+        : "";
+      const isListed = listedTokenIds.has(product.tokenId.toString());
+      escrowedDNFTs.push({ tokenId: product.tokenId, imageUrl, isListed, metadata: product.metadata });
+    });
+
+    // Guard: only dispatch if the escrow panel is still open (user hasn't navigated away)
+    if (!document.getElementById("modal-escrow")) return;
+
+    document.dispatchEvent(new CustomEvent("escrow:dnfts-loaded", {
+      detail: { dnfts: escrowedDNFTs },
+    }));
   }
 
   async _purchaseWithETH(escrowAddress, listingId, listing, statusEl) {
