@@ -740,6 +740,19 @@ class RightToolbar extends HTMLElement {
                   padding:5px 7px;font-size:0.72rem;font-family:monospace;
                 "/>
             </div>
+            <div style="flex:1;">
+              <div style="font-size:0.65rem;color:#888;margin-bottom:3px;">Mint Quantity</div>
+              <input id="mint-quantity" type="number" min="1" value="1"
+                style="
+                  width:100%;box-sizing:border-box;
+                  background:#000;color:#00e5ff;
+                  border:1px solid #00e67688;border-radius:4px;
+                  padding:5px 7px;font-size:0.72rem;font-family:monospace;
+                "/>
+            </div>
+          </div>
+          <div style="font-size:0.6rem;color:#556;margin-bottom:8px;font-style:italic;">
+            Max Supply = edition cap (on-chain limit). Mint Quantity = how many you receive now.
           </div>
           <div style="font-size:0.65rem;color:#888;margin-bottom:3px;">Recipient <span style="color:#555;">(leave blank for your wallet)</span></div>
           <input id="mint-recipient" type="text" placeholder="0x… (defaults to connected wallet)"
@@ -779,6 +792,9 @@ class RightToolbar extends HTMLElement {
           min-height:20px;font-size:0.72rem;
           color:#888;word-break:break-all;text-align:center;
         "></div>
+
+        <!-- DNFT Contract Function Explorer -->
+        <div id="dnft-fn-explorer" style="margin-top:8px;"></div>
 
       </div>
     `;
@@ -909,8 +925,15 @@ class RightToolbar extends HTMLElement {
         const kind = parseInt(modal.querySelector("#mint-kind").value);
         const kindLabel = kind === 0 ? "Product" : "Achievement";
         const maxSupply = BigInt(modal.querySelector("#mint-max-supply").value || "0");
+        const mintQty = BigInt(modal.querySelector("#mint-quantity").value || "1");
         const recipientInput = modal.querySelector("#mint-recipient").value.trim();
         const imageUri = imageUriInput.value.trim();
+
+        // ── Validate mint quantity ────────────────────────────────────────────
+        if (mintQty <= 0n) throw new Error("Mint Quantity must be greater than 0.");
+        if (maxSupply > 0n && mintQty > maxSupply) {
+          throw new Error(`Mint Quantity (${mintQty}) cannot exceed Max Supply (${maxSupply}).`);
+        }
 
         // ── Connect wallet ────────────────────────────────────────────────
         if (!window.ethereum) throw new Error("MetaMask not found. Please install MetaMask.");
@@ -1027,13 +1050,13 @@ class RightToolbar extends HTMLElement {
         const mintContract = new ethers.Contract(contractAddr, MINT_ABI, signer);
         const mintFn = kind === 0 ? "mintProduct" : "mintAchievement";
 
-        setStatus(`🔮 Minting token #${tokenId}…`);
-        const mintTx = await mintContract[mintFn](recipient, tokenId, 1n);
+        setStatus(`🔮 Minting ${mintQty} × token #${tokenId}…`);
+        const mintTx = await mintContract[mintFn](recipient, tokenId, mintQty);
         setStatus(`🔮 Minting… tx ${mintTx.hash.slice(0, 12)}…`);
         const mintReceipt = await mintTx.wait();
 
         // ── Success! ──────────────────────────────────────────────────────
-        const successMsg = `✅ Minted! Token #${tokenId} · Block ${mintReceipt.blockNumber}`;
+        const successMsg = `✅ Minted ${mintQty} × Token #${tokenId} · Block ${mintReceipt.blockNumber}`;
         setStatus(successMsg, "#00e676");
         submitBtn.textContent = "✅ Minted!";
         submitBtn.style.borderColor = "#00e676";
@@ -1063,6 +1086,7 @@ class RightToolbar extends HTMLElement {
             name,
             tokenId: tokenId.toString(),
             txHash: mintReceipt.hash,
+            quantity: mintQty.toString(),
           });
         }, 4000);
       } catch (err) {
@@ -1071,6 +1095,10 @@ class RightToolbar extends HTMLElement {
         submitBtn.style.opacity = "1";
       }
     });
+
+    // Wire the DNFT contract function explorer at the bottom of the modal
+    const dnftAddress = CONTRACTS.optimism.addresses.DNFT;
+    this._wireDNFTFnExplorer(modal, dnftAddress);
   }
 
   async _refreshMintModalHeader(modal) {
@@ -1120,7 +1148,7 @@ class RightToolbar extends HTMLElement {
   }
 
   // ── Success toast notification ──────────────────────────────────────────
-  _showMintToast({ name, tokenId, txHash }) {
+  _showMintToast({ name, tokenId, txHash, quantity }) {
     const existing = document.getElementById("dnft-mint-toast");
     if (existing) existing.remove();
 
@@ -1160,8 +1188,8 @@ class RightToolbar extends HTMLElement {
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
         <span style="font-size:1.4rem;">📜</span>
         <div>
-          <div style="color:#00e676;font-weight:bold;">NFT Minted!</div>
-          <div style="color:#aaa;font-size:0.68rem;">${name || "DNFT"} — Token #${tokenId}</div>
+          <div style="color:#00e676;font-weight:bold;">✅ Minted ${quantity ? quantity + " × " : ""}${name || "DNFT"}</div>
+          <div style="color:#aaa;font-size:0.68rem;">Token #${tokenId}${quantity && Number(quantity) !== 1 ? ` (${quantity} editions)` : ""}</div>
         </div>
         <button id="toast-close" style="
           margin-left:auto;background:none;border:none;color:#555;
@@ -2260,6 +2288,227 @@ class RightToolbar extends HTMLElement {
         statusEl.textContent = `⚠ ${err.reason || err.message?.slice(0, 80)}`;
       }
     };
+  }
+
+  // ── 📋 DNFT Contract Function Explorer ────────────────────────────────────
+  // Renders a collapsible list of every DNFT contract function with inputs + Call/Send buttons.
+  _wireDNFTFnExplorer(panel, dnftAddress) {
+    const container = panel.querySelector("#dnft-fn-explorer");
+    if (!container || !dnftAddress) return;
+
+    const DNFT_FULL_ABI = [
+      // Read
+      "function nextTokenId() view returns (uint256)",
+      "function kindOf(uint256 tokenId) view returns (uint8)",
+      "function uri(uint256 tokenId) view returns (string)",
+      "function totalMinted(uint256 tokenId) view returns (uint256)",
+      "function maxSupply(uint256 tokenId) view returns (uint256)",
+      "function creatorOf(uint256 tokenId) view returns (address)",
+      "function balanceOf(address account, uint256 id) view returns (uint256)",
+      "function isApprovedForAll(address account, address operator) view returns (bool)",
+      "function hasRole(bytes32 role, address account) view returns (bool)",
+      "function DEFAULT_ADMIN_ROLE() view returns (bytes32)",
+      "function MINTER_ROLE() view returns (bytes32)",
+      "function supportsInterface(bytes4 interfaceId) view returns (bool)",
+      // Write
+      "function mintProduct(address to, uint256 tokenId, uint256 amount)",
+      "function mintAchievement(address to, uint256 tokenId, uint256 amount)",
+      "function registerToken(uint256 maxSupply_, string tokenURI_, uint8 kind_, address royaltyReceiver, uint96 royaltyFeeBps) returns (uint256 tokenId)",
+      "function setBaseURI(string newBaseURI)",
+      "function grantRole(bytes32 role, address account)",
+      "function revokeRole(bytes32 role, address account)",
+      "function renounceRole(bytes32 role, address callerConfirmation)",
+      "function setApprovalForAll(address operator, bool approved)",
+      "function safeTransferFrom(address from, address to, uint256 id, uint256 amount, bytes data)",
+      "function safeBatchTransferFrom(address from, address to, uint256[] ids, uint256[] amounts, bytes data)",
+      "function setDefaultRoyalty(address receiver, uint96 feeBps)",
+      "function setTokenRoyalty(uint256 tokenId, address receiver, uint96 feeBps)",
+    ];
+
+    const FNS = [
+      // ── READ ──────────────────────────────────────────────────────────────
+      { id:"r-nexttid",   name:"nextTokenId",        label:"nextTokenId()",                              mutability:"view", inputs:[], output:"uint256" },
+      { id:"r-kindof",    name:"kindOf",             label:"kindOf( tokenId )",                          mutability:"view",
+        inputs:[{domId:"dfi-ko-tid", placeholder:"tokenId", argType:"uint256"}], output:"uint8" },
+      { id:"r-uri",       name:"uri",                label:"uri( tokenId )",                             mutability:"view",
+        inputs:[{domId:"dfi-uri-tid", placeholder:"tokenId", argType:"uint256"}], output:"string" },
+      { id:"r-totmint",   name:"totalMinted",        label:"totalMinted( tokenId )",                     mutability:"view",
+        inputs:[{domId:"dfi-tm-tid", placeholder:"tokenId", argType:"uint256"}], output:"uint256" },
+      { id:"r-maxsup",    name:"maxSupply",          label:"maxSupply( tokenId )",                       mutability:"view",
+        inputs:[{domId:"dfi-ms-tid", placeholder:"tokenId", argType:"uint256"}], output:"uint256" },
+      { id:"r-creator",   name:"creatorOf",          label:"creatorOf( tokenId )",                       mutability:"view",
+        inputs:[{domId:"dfi-cr-tid", placeholder:"tokenId", argType:"uint256"}], output:"address" },
+      { id:"r-balof",     name:"balanceOf",          label:"balanceOf( account, tokenId )",              mutability:"view",
+        inputs:[{domId:"dfi-bo-acc", placeholder:"account address", argType:"address"},{domId:"dfi-bo-tid", placeholder:"tokenId", argType:"uint256"}], output:"uint256" },
+      { id:"r-isapprall", name:"isApprovedForAll",   label:"isApprovedForAll( account, operator )",      mutability:"view",
+        inputs:[{domId:"dfi-iaa-acc", placeholder:"account address", argType:"address"},{domId:"dfi-iaa-op", placeholder:"operator address", argType:"address"}], output:"bool" },
+      { id:"r-hasrole",   name:"hasRole",            label:"hasRole( role, account )",                   mutability:"view",
+        inputs:[{domId:"dfi-hr-role", placeholder:"role (bytes32)", argType:"bytes32"},{domId:"dfi-hr-acc", placeholder:"account address", argType:"address"}], output:"bool" },
+      { id:"r-adminrole", name:"DEFAULT_ADMIN_ROLE", label:"DEFAULT_ADMIN_ROLE()",                       mutability:"view", inputs:[], output:"bytes32" },
+      { id:"r-minterrole",name:"MINTER_ROLE",        label:"MINTER_ROLE()",                              mutability:"view", inputs:[], output:"bytes32" },
+      { id:"r-suppiface", name:"supportsInterface",  label:"supportsInterface( interfaceId )",           mutability:"view",
+        inputs:[{domId:"dfi-si-ifc", placeholder:"interfaceId (bytes4, e.g. 0x01ffc9a7)", argType:"bytes4"}], output:"bool" },
+
+      // ── WRITE ─────────────────────────────────────────────────────────────
+      { id:"w-mintprod",  name:"mintProduct",        label:"mintProduct( to, tokenId, amount ) 🔑",      mutability:"nonpayable", ownerOnly:true,
+        inputs:[{domId:"dwfi-mp-to", placeholder:"recipient address", argType:"address"},{domId:"dwfi-mp-tid", placeholder:"tokenId", argType:"uint256"},{domId:"dwfi-mp-amt", placeholder:"amount", argType:"uint256"}] },
+      { id:"w-mintach",   name:"mintAchievement",    label:"mintAchievement( to, tokenId, amount ) 🔑",  mutability:"nonpayable", ownerOnly:true,
+        inputs:[{domId:"dwfi-ma-to", placeholder:"recipient address", argType:"address"},{domId:"dwfi-ma-tid", placeholder:"tokenId", argType:"uint256"},{domId:"dwfi-ma-amt", placeholder:"amount", argType:"uint256"}] },
+      { id:"w-regtok",    name:"registerToken",      label:"registerToken( maxSupply, tokenURI, kind, royaltyReceiver, royaltyFeeBps ) 🔑", mutability:"nonpayable", ownerOnly:true,
+        inputs:[
+          {domId:"dwfi-rt-ms",   placeholder:"maxSupply (0=∞)",             argType:"uint256"},
+          {domId:"dwfi-rt-uri",  placeholder:"tokenURI (ipfs://… or blank)", argType:"string"},
+          {domId:"dwfi-rt-kind", placeholder:"kind (0=Product, 1=Achievement)", argType:"uint8"},
+          {domId:"dwfi-rt-rr",   placeholder:"royaltyReceiver (0x0…0 for default)", argType:"address"},
+          {domId:"dwfi-rt-bps",  placeholder:"royaltyFeeBps (0 for default)", argType:"uint256"},
+        ] },
+      { id:"w-setbase",   name:"setBaseURI",         label:"setBaseURI( newBaseURI ) 🔑",               mutability:"nonpayable", ownerOnly:true,
+        inputs:[{domId:"dwfi-sb-uri", placeholder:"newBaseURI (e.g. ipfs://<cid>/)", argType:"string"}] },
+      { id:"w-grantrole", name:"grantRole",          label:"grantRole( role, account ) 🔑",             mutability:"nonpayable", ownerOnly:true,
+        inputs:[{domId:"dwfi-gr-role", placeholder:"role (bytes32)", argType:"bytes32"},{domId:"dwfi-gr-acc", placeholder:"account address", argType:"address"}] },
+      { id:"w-revokerole",name:"revokeRole",         label:"revokeRole( role, account ) 🔑",            mutability:"nonpayable", ownerOnly:true,
+        inputs:[{domId:"dwfi-rv-role", placeholder:"role (bytes32)", argType:"bytes32"},{domId:"dwfi-rv-acc", placeholder:"account address", argType:"address"}] },
+      { id:"w-renouncerole",name:"renounceRole",     label:"renounceRole( role, callerConfirmation ) 🔑",mutability:"nonpayable", ownerOnly:true,
+        inputs:[{domId:"dwfi-rn-role", placeholder:"role (bytes32)", argType:"bytes32"},{domId:"dwfi-rn-acc", placeholder:"callerConfirmation address", argType:"address"}] },
+      { id:"w-setappr",   name:"setApprovalForAll",  label:"setApprovalForAll( operator, approved )",   mutability:"nonpayable",
+        inputs:[{domId:"dwfi-saa-op", placeholder:"operator address", argType:"address"},{domId:"dwfi-saa-appr", placeholder:"approved (true/false)", argType:"bool"}] },
+      { id:"w-safexfr",   name:"safeTransferFrom",   label:"safeTransferFrom( from, to, id, amount, data )", mutability:"nonpayable",
+        inputs:[
+          {domId:"dwfi-stf-from", placeholder:"from address", argType:"address"},
+          {domId:"dwfi-stf-to",   placeholder:"to address",   argType:"address"},
+          {domId:"dwfi-stf-id",   placeholder:"tokenId",      argType:"uint256"},
+          {domId:"dwfi-stf-amt",  placeholder:"amount",       argType:"uint256"},
+          {domId:"dwfi-stf-data", placeholder:"data (0x for none)", argType:"bytes"},
+        ] },
+      { id:"w-batchxfr",  name:"safeBatchTransferFrom", label:"safeBatchTransferFrom( from, to, ids[], amounts[], data )", mutability:"nonpayable",
+        inputs:[
+          {domId:"dwfi-sbtf-from", placeholder:"from address",          argType:"address"},
+          {domId:"dwfi-sbtf-to",   placeholder:"to address",            argType:"address"},
+          {domId:"dwfi-sbtf-ids",  placeholder:"ids (comma-separated)", argType:"uint256[]"},
+          {domId:"dwfi-sbtf-amts", placeholder:"amounts (comma-separated)", argType:"uint256[]"},
+          {domId:"dwfi-sbtf-data", placeholder:"data (0x for none)",    argType:"bytes"},
+        ] },
+      { id:"w-defroy",    name:"setDefaultRoyalty",  label:"setDefaultRoyalty( receiver, feeBps ) 🔑",  mutability:"nonpayable", ownerOnly:true,
+        inputs:[{domId:"dwfi-dr-recv", placeholder:"receiver address", argType:"address"},{domId:"dwfi-dr-bps", placeholder:"feeBps (e.g. 500 = 5%)", argType:"uint256"}] },
+      { id:"w-tokroy",    name:"setTokenRoyalty",    label:"setTokenRoyalty( tokenId, receiver, feeBps ) 🔑", mutability:"nonpayable", ownerOnly:true,
+        inputs:[{domId:"dwfi-tr-tid", placeholder:"tokenId", argType:"uint256"},{domId:"dwfi-tr-recv", placeholder:"receiver address", argType:"address"},{domId:"dwfi-tr-bps", placeholder:"feeBps (e.g. 500 = 5%)", argType:"uint256"}] },
+    ];
+
+    function renderFnCard(fn) {
+      const isRead = fn.mutability === "view" || fn.mutability === "pure";
+      const btnRgb  = isRead ? "100,200,255" : fn.ownerOnly ? "255,165,0" : "0,255,136";
+      const lblColor = isRead ? "#44aaff" : fn.ownerOnly ? "#ff9900" : "#00ff88";
+      const btnTxt  = isRead ? "📖 Call" : fn.mutability === "payable" ? "⚡ Send" : "✍ Send";
+      const inputsHtml = fn.inputs.map(inp =>
+        `<input id="${inp.domId}" placeholder="${inp.placeholder}"
+           style="width:100%;box-sizing:border-box;background:#001508;color:#00e676;
+                  border:1px solid #00e67622;border-radius:3px;padding:3px 5px;
+                  font-size:0.63rem;font-family:monospace;margin-bottom:3px;" />`
+      ).join("");
+      return `
+        <div style="border:1px solid #00e67615;border-radius:5px;padding:6px 8px;margin-bottom:5px;">
+          <div style="font-size:0.63rem;color:${lblColor};font-family:monospace;margin-bottom:${fn.inputs.length ? 4 : 2}px;word-break:break-all;">${fn.label}</div>
+          ${inputsHtml}
+          <div style="display:flex;align-items:flex-start;gap:6px;margin-top:2px;">
+            <button id="dnft-fn-btn-${fn.id}"
+              style="flex-shrink:0;background:rgba(${btnRgb},0.15);border:1px solid rgba(${btnRgb},0.6);
+                     color:rgb(${btnRgb});border-radius:4px;padding:3px 10px;font-size:0.63rem;
+                     cursor:pointer;font-family:monospace;">${btnTxt}</button>
+            <pre id="dnft-fn-result-${fn.id}"
+              style="margin:0;font-size:0.6rem;color:#aaa;word-break:break-all;white-space:pre-wrap;flex:1;"></pre>
+          </div>
+        </div>`;
+    }
+
+    const readFns  = FNS.filter(f => f.mutability === "view" || f.mutability === "pure");
+    const writeFns = FNS.filter(f => f.mutability !== "view" && f.mutability !== "pure");
+
+    container.innerHTML = `
+      <div id="dnft-fn-toggle"
+        style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;
+               background:rgba(0,40,10,0.4);border:1px solid #00e67633;border-radius:6px;
+               padding:8px 10px;user-select:none;margin-bottom:2px;">
+        <span style="font-size:0.7rem;color:#4caf50;font-family:monospace;">📋 DNFT Contract Functions</span>
+        <span id="dnft-fn-chevron" style="font-size:0.7rem;color:#4caf50;">▶</span>
+      </div>
+      <div id="dnft-fn-body" style="display:none;padding:4px 0;">
+        <div style="font-size:0.6rem;color:#446655;text-transform:uppercase;letter-spacing:0.1em;margin:4px 0;">── Read (view) ──</div>
+        ${readFns.map(renderFnCard).join("")}
+        <div style="font-size:0.6rem;color:#446655;text-transform:uppercase;letter-spacing:0.1em;margin:8px 0 4px;">── Write (send tx) ──</div>
+        ${writeFns.map(renderFnCard).join("")}
+      </div>
+    `;
+
+    // Toggle open/close
+    panel.querySelector("#dnft-fn-toggle").onclick = () => {
+      const body    = panel.querySelector("#dnft-fn-body");
+      const chevron = panel.querySelector("#dnft-fn-chevron");
+      const open = body.style.display !== "none";
+      body.style.display = open ? "none" : "block";
+      chevron.textContent = open ? "▶" : "▼";
+    };
+
+    // Wire each function button
+    for (const fn of FNS) {
+      const btn = panel.querySelector(`#dnft-fn-btn-${fn.id}`);
+      if (!btn) continue;
+
+      btn.onclick = async () => {
+        const resultEl = panel.querySelector(`#dnft-fn-result-${fn.id}`);
+        const ethers = window.ethers;
+        if (!ethers) { resultEl.textContent = "⚠ ethers.js not loaded"; return; }
+
+        // Collect arguments from inputs
+        const args = [];
+        try {
+          for (const inp of fn.inputs) {
+            const val = panel.querySelector(`#${inp.domId}`)?.value.trim() ?? "";
+            if (inp.argType === "uint256" || inp.argType === "uint8") {
+              if (val === "") throw new Error(`"${inp.placeholder}" is required (enter a number)`);
+              args.push(BigInt(val));
+            } else if (inp.argType === "uint256[]") {
+              if (val === "") throw new Error(`"${inp.placeholder}" is required`);
+              args.push(val.split(",").map(v => BigInt(v.trim())));
+            } else if (inp.argType === "bool") {
+              args.push(val.toLowerCase() === "true");
+            } else {
+              args.push(val);
+            }
+          }
+        } catch (e) {
+          resultEl.style.color = "#ff4444";
+          resultEl.textContent = `⚠ Input error: ${e.message?.slice(0, 60)}`;
+          return;
+        }
+
+        resultEl.style.color = "#888";
+        resultEl.textContent = "⏳ …";
+
+        try {
+          const provider = new ethers.BrowserProvider(window.ethereum);
+          const isRead = fn.mutability === "view" || fn.mutability === "pure";
+
+          if (isRead) {
+            const dnft = new ethers.Contract(dnftAddress, DNFT_FULL_ABI, provider);
+            const raw = await dnft[fn.name](...args);
+            resultEl.style.color = "#44aaff";
+            resultEl.textContent = this._formatEscrowResult(raw, ethers);
+          } else {
+            const signer = await provider.getSigner();
+            const dnft = new ethers.Contract(dnftAddress, DNFT_FULL_ABI, signer);
+            const tx = await dnft[fn.name](...args);
+            resultEl.style.color = "#888";
+            resultEl.textContent = "⏳ confirming…";
+            await tx.wait();
+            resultEl.style.color = "#00e676";
+            resultEl.textContent = `✅ ${tx.hash}`;
+          }
+        } catch (err) {
+          resultEl.style.color = "#ff4444";
+          resultEl.textContent = `⚠ ${err.reason || err.message?.slice(0, 120)}`;
+        }
+      };
+    }
   }
 
   // ── 📋 Contract Function Explorer ─────────────────────────────────────────
