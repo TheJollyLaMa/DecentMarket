@@ -1320,6 +1320,8 @@ class RightToolbar extends HTMLElement {
       return;
     }
     this._clearModals();
+    // Signal canvas to clear any escrow sprites before placing gallery products
+    document.dispatchEvent(new CustomEvent("escrow:cleared"));
 
     const panel = document.createElement("div");
     panel.id = "modal-gallery";
@@ -1642,6 +1644,8 @@ class RightToolbar extends HTMLElement {
     const existing = document.getElementById("modal-escrow");
     if (existing) { existing.remove(); return; }
     this._clearModals();
+    // Signal canvas to clear gallery sprites — escrow view takes over the 3D space
+    document.dispatchEvent(new CustomEvent("gallery:cleared"));
 
     const chainId = window.ethereum?.chainId || null;
     const chainCfg = chainId ? getChainConfig(chainId) : null;
@@ -1845,10 +1849,20 @@ class RightToolbar extends HTMLElement {
 
     document.body.appendChild(panel);
 
-    panel.querySelector("#escrow-close").onclick = () => panel.remove();
-    document.addEventListener("keydown", function _esc(e) {
-      if (e.key === "Escape") { panel.remove(); document.removeEventListener("keydown", _esc); }
-    });
+    // ── Close helpers — all routes call closePanel() to ensure cleanup ─────────
+    const closePanel = () => {
+      panel.remove();
+      document.getElementById("escrow-sprite-modal")?.remove();
+      document.removeEventListener("escrow:sprite-selected", onSpriteSelected);
+      document.removeEventListener("keydown", _escKey);
+    };
+
+    panel.querySelector("#escrow-close").onclick = closePanel;
+
+    function _escKey(e) {
+      if (e.key === "Escape") closePanel();
+    }
+    document.addEventListener("keydown", _escKey);
 
     if (escrowAddress && window.ethereum) {
       this._loadEscrowData(panel, escrowAddress, userAddress);
@@ -1857,6 +1871,26 @@ class RightToolbar extends HTMLElement {
     // Wire owner-action buttons once data is loaded (they may appear after async)
     this._wireEscrowOwnerActions(panel, escrowAddress);
     this._wireEscrowFnExplorer(panel, escrowAddress);
+
+    // ── Sync: when a 3D escrow sprite is clicked, highlight the matching listing
+    // and open a compact detail modal. One modal at a time; closed by clicking
+    // a different sprite or pressing Escape.
+    function onSpriteSelected(e) {
+      if (!document.getElementById("modal-escrow")) {
+        document.removeEventListener("escrow:sprite-selected", onSpriteSelected);
+        return;
+      }
+      const { tokenId, isListed, metadata, imageUrl } = e.detail;
+      const listingsEl = panel.querySelector("#escrow-listings");
+
+      // Highlight and scroll the matching listing to center
+      _self._highlightEscrowListing(tokenId.toString(), listingsEl, panel);
+
+      // Open the sprite detail modal (replace any existing one)
+      _self._openEscrowSpriteModal({ tokenId, isListed, metadata, imageUrl });
+    }
+    const _self = this;
+    document.addEventListener("escrow:sprite-selected", onSpriteSelected);
   }
 
   async _loadEscrowData(panel, escrowAddress, userAddress) {
@@ -1967,8 +2001,11 @@ class RightToolbar extends HTMLElement {
           }
 
           return `
-            <div style="border:1px solid #00ff8822;border-radius:6px;padding:8px;margin-bottom:6px;">
-              <div style="color:#00ff88;font-weight:bold;font-size:0.75rem;margin-bottom:2px;">${l.note || `Listing #${l.id}`}</div>
+            <div id="escrow-listing-${l.id}" data-escrow-tokenid="${l.tokenId}" style="border:1px solid #00ff8822;border-radius:6px;padding:8px;margin-bottom:6px;cursor:pointer;transition:border-color 0.2s,box-shadow 0.2s;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+                <div style="color:#00ff88;font-weight:bold;font-size:0.75rem;">${l.note || `Listing #${l.id}`}</div>
+                <button data-fly-listing="${l.id}" data-fly-tokenid="${l.tokenId}" style="background:rgba(0,255,136,0.1);border:1px solid #00ff8866;color:#00ff88;border-radius:4px;padding:1px 6px;font-size:0.6rem;cursor:pointer;font-family:monospace;">🚀 View in 3D</button>
+              </div>
               <div style="color:#888;font-size:0.65rem;">TokenID: ${l.tokenId} · Available: ${l.available} · In escrow: ${nftBalances[idx]}</div>
               <div style="color:#888;font-size:0.65rem;">NFT: ${l.nftContract.slice(0,6)}…${l.nftContract.slice(-4)}</div>
               ${l.priceETH > 0n ? `<div style="color:#aaa;font-size:0.65rem;">ETH price: ${ethers.formatEther(l.priceETH)} ETH</div>` : ""}
@@ -1991,6 +2028,16 @@ class RightToolbar extends HTMLElement {
             </div>
           `;
         }).join("");
+
+        // ── Wire "View in 3D" / listing click → fly camera to that sprite ─────
+        listingsEl.querySelectorAll("[data-fly-listing]").forEach(btn => {
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const tokenId = btn.dataset.flyTokenid;
+            this._highlightEscrowListing(tokenId, listingsEl, panel);
+            document.dispatchEvent(new CustomEvent("escrow:fly-to", { detail: { tokenId } }));
+          });
+        });
 
         // Wire purchase buttons — capture listing in closure to avoid redundant search
         listingsEl.querySelectorAll("[data-buy-eth]").forEach(btn => {
@@ -2073,10 +2120,155 @@ class RightToolbar extends HTMLElement {
         });
       }
 
+      // ── Populate 3D canvas with escrowed DNFTs (non-blocking) ─────────────
+      // Fire-and-forget so the panel doesn't stall waiting for extra RPC calls.
+      this._dispatchEscrowDNFTs(escrow, listings).catch(err =>
+        console.warn("EscrowPanel: failed to populate 3D escrow view:", err)
+      );
+
     } catch (err) {
       console.error("EscrowPanel:", err);
       statusEl.textContent = `⚠ Error: ${err.message?.slice(0, 80) || err}`;
     }
+  }
+
+  // ── Fetch escrowed DNFTs and dispatch event for canvas visualization ───────
+  // Iterates product DNFTs from the DNFT contract, checks each one's balance
+  // held by the escrow contract, and emits escrow:dnfts-loaded with metadata
+  // and isListed flags so the canvas can render color-coded 3D sprites.
+  async _dispatchEscrowDNFTs(escrow, listings) {
+    const ethers = window.ethers;
+    if (!ethers) return;
+
+    const opCfg   = CONTRACTS.optimism;
+    const dnftAddr = opCfg.addresses.DNFT;
+    if (!dnftAddr) return;
+
+    // Build set of listed tokenIds for quick lookup.
+    // listings is already filtered to active-only by _loadEscrowData, but
+    // also filter here defensively in case the caller passes a wider set.
+    const listedTokenIds = new Set(
+      listings.filter(l => l.active).map(l => l.tokenId.toString())
+    );
+
+    // Reuse (or load) cached gallery products which carry metadata + image URIs
+    let allProducts;
+    try {
+      allProducts = await this._loadGalleryProducts();
+    } catch {
+      allProducts = [];
+    }
+
+    // Batch all getNFTBalance calls in parallel to reduce round-trip latency
+    const balances = await Promise.allSettled(
+      allProducts.map(p => escrow.getNFTBalance(dnftAddr, BigInt(p.tokenId)))
+    );
+
+    const escrowedDNFTs = [];
+    allProducts.forEach((product, idx) => {
+      const result = balances[idx];
+      if (result.status !== "fulfilled" || result.value <= 0n) return;
+
+      const imageUrl = product.metadata?.image
+        ? this._resolveIpfsUrl(product.metadata.image)
+        : "";
+      const isListed = listedTokenIds.has(product.tokenId.toString());
+      escrowedDNFTs.push({ tokenId: product.tokenId, imageUrl, isListed, metadata: product.metadata });
+    });
+
+    // Guard: only dispatch if the escrow panel is still open (user hasn't navigated away)
+    if (!document.getElementById("modal-escrow")) return;
+
+    document.dispatchEvent(new CustomEvent("escrow:dnfts-loaded", {
+      detail: { dnfts: escrowedDNFTs },
+    }));
+  }
+
+  // ── Highlight a listing card in the escrow panel and scroll it into center ─
+  // tokenId: string (from sprite) — matched against data-escrow-tokenid on cards.
+  _highlightEscrowListing(tokenId, listingsEl, panel) {
+    if (!listingsEl) return;
+    const tid = tokenId.toString();
+
+    // Remove highlight from all cards
+    listingsEl.querySelectorAll("[data-escrow-tokenid]").forEach(card => {
+      card.style.borderColor = "#00ff8822";
+      card.style.boxShadow   = "none";
+    });
+
+    // Find the card matching this tokenId
+    const target = listingsEl.querySelector(`[data-escrow-tokenid="${tid}"]`);
+    if (!target) return;
+
+    // Highlight it
+    target.style.borderColor = "#00ff88";
+    target.style.boxShadow   = "0 0 10px #00ff8888";
+
+    // Scroll the panel so this card is centered
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  // ── Open a compact DNFT detail modal when a 3D sprite is clicked ───────────
+  // Only one modal at a time — replaces any existing one.
+  _openEscrowSpriteModal({ tokenId, isListed, metadata, imageUrl }) {
+    document.getElementById("escrow-sprite-modal")?.remove();
+
+    // Escape user-controlled strings to prevent XSS
+    const _esc = (s) => String(s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+    const name   = _esc(metadata?.name || `Token #${tokenId}`);
+    const desc   = _esc(metadata?.description || "");
+    const status = isListed ? "🟢 Listed for Sale" : "🔴 In Escrow (not listed)";
+    const color  = isListed ? "#00ff88" : "#ff4466";
+    const tidStr = _esc(String(tokenId));
+
+    const modal = document.createElement("div");
+    modal.id = "escrow-sprite-modal";
+    Object.assign(modal.style, {
+      position: "fixed",
+      bottom: "24px",
+      left: "50%",
+      transform: "translateX(-50%)",
+      background: "rgba(0,5,20,0.96)",
+      border: `1px solid ${color}`,
+      borderRadius: "12px",
+      boxShadow: `0 0 24px ${color}88, 0 4px 16px #000`,
+      padding: "14px 16px",
+      zIndex: "3000",
+      display: "flex",
+      gap: "14px",
+      alignItems: "flex-start",
+      maxWidth: "420px",
+      minWidth: "280px",
+      color: "#fff",
+      fontFamily: "monospace",
+      fontSize: "0.78rem",
+    });
+
+    // Only allow safe https:// or http:// image URLs
+    const safeImg = imageUrl && /^https?:\/\/[^"<>]+$/.test(imageUrl) ? imageUrl : "";
+    modal.innerHTML = `
+      ${safeImg ? `<img src="${safeImg}" alt="" style="width:72px;height:72px;object-fit:contain;border-radius:8px;border:1px solid ${color}44;flex-shrink:0;">` : ""}
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:bold;color:${color};font-size:0.85rem;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${name}</div>
+        <div style="color:${color};font-size:0.7rem;margin-bottom:4px;">${status}</div>
+        ${desc ? `<div style="color:#aaa;font-size:0.65rem;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${desc}</div>` : ""}
+        <div style="color:#555;font-size:0.6rem;margin-top:4px;">Token #${tidStr} · Click to dismiss</div>
+      </div>
+      <button id="escrow-sprite-modal-close" style="background:none;border:none;color:#888;font-size:1rem;cursor:pointer;line-height:1;padding:0;flex-shrink:0;">✕</button>
+    `;
+
+    document.body.appendChild(modal);
+
+    let timer;
+    const close = () => { clearTimeout(timer); modal.remove(); };
+    modal.querySelector("#escrow-sprite-modal-close").onclick = close;
+    modal.addEventListener("click", close);
+
+    // Auto-dismiss after 8 seconds
+    timer = setTimeout(close, 8000);
   }
 
   async _purchaseWithETH(escrowAddress, listingId, listing, statusEl) {

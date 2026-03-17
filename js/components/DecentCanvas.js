@@ -15,6 +15,7 @@ class DecentCanvas extends HTMLElement {
     this.uiLayer = null;
     this.cannonAngle = 0;
     this._productSprites = {}; // tokenId → { sprite, badge, x, z }
+    this._escrowSprites  = {}; // tokenId → { sprite, badge, x, z } for escrow view
     this._flyTarget = null;    // { x, y, z } target for smooth camera animation
   }
 
@@ -197,6 +198,34 @@ class DecentCanvas extends HTMLElement {
     // ── Gallery: place Product DNFTs at depth positions on Z-axis ─────────────
     document.addEventListener('gallery:products-loaded', (e) => {
       this._placeGalleryProducts(e.detail.products);
+    });
+
+    // ── Gallery: clear gallery sprites (e.g. when escrow panel opens) ─────────
+    document.addEventListener('gallery:cleared', () => {
+      for (const { sprite, badge } of Object.values(this._productSprites)) {
+        this.scene.remove(sprite);
+        if (badge) this.scene.remove(badge);
+      }
+      this._productSprites = {};
+    });
+
+    // ── Escrow: show escrowed DNFTs with color-coded glows ────────────────────
+    document.addEventListener('escrow:dnfts-loaded', (e) => {
+      this._placeEscrowDNFTs(e.detail.dnfts);
+    });
+
+    // ── Escrow: clear escrow sprites (e.g. when gallery panel re-opens) ───────
+    document.addEventListener('escrow:cleared', () => {
+      this._clearEscrowSprites();
+    });
+
+    // ── Escrow: fly camera to an escrowed DNFT's spiral position ─────────────
+    document.addEventListener('escrow:fly-to', (e) => {
+      const { tokenId } = e.detail;
+      const entry = this._escrowSprites[tokenId];
+      if (entry) {
+        this._flyTarget = { x: entry.x, y: 0, z: entry.z };
+      }
     });
 
     // ── Gallery: fly camera to a product's position ───────────────────────────
@@ -489,6 +518,9 @@ class DecentCanvas extends HTMLElement {
     }
     this._productSprites = {};
 
+    // Clear escrow sprites so the gallery has a clean 3D view
+    this._clearEscrowSprites();
+
     const spacing = 8;
     products.forEach((product, idx) => {
       const x = 0;
@@ -566,6 +598,108 @@ class DecentCanvas extends HTMLElement {
       return `https://${cid}.ipfs.w3s.link${path}`;
     }
     return uri;
+  }
+
+  // ── Remove all escrow sprites from the 3D scene ───────────────────────────
+  _clearEscrowSprites() {
+    if (!this.scene) return;
+    for (const { sprite, badge } of Object.values(this._escrowSprites)) {
+      this.scene.remove(sprite);
+      if (badge) this.scene.remove(badge);
+    }
+    this._escrowSprites = {};
+  }
+
+  // ── Place escrowed DNFTs in the 3D scene with color-coded glows ───────────
+  // dnfts: [{ tokenId, imageUrl, isListed, metadata }]
+  // isListed=true → green glow (listed for sale)
+  // isListed=false → red glow (in escrow, not yet listed)
+  // Layout: helical spiral around the Z axis — items wind in a helix as depth
+  // increases so the user can fly through the spiral using OrbitControls.
+  _placeEscrowDNFTs(dnfts) {
+    if (!this.scene) return;
+
+    // Clear regular gallery sprites — escrow view is mutually exclusive
+    for (const { sprite, badge } of Object.values(this._productSprites)) {
+      this.scene.remove(sprite);
+      if (badge) this.scene.remove(badge);
+    }
+    this._productSprites = {};
+
+    // Clear any previous escrow sprites
+    this._clearEscrowSprites();
+
+    // Helix parameters: items spiral around the Z axis as depth increases.
+    const HELIX_RADIUS     = 6;            // radius of the helix circle (XY plane)
+    const HELIX_ANGLE_STEP = Math.PI * 0.72; // angular step per item (≈ 130°, golden-ish)
+    const Z_STEP           = 6;            // depth spacing per item along -Z
+
+    dnfts.forEach((dnft, idx) => {
+      const angle = idx * HELIX_ANGLE_STEP;
+      const x = HELIX_RADIUS * Math.cos(angle);
+      const y = 0.5;
+      const z = -(idx + 1) * Z_STEP;
+      const { tokenId, imageUrl, isListed } = dnft;
+
+      if (!imageUrl) {
+        // Still record position so fly-to works even without an image
+        this._escrowSprites[tokenId] = { sprite: null, badge: null, x, z };
+        return;
+      }
+
+      const textureLoader = new THREE.TextureLoader();
+      textureLoader.load(imageUrl, (texture) => {
+        const mat = new THREE.SpriteMaterial({ map: texture, transparent: true });
+        const sprite = new THREE.Sprite(mat);
+        sprite.position.set(x, y, z);
+        sprite.scale.set(3, 3, 1);
+        sprite.userData = { tokenId, x, z, isEscrow: true, isListed };
+
+        // Click: fly camera here + broadcast selection to escrow panel
+        sprite.onClick = () => {
+          this._flyTarget = { x, y: 0, z };
+          document.dispatchEvent(new CustomEvent('escrow:sprite-selected', {
+            detail: { tokenId, isListed, metadata: dnft.metadata, imageUrl },
+          }));
+        };
+
+        this.scene.add(sprite);
+
+        // Color-coded glow badge: green = listed for sale, red = escrow only
+        const glowColor  = isListed ? '#00ff88' : '#ff2244';
+        const glowShadow = isListed ? '#00ff88' : '#ff0000';
+        const label      = isListed ? '🟢 LISTED' : '🔴 ESCROW';
+
+        const badgeCanvas = document.createElement('canvas');
+        badgeCanvas.width  = 256;
+        badgeCanvas.height = 256;
+        const ctx = badgeCanvas.getContext('2d');
+        ctx.shadowColor = glowShadow;
+        ctx.shadowBlur  = 30;
+        ctx.strokeStyle = glowColor;
+        ctx.lineWidth   = 10;
+        ctx.beginPath();
+        ctx.arc(128, 128, 110, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.shadowBlur = 8;
+        ctx.fillStyle  = glowColor;
+        ctx.font       = 'bold 22px monospace';
+        ctx.textAlign  = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, 128, 200);
+
+        const badgeTexture = new THREE.CanvasTexture(badgeCanvas);
+        const badgeMat = new THREE.SpriteMaterial({ map: badgeTexture, transparent: true, opacity: 0.85 });
+        const badge = new THREE.Sprite(badgeMat);
+        badge.position.set(x, y + 1.6, z);
+        badge.scale.set(3.2, 3.2, 1);
+        this.scene.add(badge);
+
+        this._escrowSprites[tokenId] = { sprite, badge, x, z };
+      }, undefined, (err) => {
+        console.warn(`Escrow: failed to load image for token #${tokenId}:`, imageUrl, err);
+      });
+    });
   }
 
   // Toggle between star and cow background
