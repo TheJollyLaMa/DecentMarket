@@ -515,6 +515,7 @@ class RightToolbar extends HTMLElement {
     const isConnected = !!address;
     const opCfg = CONTRACTS.optimism;
     const contractLabel = opCfg.addresses.DNFT.slice(0, 10) + "…" + opCfg.addresses.DNFT.slice(-4);
+    const escrowAddress = opCfg.addresses.ESCROW || "";
 
     return `
       <!-- Header -->
@@ -764,6 +765,40 @@ class RightToolbar extends HTMLElement {
             "/>
         </div>
 
+        <!-- Escrow & List option -->
+        ${escrowAddress ? `<div id="mint-escrow-section" style="
+          background:rgba(0,255,136,0.03);
+          border:1px solid #00ff8833;
+          border-radius:8px;
+          padding:10px 14px;
+        ">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:0;">
+            <input id="mint-escrow-toggle" type="checkbox" style="width:15px;height:15px;cursor:pointer;accent-color:#00ff88;"/>
+            <span style="font-size:0.72rem;color:#00ff88;font-weight:bold;">🏦 Send to Escrow &amp; List after minting</span>
+          </label>
+          <div id="mint-escrow-fields" style="display:none;margin-top:10px;">
+            <div style="font-size:0.62rem;color:#00aa66;margin-bottom:8px;line-height:1.5;">
+              Mint → transfer to escrow → list for sale, all in one flow.<br/>
+              <span style="color:#556;">NFT will be minted to your wallet first, then sent to escrow.</span>
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:8px;">
+              <div style="flex:1;">
+                <div style="font-size:0.65rem;color:#888;margin-bottom:3px;">Price ETH <span style="color:#555;">(0 = none)</span></div>
+                <input id="mint-escrow-price-eth" type="number" min="0" step="0.001" value="0"
+                  style="width:100%;box-sizing:border-box;background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:5px 7px;font-size:0.72rem;font-family:monospace;"/>
+              </div>
+              <div style="flex:1;">
+                <div style="font-size:0.65rem;color:#888;margin-bottom:3px;">Price USDC <span style="color:#555;">(0 = none)</span></div>
+                <input id="mint-escrow-price-usdc" type="number" min="0" step="1" value="0"
+                  style="width:100%;box-sizing:border-box;background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:5px 7px;font-size:0.72rem;font-family:monospace;"/>
+              </div>
+            </div>
+            <div style="font-size:0.65rem;color:#888;margin-bottom:3px;">Listing Note</div>
+            <input id="mint-escrow-note" type="text" placeholder='e.g. "DecentHead v1.0 Supporter DNFT"'
+              style="width:100%;box-sizing:border-box;background:#001508;color:#00ff88;border:1px solid #00ff8844;border-radius:4px;padding:5px 7px;font-size:0.72rem;font-family:monospace;"/>
+          </div>
+        </div>` : ''}
+
         <!-- Contract info (read-only) -->
         <div style="
           background:rgba(0,230,118,0.03);
@@ -908,6 +943,16 @@ class RightToolbar extends HTMLElement {
     const submitBtn = modal.querySelector("#mint-submit-btn");
     const statusEl = modal.querySelector("#mint-status");
 
+    // ── Escrow & List toggle ────────────────────────────────────────────────
+    const escrowToggle = modal.querySelector("#mint-escrow-toggle");
+    const escrowFields = modal.querySelector("#mint-escrow-fields");
+    if (escrowToggle) {
+      escrowToggle.addEventListener("change", () => {
+        escrowFields.style.display = escrowToggle.checked ? "block" : "none";
+        submitBtn.textContent = escrowToggle.checked ? "✨ Mint + Escrow & List" : "✨ Mint DNFT";
+      });
+    }
+
     const setStatus = (msg, color = "#888") => {
       statusEl.style.color = color;
       statusEl.textContent = msg;
@@ -928,6 +973,7 @@ class RightToolbar extends HTMLElement {
         const mintQty = BigInt(modal.querySelector("#mint-quantity").value || "1");
         const recipientInput = modal.querySelector("#mint-recipient").value.trim();
         const imageUri = imageUriInput.value.trim();
+        const sendToEscrow = modal.querySelector("#mint-escrow-toggle")?.checked ?? false;
 
         // ── Validate mint quantity ────────────────────────────────────────────
         if (mintQty <= 0n) throw new Error("Mint Quantity must be greater than 0.");
@@ -1038,7 +1084,8 @@ class RightToolbar extends HTMLElement {
         }
 
         // ── Mint the registered token ─────────────────────────────────────
-        const recipient = recipientInput && ethers.isAddress(recipientInput)
+        // If escrow+list is requested, always mint to the connected wallet first
+        const recipient = (!sendToEscrow && recipientInput && ethers.isAddress(recipientInput))
           ? recipientInput
           : account;
 
@@ -1055,10 +1102,57 @@ class RightToolbar extends HTMLElement {
         setStatus(`🔮 Minting… tx ${mintTx.hash.slice(0, 12)}…`);
         const mintReceipt = await mintTx.wait();
 
+        // ── Escrow & List (optional) ──────────────────────────────────────
+        if (sendToEscrow) {
+          const escrowAddress = CONTRACTS.optimism.addresses.ESCROW;
+          if (!escrowAddress || !ethers.isAddress(escrowAddress)) {
+            throw new Error("Escrow contract address not configured for Optimism.");
+          }
+
+          const priceETHStr = modal.querySelector("#mint-escrow-price-eth").value.trim() || "0";
+          const priceUSDCStr = modal.querySelector("#mint-escrow-price-usdc").value.trim() || "0";
+          const priceETHWei = ethers.parseEther(priceETHStr);
+          const priceUSDCAmount = ethers.parseUnits(priceUSDCStr, 6);
+          const listingNote = modal.querySelector("#mint-escrow-note").value.trim() || name;
+
+          if (priceETHWei === 0n && priceUSDCAmount === 0n) {
+            throw new Error("Set at least one price (ETH or USDC) for the escrow listing.");
+          }
+
+          // Transfer NFT to escrow (ERC-1155 safeTransferFrom)
+          const ERC1155_TRANSFER_ABI = [
+            "function safeTransferFrom(address from, address to, uint256 id, uint256 amount, bytes data)",
+          ];
+          const nftForTransfer = new ethers.Contract(contractAddr, ERC1155_TRANSFER_ABI, signer);
+          setStatus(`🏦 Transferring ${mintQty} × Token #${tokenId} to escrow…`);
+          // "0x" = empty bytes data, required by ERC-1155 safeTransferFrom
+          const transferTx = await nftForTransfer.safeTransferFrom(account, escrowAddress, tokenId, mintQty, "0x");
+          setStatus(`🏦 Transferring… tx ${transferTx.hash.slice(0, 12)}…`);
+          await transferTx.wait();
+
+          // Create listing in escrow
+          const priceToken = priceUSDCAmount > 0n ? USDC_OPTIMISM : ethers.ZeroAddress;
+          const escrowContract = new ethers.Contract(escrowAddress, ESCROW_ABI, signer);
+          setStatus(`📋 Creating escrow listing…`);
+          const listTx = await escrowContract.listDNFT(
+            contractAddr,
+            tokenId,
+            priceETHWei,
+            priceToken,
+            priceUSDCAmount,
+            mintQty,
+            listingNote
+          );
+          setStatus(`📋 Listing… tx ${listTx.hash.slice(0, 12)}…`);
+          await listTx.wait();
+        }
+
         // ── Success! ──────────────────────────────────────────────────────
-        const successMsg = `✅ Minted ${mintQty} × Token #${tokenId} · Block ${mintReceipt.blockNumber}`;
+        const successMsg = sendToEscrow
+          ? `✅ Minted, escrowed & listed ${mintQty} × Token #${tokenId} · Block ${mintReceipt.blockNumber}`
+          : `✅ Minted ${mintQty} × Token #${tokenId} · Block ${mintReceipt.blockNumber}`;
         setStatus(successMsg, "#00e676");
-        submitBtn.textContent = "✅ Minted!";
+        submitBtn.textContent = sendToEscrow ? "✅ Minted + Listed!" : "✅ Minted!";
         submitBtn.style.borderColor = "#00e676";
         submitBtn.style.color = "#00e676";
 
@@ -1087,6 +1181,7 @@ class RightToolbar extends HTMLElement {
             tokenId: tokenId.toString(),
             txHash: mintReceipt.hash,
             quantity: mintQty.toString(),
+            escrowed: sendToEscrow,
           });
         }, 4000);
       } catch (err) {
@@ -1148,7 +1243,7 @@ class RightToolbar extends HTMLElement {
   }
 
   // ── Success toast notification ──────────────────────────────────────────
-  _showMintToast({ name, tokenId, txHash, quantity }) {
+  _showMintToast({ name, tokenId, txHash, quantity, escrowed }) {
     const existing = document.getElementById("dnft-mint-toast");
     if (existing) existing.remove();
 
@@ -1159,9 +1254,9 @@ class RightToolbar extends HTMLElement {
       bottom: "30px",
       right: "70px",
       background: "rgba(0, 20, 10, 0.97)",
-      border: "2px solid #00e676",
+      border: `2px solid ${escrowed ? "#00ff88" : "#00e676"}`,
       borderRadius: "10px",
-      boxShadow: "0 0 20px #00e676",
+      boxShadow: `0 0 20px ${escrowed ? "#00ff88" : "#00e676"}`,
       padding: "12px 16px",
       zIndex: "3000",
       color: "#fff",
@@ -1184,12 +1279,19 @@ class RightToolbar extends HTMLElement {
       document.head.appendChild(style);
     }
 
+    const headline = escrowed
+      ? `✅ Minted + Escrowed &amp; Listed ${quantity ? quantity + " × " : ""}${name || "DNFT"}`
+      : `✅ Minted ${quantity ? quantity + " × " : ""}${name || "DNFT"}`;
+    const subtitle = escrowed
+      ? `Token #${tokenId} — now live in the marketplace`
+      : `Token #${tokenId}${quantity && Number(quantity) !== 1 ? ` (${quantity} editions)` : ""}`;
+
     toast.innerHTML = `
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
-        <span style="font-size:1.4rem;">📜</span>
+        <span style="font-size:1.4rem;">${escrowed ? "🏦" : "📜"}</span>
         <div>
-          <div style="color:#00e676;font-weight:bold;">✅ Minted ${quantity ? quantity + " × " : ""}${name || "DNFT"}</div>
-          <div style="color:#aaa;font-size:0.68rem;">Token #${tokenId}${quantity && Number(quantity) !== 1 ? ` (${quantity} editions)` : ""}</div>
+          <div style="color:${escrowed ? "#00ff88" : "#00e676"};font-weight:bold;">${headline}</div>
+          <div style="color:#aaa;font-size:0.68rem;">${subtitle}</div>
         </div>
         <button id="toast-close" style="
           margin-left:auto;background:none;border:none;color:#555;
