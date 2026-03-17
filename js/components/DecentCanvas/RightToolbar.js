@@ -1914,6 +1914,9 @@ class RightToolbar extends HTMLElement {
       // ── Listings ──────────────────────────────────────────────────────────
       const listingCount = await escrow.nextListingId();
       const listings = [];
+
+      // Fetch live ETH/USD rate for dynamic PayPal pricing (best-effort)
+      const ethUsdRate = await this._fetchEthUsdPrice();
       for (let i = 0; i < Number(listingCount); i++) {
         const raw = await escrow.getListing(i);
         // ethers.js v6 returns structs as Result (array-like); spread copies only
@@ -1948,6 +1951,21 @@ class RightToolbar extends HTMLElement {
           const tokenLabel = l.priceToken
             ? (KNOWN_TOKENS[l.priceToken.toLowerCase()] || `token ${l.priceToken.slice(0,6)}…${l.priceToken.slice(-4)}`)
             : "token";
+
+          // Compute the PayPal USD price for this listing.
+          // PayPal is only offered for ETH-priced or USDC/USDCe-priced listings.
+          const isUsdcToken = l.priceToken && (
+            l.priceToken.toLowerCase() === USDC_OPTIMISM.toLowerCase() ||
+            l.priceToken.toLowerCase() === USDCE_OPTIMISM.toLowerCase()
+          );
+          let paypalUsdPrice = null;
+          if (l.priceETH > 0n && ethUsdRate !== null) {
+            const ethAmount = parseFloat(ethers.formatEther(l.priceETH));
+            paypalUsdPrice = (ethAmount * ethUsdRate).toFixed(2);
+          } else if (l.priceAmount > 0n && isUsdcToken) {
+            paypalUsdPrice = (Number(l.priceAmount) / 1e6).toFixed(2);
+          }
+
           return `
             <div style="border:1px solid #00ff8822;border-radius:6px;padding:8px;margin-bottom:6px;">
               <div style="color:#00ff88;font-weight:bold;font-size:0.75rem;margin-bottom:2px;">${l.note || `Listing #${l.id}`}</div>
@@ -1959,11 +1977,11 @@ class RightToolbar extends HTMLElement {
                 ${hasStock
                   ? `${l.priceETH > 0n ? `<button data-buy-eth="${l.id}" style="background:rgba(0,255,136,0.15);border:1px solid #00ff88;color:#00ff88;border-radius:4px;padding:3px 8px;font-size:0.65rem;cursor:pointer;font-family:monospace;">Buy with ETH</button>` : ""}
                      ${l.priceAmount > 0n ? `<button data-buy-usdc="${l.id}" style="background:rgba(0,200,100,0.1);border:1px solid #00cc66;color:#00cc66;border-radius:4px;padding:3px 8px;font-size:0.65rem;cursor:pointer;font-family:monospace;">Buy with ${tokenLabel}</button>` : ""}
-                     <button data-buy-paypal="${l.id}" style="background:rgba(100,150,255,0.15);border:1px solid #6699ff;color:#6699ff;border-radius:4px;padding:3px 8px;font-size:0.65rem;cursor:pointer;font-family:monospace;">💳 Buy with PayPal — $${PAYPAL_CONFIG.dnftPriceUSD}</button>`
+                     ${paypalUsdPrice !== null ? `<button data-buy-paypal="${l.id}" data-paypal-usd="${paypalUsdPrice}" style="background:rgba(100,150,255,0.15);border:1px solid #6699ff;color:#6699ff;border-radius:4px;padding:3px 8px;font-size:0.65rem;cursor:pointer;font-family:monospace;">💳 Buy with PayPal — $${paypalUsdPrice}</button>` : ""}`
                   : `<span style="color:#ff8844;font-size:0.65rem;">⚠ NFT stock not yet loaded into escrow</span>`
                 }
               </div>
-              ${hasStock ? `
+              ${hasStock && paypalUsdPrice !== null ? `
               <div id="paypal-form-${l.id}" style="display:none;margin-top:6px;padding:6px 8px;border:1px solid #6699ff33;border-radius:4px;background:rgba(100,150,255,0.05);">
                 <div style="color:#6699ff;font-size:0.65rem;margin-bottom:4px;">Enter your wallet address to receive the DNFT:</div>
                 <input id="paypal-wallet-${l.id}" type="text" placeholder="0x… wallet address" style="width:100%;background:#001508;color:#aaa;border:1px solid #6699ff44;border-radius:4px;padding:4px 6px;font-size:0.65rem;font-family:monospace;box-sizing:border-box;margin-bottom:6px;" />
@@ -1985,6 +2003,7 @@ class RightToolbar extends HTMLElement {
         });
         listingsEl.querySelectorAll("[data-buy-paypal]").forEach(btn => {
           const id = parseInt(btn.dataset.buyPaypal);
+          const usdPrice = btn.dataset.paypalUsd;
           const l = listings.find(x => x.id === id);
           let paypalInitialized = false;
           btn.onclick = async () => {
@@ -1995,11 +2014,11 @@ class RightToolbar extends HTMLElement {
               btn.textContent = "✕ Close PayPal";
               if (!paypalInitialized) {
                 paypalInitialized = true;
-                await this._renderPayPalButton(id, l, statusEl);
+                await this._renderPayPalButton(id, l, statusEl, usdPrice);
               }
             } else {
               formEl.style.display = "none";
-              btn.textContent = `💳 Buy with PayPal — $${PAYPAL_CONFIG.dnftPriceUSD}`;
+              btn.textContent = `💳 Buy with PayPal — $${usdPrice}`;
             }
           };
         });
@@ -2180,7 +2199,7 @@ class RightToolbar extends HTMLElement {
    * @param {object} listing    - The listing object from _loadEscrowData
    * @param {Element} statusEl  - Shared status bar element in the escrow panel
    */
-  async _renderPayPalButton(listingId, listing, statusEl) {
+  async _renderPayPalButton(listingId, listing, statusEl, usdPrice) {
     const containerEl = document.getElementById(`paypal-btn-container-${listingId}`);
     const paypalStatusEl = document.getElementById(`paypal-status-${listingId}`);
     if (!containerEl) return;
@@ -2214,6 +2233,23 @@ class RightToolbar extends HTMLElement {
       }
     }
 
+    // Refresh price at render time for ETH-priced listings so the order amount
+    // reflects the live rate rather than what was cached when listings first loaded.
+    let finalUsdPrice = usdPrice;
+    if (listing.priceETH > 0n) {
+      const freshRate = await this._fetchEthUsdPrice();
+      if (freshRate !== null) {
+        const ethAmount = parseFloat(
+          window.ethers ? window.ethers.formatEther(listing.priceETH) : String(Number(listing.priceETH) / 1e18)
+        );
+        finalUsdPrice = (ethAmount * freshRate).toFixed(2);
+        if (paypalStatusEl && finalUsdPrice !== usdPrice) {
+          paypalStatusEl.style.color = "#aaa";
+          paypalStatusEl.textContent = `ℹ Rate refreshed — checkout price: $${finalUsdPrice} USD`;
+        }
+      }
+    }
+
     window.paypal.Buttons({
       style: { layout: 'vertical', color: 'blue', shape: 'rect', label: 'pay', height: 30 },
 
@@ -2231,7 +2267,7 @@ class RightToolbar extends HTMLElement {
         if (paypalStatusEl) paypalStatusEl.textContent = "";
         return actions.order.create({
           purchase_units: [{
-            amount: { value: PAYPAL_CONFIG.dnftPriceUSD, currency_code: 'USD' },
+            amount: { value: finalUsdPrice, currency_code: 'USD' },
             description: listing.note || `DNFT Listing #${listingId}`,
           }],
         });
@@ -2256,7 +2292,7 @@ class RightToolbar extends HTMLElement {
         statusEl.style.color = "#00ff88";
         statusEl.textContent = `✅ PayPal payment received! Tx: ${txId.slice(0, 10)}…`;
 
-        await this._notifyAdminPayPalPurchase(txId, walletAddress, listingId, listing.note || `Listing #${listingId}`);
+        await this._notifyAdminPayPalPurchase(txId, walletAddress, listingId, listing.note || `Listing #${listingId}`, finalUsdPrice);
       },
 
       onCancel: () => {
@@ -2277,6 +2313,25 @@ class RightToolbar extends HTMLElement {
   }
 
   /**
+   * Fetches the current ETH/USD spot price from CoinGecko's public API.
+   * Returns null if the request fails (callers must handle gracefully).
+   */
+  async _fetchEthUsdPrice() {
+    try {
+      const resp = await fetch(
+        'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd',
+        { cache: 'default' }
+      );
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      return data.ethereum?.usd ?? null;
+    } catch (err) {
+      console.warn('ETH/USD price fetch failed:', err);
+      return null;
+    }
+  }
+
+  /**
    * Notifies the admin about a completed PayPal DNFT purchase.
    * Tries the configured webhook URL first (HTTPS only); falls back to a mailto: link.
    *
@@ -2284,14 +2339,15 @@ class RightToolbar extends HTMLElement {
    * @param {string} walletAddress - Buyer's wallet address (may be empty)
    * @param {number} listingId     - Listing ID
    * @param {string} listingNote   - Human-readable listing description
+   * @param {string} usdPrice      - USD amount charged (dynamic, e.g. "3.47")
    */
-  async _notifyAdminPayPalPurchase(txId, walletAddress, listingId, listingNote) {
+  async _notifyAdminPayPalPurchase(txId, walletAddress, listingId, listingNote, usdPrice) {
     const payload = {
       txId,
       walletAddress,
       listingId,
       listingNote,
-      amount: PAYPAL_CONFIG.dnftPriceUSD,
+      amount: usdPrice,
     };
 
     // Attempt webhook notification — require HTTPS to protect payment data
@@ -2324,7 +2380,7 @@ class RightToolbar extends HTMLElement {
       `Wallet Address : ${walletAddress || '(not provided)'}\n` +
       `Listing ID     : ${listingId}\n` +
       `Listing        : ${listingNote}\n` +
-      `Amount         : $${PAYPAL_CONFIG.dnftPriceUSD}\n\n` +
+      `Amount         : $${usdPrice}\n\n` +
       `Please verify the PayPal payment on the PayPal dashboard, then call\n` +
       `safeTransferFrom (via the DNFT Contract Functions explorer or Etherscan)\n` +
       `to deliver the DNFT to the buyer's wallet address.`
