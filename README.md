@@ -122,7 +122,10 @@ Product DNFT in a few steps — no code changes required.
 
 5. **Set Options**
    - **Kind** — `🔮 Product` (or `🏆 Achievement`)
-   - **Max Supply** — `1` for a unique genesis mint, `0` for unlimited, or any edition size
+   - **Max Supply** — `1` for a unique genesis mint, `0` for unlimited, or any edition size.
+     _This sets the on-chain edition cap — the maximum number of editions that can ever be minted for this token._
+   - **Mint Quantity** — how many editions you want to mint **right now** (defaults to `1`).
+     Must be ≤ Max Supply (when Max Supply > 0). Additional editions can be minted later via the 📋 DNFT Contract Functions explorer.
    - **Mint to** — leave blank to mint to your own wallet, or enter a specific address
 
 6. **Click ✨ Mint DNFT**
@@ -131,7 +134,8 @@ Product DNFT in a few steps — no code changes required.
    - Build the OpenSea-compliant metadata JSON (including `repo_url` and `artifact_cid`)
    - Upload the metadata JSON to IPFS
    - Call `registerToken` on-chain → receive a `tokenId`
-   - Call `mintProduct` (or `mintAchievement`) to mint the token to the recipient
+   - Call `mintProduct` (or `mintAchievement`) to mint the specified **Mint Quantity** to the recipient
+   - Show a toast: `✅ Minted 5 × MyProduct — Token #3`
 
 7. **Copy the tokenId** from the success message.
 
