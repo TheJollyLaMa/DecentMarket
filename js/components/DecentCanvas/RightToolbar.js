@@ -49,10 +49,16 @@ const ESCROW_ABI = [
   "function deactivatePlan(uint256 planId)",
   "function subscribe(uint256 planId) payable",
   "function withdrawNFT(address nftContract, uint256 tokenId, uint256 amount, address to)",
+  "function transferOwnership(address newOwner)",
+  "function renounceOwnership()",
+  "function supportsInterface(bytes4 interfaceId) view returns (bool)",
 ];
 
 // ── Known token addresses ─────────────────────────────────────────────────────
 const USDC_OPTIMISM = "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85";
+
+// Values >= this threshold are displayed with an ETH equivalent (1 trillion wei = 0.000001 ETH).
+const WEI_DISPLAY_THRESHOLD = 1_000_000_000_000n;
 
 class RightToolbar extends HTMLElement {
   connectedCallback() {
@@ -1691,6 +1697,9 @@ class RightToolbar extends HTMLElement {
           </div>
         </div>
 
+        <!-- Contract Function Explorer -->
+        <div id="escrow-fn-explorer"></div>
+
         <!-- Status / feedback -->
         <div id="escrow-status" style="font-size:0.68rem;color:#888;min-height:1rem;text-align:center;"></div>
 
@@ -1710,6 +1719,7 @@ class RightToolbar extends HTMLElement {
 
     // Wire owner-action buttons once data is loaded (they may appear after async)
     this._wireEscrowOwnerActions(panel, escrowAddress);
+    this._wireEscrowFnExplorer(panel, escrowAddress);
   }
 
   async _loadEscrowData(panel, escrowAddress, userAddress) {
@@ -2226,7 +2236,223 @@ class RightToolbar extends HTMLElement {
         statusEl.textContent = `⚠ ${err.reason || err.message?.slice(0, 80)}`;
       }
     };
+  // ── 📋 Contract Function Explorer ─────────────────────────────────────────
+  // Renders a collapsible list of every contract function with inputs + Call/Send buttons.
+  _wireEscrowFnExplorer(panel, escrowAddress) {
+    const container = panel.querySelector("#escrow-fn-explorer");
+    if (!container || !escrowAddress) return;
+
+    // All contract functions (read + write), ordered logically.
+    const FNS = [
+      // ── READ ──────────────────────────────────────────────────────────────
+      { id:"r-owner",     name:"owner",             label:"owner()",                          mutability:"view", inputs:[], output:"address" },
+      { id:"r-ethbal",    name:"getETHBalance",      label:"getETHBalance()",                  mutability:"view", inputs:[], output:"uint256 (wei)" },
+      { id:"r-tokbal",    name:"getBalance",         label:"getBalance( token )",              mutability:"view",
+        inputs:[{domId:"rfi-gb-tok", placeholder:"token address", argType:"address"}], output:"uint256" },
+      { id:"r-nftbal",    name:"getNFTBalance",      label:"getNFTBalance( nftContract, tokenId )", mutability:"view",
+        inputs:[{domId:"rfi-gnb-con", placeholder:"nftContract", argType:"address"},{domId:"rfi-gnb-tid", placeholder:"tokenId", argType:"uint256"}], output:"uint256" },
+      { id:"r-nextlid",   name:"nextListingId",      label:"nextListingId()",                  mutability:"view", inputs:[], output:"uint256" },
+      { id:"r-nextpid",   name:"nextPlanId",         label:"nextPlanId()",                     mutability:"view", inputs:[], output:"uint256" },
+      { id:"r-getlist",   name:"getListing",         label:"getListing( listingId )",          mutability:"view",
+        inputs:[{domId:"rfi-gl-id", placeholder:"listingId", argType:"uint256"}], output:"Listing" },
+      { id:"r-getplan",   name:"getPlan",            label:"getPlan( planId )",                mutability:"view",
+        inputs:[{domId:"rfi-gp-id", placeholder:"planId", argType:"uint256"}], output:"Plan" },
+      { id:"r-issub",     name:"isSubscribed",       label:"isSubscribed( planId, account )",  mutability:"view",
+        inputs:[{domId:"rfi-is-pid", placeholder:"planId", argType:"uint256"},{domId:"rfi-is-acc", placeholder:"account address", argType:"address"}], output:"bool" },
+      { id:"r-suppiface", name:"supportsInterface",  label:"supportsInterface( interfaceId )", mutability:"view",
+        inputs:[{domId:"rfi-si-ifc", placeholder:"interfaceId (bytes4, e.g. 0x01ffc9a7)", argType:"bytes4"}], output:"bool" },
+
+      // ── WRITE ─────────────────────────────────────────────────────────────
+      { id:"w-depeth",  name:"depositETH",      label:"depositETH( note )",                              mutability:"payable",
+        inputs:[{domId:"wfi-de-note", placeholder:"note", argType:"string"},{domId:"wfi-de-val", placeholder:"ETH to send", argType:"eth"}] },
+      { id:"w-deptok",  name:"depositToken",    label:"depositToken( token, amount, note )",             mutability:"nonpayable",
+        inputs:[{domId:"wfi-dt-tok", placeholder:"token address", argType:"address"},{domId:"wfi-dt-amt", placeholder:"amount (wei)", argType:"uint256"},{domId:"wfi-dt-note", placeholder:"note", argType:"string"}] },
+      { id:"w-pureth",  name:"purchaseWithETH", label:"purchaseWithETH( listingId, amount )",            mutability:"payable",
+        inputs:[{domId:"wfi-pwe-id", placeholder:"listingId", argType:"uint256"},{domId:"wfi-pwe-amt", placeholder:"qty to buy", argType:"uint256"},{domId:"wfi-pwe-val", placeholder:"ETH to send", argType:"eth"}] },
+      { id:"w-purtok",  name:"purchaseWithToken",label:"purchaseWithToken( listingId, amount )",         mutability:"nonpayable",
+        inputs:[{domId:"wfi-pwt-id", placeholder:"listingId", argType:"uint256"},{domId:"wfi-pwt-amt", placeholder:"qty to buy", argType:"uint256"}] },
+      { id:"w-subscribe",name:"subscribe",      label:"subscribe( planId )",                             mutability:"payable",
+        inputs:[{domId:"wfi-sub-id", placeholder:"planId", argType:"uint256"},{domId:"wfi-sub-val", placeholder:"ETH to send (if ETH plan)", argType:"eth"}] },
+      { id:"w-witeth",  name:"withdrawETH",     label:"withdrawETH( amount, reason ) 🔑",               mutability:"nonpayable", ownerOnly:true,
+        inputs:[{domId:"wfi-we-amt", placeholder:"amount (ETH)", argType:"eth"},{domId:"wfi-we-rsn", placeholder:"reason", argType:"string"}] },
+      { id:"w-wittok",  name:"withdrawToken",   label:"withdrawToken( token, amount, reason ) 🔑",      mutability:"nonpayable", ownerOnly:true,
+        inputs:[{domId:"wfi-wt-tok", placeholder:"token address", argType:"address"},{domId:"wfi-wt-amt", placeholder:"amount (wei)", argType:"uint256"},{domId:"wfi-wt-rsn", placeholder:"reason", argType:"string"}] },
+      { id:"w-witnft",  name:"withdrawNFT",     label:"withdrawNFT( nftContract, tokenId, amount, to ) 🔑", mutability:"nonpayable", ownerOnly:true,
+        inputs:[{domId:"wfi-wn-con", placeholder:"nftContract", argType:"address"},{domId:"wfi-wn-tid", placeholder:"tokenId", argType:"uint256"},{domId:"wfi-wn-amt", placeholder:"amount", argType:"uint256"},{domId:"wfi-wn-to", placeholder:"recipient address", argType:"address"}] },
+      { id:"w-listdnft",name:"listDNFT",        label:"listDNFT( nftContract, tokenId, priceETH, priceToken, priceAmount, qty, note ) 🔑", mutability:"nonpayable", ownerOnly:true,
+        inputs:[
+          {domId:"wfi-ld-con",  placeholder:"nftContract",               argType:"address"},
+          {domId:"wfi-ld-tid",  placeholder:"tokenId",                   argType:"uint256"},
+          {domId:"wfi-ld-peth", placeholder:"priceETH (ETH, 0=none)",    argType:"eth"},
+          {domId:"wfi-ld-ptok", placeholder:"priceToken (0x0…0 for none)",argType:"address"},
+          {domId:"wfi-ld-pamt", placeholder:"priceAmount (token wei, 0=none)",argType:"uint256"},
+          {domId:"wfi-ld-qty",  placeholder:"quantity",                  argType:"uint256"},
+          {domId:"wfi-ld-note", placeholder:"note",                      argType:"string"},
+        ] },
+      { id:"w-delist",  name:"delistDNFT",     label:"delistDNFT( listingId ) 🔑",                     mutability:"nonpayable", ownerOnly:true,
+        inputs:[{domId:"wfi-dd-id", placeholder:"listingId", argType:"uint256"}] },
+      { id:"w-crplan",  name:"createPlan",      label:"createPlan( name, paymentToken, pricePerPeriod, periodSeconds ) 🔑", mutability:"nonpayable", ownerOnly:true,
+        inputs:[{domId:"wfi-cp-name", placeholder:"plan name", argType:"string"},{domId:"wfi-cp-tok", placeholder:"paymentToken (0x0…0 for ETH)", argType:"address"},{domId:"wfi-cp-price", placeholder:"pricePerPeriod (wei)", argType:"uint256"},{domId:"wfi-cp-per", placeholder:"periodSeconds", argType:"uint256"}] },
+      { id:"w-dactplan",name:"deactivatePlan",  label:"deactivatePlan( planId ) 🔑",                    mutability:"nonpayable", ownerOnly:true,
+        inputs:[{domId:"wfi-dap-id", placeholder:"planId", argType:"uint256"}] },
+      { id:"w-towner",  name:"transferOwnership",label:"transferOwnership( newOwner ) 🔑",              mutability:"nonpayable", ownerOnly:true,
+        inputs:[{domId:"wfi-to-addr", placeholder:"newOwner address", argType:"address"}] },
+      { id:"w-rowner",  name:"renounceOwnership",label:"renounceOwnership() 🔑 ⚠ IRREVERSIBLE",         mutability:"nonpayable", ownerOnly:true, inputs:[] },
+    ];
+
+    function renderFnCard(fn) {
+      const isRead = fn.mutability === "view" || fn.mutability === "pure";
+      const btnRgb  = isRead ? "100,200,255" : fn.ownerOnly ? "255,165,0" : "0,255,136";
+      const lblColor = isRead ? "#44aaff" : fn.ownerOnly ? "#ff9900" : "#00ff88";
+      const btnTxt  = isRead ? "📖 Call" : fn.mutability === "payable" ? "⚡ Send" : "✍ Send";
+      const inputsHtml = fn.inputs.map(inp =>
+        `<input id="${inp.domId}" placeholder="${inp.placeholder}"
+           style="width:100%;box-sizing:border-box;background:#001508;color:#00ff88;
+                  border:1px solid #00ff8822;border-radius:3px;padding:3px 5px;
+                  font-size:0.63rem;font-family:monospace;margin-bottom:3px;" />`
+      ).join("");
+      return `
+        <div style="border:1px solid #00ff8815;border-radius:5px;padding:6px 8px;margin-bottom:5px;">
+          <div style="font-size:0.63rem;color:${lblColor};font-family:monospace;margin-bottom:${fn.inputs.length ? 4 : 2}px;word-break:break-all;">${fn.label}</div>
+          ${inputsHtml}
+          <div style="display:flex;align-items:flex-start;gap:6px;margin-top:2px;">
+            <button id="escrow-fn-btn-${fn.id}"
+              style="flex-shrink:0;background:rgba(${btnRgb},0.15);border:1px solid rgba(${btnRgb},0.6);
+                     color:rgb(${btnRgb});border-radius:4px;padding:3px 10px;font-size:0.63rem;
+                     cursor:pointer;font-family:monospace;">${btnTxt}</button>
+            <pre id="escrow-fn-result-${fn.id}"
+              style="margin:0;font-size:0.6rem;color:#aaa;word-break:break-all;white-space:pre-wrap;flex:1;"></pre>
+          </div>
+        </div>`;
+    }
+
+    const readFns  = FNS.filter(f => f.mutability === "view" || f.mutability === "pure");
+    const writeFns = FNS.filter(f => f.mutability !== "view" && f.mutability !== "pure");
+
+    container.innerHTML = `
+      <div id="escrow-fn-toggle"
+        style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;
+               background:rgba(0,40,80,0.4);border:1px solid #00aaff33;border-radius:6px;
+               padding:8px 10px;user-select:none;margin-bottom:2px;">
+        <span style="font-size:0.7rem;color:#44aaff;font-family:monospace;">📋 Contract Functions</span>
+        <span id="escrow-fn-chevron" style="font-size:0.7rem;color:#44aaff;">▶</span>
+      </div>
+      <div id="escrow-fn-body" style="display:none;padding:4px 0;">
+        <div style="font-size:0.6rem;color:#446688;text-transform:uppercase;letter-spacing:0.1em;margin:4px 0;">── Read (view) ──</div>
+        ${readFns.map(renderFnCard).join("")}
+        <div style="font-size:0.6rem;color:#446688;text-transform:uppercase;letter-spacing:0.1em;margin:8px 0 4px;">── Write (send tx) ──</div>
+        ${writeFns.map(renderFnCard).join("")}
+      </div>
+    `;
+
+    // Toggle open/close
+    panel.querySelector("#escrow-fn-toggle").onclick = () => {
+      const body    = panel.querySelector("#escrow-fn-body");
+      const chevron = panel.querySelector("#escrow-fn-chevron");
+      const open = body.style.display !== "none";
+      body.style.display = open ? "none" : "block";
+      chevron.textContent = open ? "▶" : "▼";
+    };
+
+    // Wire each function button
+    for (const fn of FNS) {
+      const btn = panel.querySelector(`#escrow-fn-btn-${fn.id}`);
+      if (!btn) continue;
+
+      btn.onclick = async () => {
+        const resultEl = panel.querySelector(`#escrow-fn-result-${fn.id}`);
+        const ethers = window.ethers;
+        if (!ethers) { resultEl.textContent = "⚠ ethers.js not loaded"; return; }
+
+        // Collect arguments from inputs
+        const args = [];
+        let ethValue = 0n;
+        try {
+          for (const inp of fn.inputs) {
+            const val = panel.querySelector(`#${inp.domId}`)?.value.trim() ?? "";
+            if (inp.argType === "eth") {
+              ethValue = val ? ethers.parseEther(val) : 0n;
+            } else if (inp.argType === "uint256") {
+              if (val === "") throw new Error(`"${inp.placeholder}" is required (enter a number)`);
+              args.push(BigInt(val));
+            } else {
+              args.push(val);
+            }
+          }
+        } catch (e) {
+          resultEl.style.color = "#ff4444";
+          resultEl.textContent = `⚠ Input error: ${e.message?.slice(0, 60)}`;
+          return;
+        }
+
+        resultEl.style.color = "#888";
+        resultEl.textContent = "⏳ …";
+
+        try {
+          const provider = new ethers.BrowserProvider(window.ethereum);
+          const isRead = fn.mutability === "view" || fn.mutability === "pure";
+
+          if (isRead) {
+            const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, provider);
+            const raw = await escrow[fn.name](...args);
+            resultEl.style.color = "#44aaff";
+            resultEl.textContent = this._formatEscrowResult(raw, ethers);
+          } else {
+            const signer = await provider.getSigner();
+            const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, signer);
+            const overrides = ethValue > 0n ? { value: ethValue } : {};
+            const callArgs = Object.keys(overrides).length ? [...args, overrides] : args;
+            const tx = await escrow[fn.name](...callArgs);
+            resultEl.style.color = "#888";
+            resultEl.textContent = "⏳ confirming…";
+            await tx.wait();
+            resultEl.style.color = "#00ff88";
+            resultEl.textContent = `✅ ${tx.hash}`;
+          }
+        } catch (err) {
+          resultEl.style.color = "#ff4444";
+          resultEl.textContent = `⚠ ${err.reason || err.message?.slice(0, 120)}`;
+        }
+      };
+    }
   }
+
+  // Format a raw ethers.js contract call return value for display.
+  _formatEscrowResult(raw, ethers) {
+    if (raw === null || raw === undefined) return "null";
+    if (typeof raw === "bigint") {
+      const s = raw.toString();
+      if (raw > WEI_DISPLAY_THRESHOLD) {
+        return `${s} wei\n≈ ${parseFloat(ethers.formatEther(raw)).toFixed(8)} ETH`;
+      }
+      return s;
+    }
+    if (typeof raw === "boolean") return raw ? "✅ true" : "❌ false";
+    if (typeof raw === "string") return raw || "(empty string)";
+    if (raw && typeof raw === "object") {
+      // ethers v6 Result / struct: named keys mixed with numeric indices
+      const keys = Object.keys(raw).filter(k => isNaN(Number(k)));
+      if (keys.length > 0) {
+        return keys.map(k => {
+          const v = raw[k];
+          let fv;
+          if (typeof v === "bigint") {
+            fv = v > WEI_DISPLAY_THRESHOLD
+              ? `${v} (≈${parseFloat(ethers.formatEther(v)).toFixed(8)} ETH)`
+              : v.toString();
+          } else if (typeof v === "boolean") {
+            fv = v ? "✅ true" : "❌ false";
+          } else {
+            fv = String(v);
+          }
+          return `${k}: ${fv}`;
+        }).join("\n");
+      }
+      return JSON.stringify(raw, (_, v) => typeof v === "bigint" ? v.toString() : v, 2);
+    }
+    return String(raw);
+  }
+
 }
 
 customElements.define("decent-right-toolbar", RightToolbar);
