@@ -57,11 +57,13 @@ const ESCROW_ABI = [
 // ── Known token addresses ─────────────────────────────────────────────────────
 const USDC_OPTIMISM  = "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85"; // native USDC (Circle)
 const USDCE_OPTIMISM = "0x7F5c764cBc14f9669B88837ca1490cCa17c31607"; // USDCe (bridged)
+const BNUT_OPTIMISM  = "0x733c4d2Aae900E608147dd89Fa93606f89722823"; // $BNUT — BigNuten governance & rewards token
 
 // Human-readable labels for known Optimism tokens
 const KNOWN_TOKENS = {
   [USDC_OPTIMISM.toLowerCase()]:  "native USDC (Circle)",
   [USDCE_OPTIMISM.toLowerCase()]: "USDCe (bridged)",
+  [BNUT_OPTIMISM.toLowerCase()]:  "$BNUT (BigNuten)",
 };
 
 // Values >= this threshold are displayed with an ETH equivalent (1 trillion wei = 0.000001 ETH).
@@ -1757,6 +1759,18 @@ class RightToolbar extends HTMLElement {
             </div>
           </div>
 
+          <!-- Deposit $BNUT into Escrow -->
+          <div style="background:rgba(255,215,0,0.04);border:1px solid #ffd70033;border-radius:6px;padding:8px 10px;margin-bottom:8px;">
+            <div style="font-size:0.65rem;color:#b8860b;margin-bottom:4px;">🥜 Deposit $BNUT</div>
+            <div style="display:flex;flex-direction:column;gap:4px;">
+              <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                <input id="escrow-deposit-bnut-amount" placeholder="amount (BNUT, e.g. 1.5)" style="flex:1;min-width:80px;background:#001508;color:#ffd700;border:1px solid #ffd70044;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
+                <input id="escrow-deposit-bnut-note" placeholder="note" style="flex:2;min-width:120px;background:#001508;color:#ffd700;border:1px solid #ffd70044;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
+              </div>
+              <button id="escrow-deposit-bnut-btn" style="background:rgba(255,215,0,0.15);border:1px solid #ffd700;color:#ffd700;border-radius:4px;padding:4px 10px;font-size:0.7rem;cursor:pointer;font-family:monospace;">↓ Deposit $BNUT</button>
+            </div>
+          </div>
+
           <!-- Deposit NFT into Escrow -->
           <div style="background:rgba(0,255,136,0.03);border:1px solid #00ff8811;border-radius:6px;padding:8px 10px;margin-bottom:8px;">
             <div style="font-size:0.65rem;color:#008844;margin-bottom:4px;">Deposit NFT into Escrow <span style="color:#555;">(Step 1 — send NFTs before listing)</span></div>
@@ -1926,16 +1940,22 @@ class RightToolbar extends HTMLElement {
       ]);
 
       let usdcBal = 0n;
+      let bnutBal = 0n;
       try { usdcBal = await escrow.getBalance(USDC_OPTIMISM); } catch { /* ignore */ }
+      try { bnutBal = await escrow.getBalance(BNUT_OPTIMISM); } catch { /* ignore */ }
 
       balanceEl.innerHTML = `
         <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
           <span style="color:#888;">ETH</span>
           <span style="color:#00ff88;">${parseFloat(ethers.formatEther(ethBal)).toFixed(4)} ETH</span>
         </div>
-        <div style="display:flex;justify-content:space-between;">
+        <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
           <span style="color:#888;">USDC</span>
           <span style="color:#00ff88;">${(Number(usdcBal / 1000n) / 1000).toFixed(2)} USDC</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
+          <span style="color:#888;">🥜 BNUT</span>
+          <span style="color:#ffd700;">${parseFloat(ethers.formatEther(bnutBal)).toFixed(4)} BNUT</span>
         </div>
         <div style="margin-top:6px;font-size:0.62rem;color:#555;">Owner: <span style="color:#00cc66;">${ownerAddr.slice(0,6)}…${ownerAddr.slice(-4)}</span></div>
       `;
@@ -2100,9 +2120,17 @@ class RightToolbar extends HTMLElement {
             ? `${Number(p.periodSeconds) / 86400} day(s)`
             : `${Number(p.periodSeconds) / 3600} hour(s)`;
           const isEthPlan = p.paymentToken === ethers.ZeroAddress;
+          const tokenLabel = !isEthPlan
+            ? (KNOWN_TOKENS[p.paymentToken.toLowerCase()] || `token …${p.paymentToken.slice(-4)}`)
+            : null;
+          // Format price based on known token decimals (BNUT = 18, USDC/USDCe = 6, fallback = 18)
           const priceLabel = isEthPlan
-            ? `${ethers.formatEther(p.pricePerPeriod)} ETH`
-            : `${(Number(p.pricePerPeriod / 1000n) / 1000).toFixed(2)} USDC`;
+            ? `${parseFloat(ethers.formatEther(p.pricePerPeriod)).toFixed(4)} ETH`
+            : p.paymentToken.toLowerCase() === BNUT_OPTIMISM.toLowerCase()
+              ? `${parseFloat(ethers.formatEther(p.pricePerPeriod)).toFixed(4)} BNUT`
+              : (p.paymentToken.toLowerCase() === USDC_OPTIMISM.toLowerCase() || p.paymentToken.toLowerCase() === USDCE_OPTIMISM.toLowerCase())
+                ? `${(Number(p.pricePerPeriod / 1000n) / 1000).toFixed(2)} ${tokenLabel}`
+                : `${parseFloat(ethers.formatEther(p.pricePerPeriod)).toFixed(4)} ${tokenLabel}`;
           return `
             <div style="border:1px solid #00ff8822;border-radius:6px;padding:8px;margin-bottom:6px;">
               <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -2650,6 +2678,41 @@ class RightToolbar extends HTMLElement {
         panel.querySelector("#escrow-withdraw-token-amount").value = "";
         panel.querySelector("#escrow-withdraw-token-reason").value = "";
       } catch (err) {
+        statusEl.textContent = `⚠ ${err.reason || err.message?.slice(0, 80)}`;
+      }
+    };
+
+    panel.querySelector("#escrow-deposit-bnut-btn").onclick = async () => {
+      const statusEl = panel.querySelector("#escrow-status");
+      const amtStr = panel.querySelector("#escrow-deposit-bnut-amount").value.trim();
+      const note = panel.querySelector("#escrow-deposit-bnut-note").value.trim();
+      if (!amtStr) { statusEl.textContent = "⚠ Enter a BNUT amount"; return; }
+      try {
+        statusEl.style.color = "";
+        statusEl.textContent = "⏳ Approving $BNUT transfer…";
+        const ethers = window.ethers;
+        if (!ethers) { statusEl.textContent = "⚠ ethers.js not loaded"; return; }
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const signer = await provider.getSigner();
+        const ERC20_ABI = [
+          "function approve(address spender, uint256 amount) returns (bool)",
+          "function allowance(address owner, address spender) view returns (uint256)",
+        ];
+        const bnut = new ethers.Contract(BNUT_OPTIMISM, ERC20_ABI, signer);
+        const weiAmt = ethers.parseEther(amtStr);
+        const approveTx = await bnut.approve(escrowAddress, weiAmt);
+        await approveTx.wait();
+        statusEl.textContent = "⏳ Depositing $BNUT to escrow…";
+        const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, signer);
+        const depositTx = await escrow.depositToken(BNUT_OPTIMISM, weiAmt, note || "$BNUT deposit");
+        await depositTx.wait();
+        statusEl.style.color = "#ffd700";
+        statusEl.textContent = `✅ Deposited ${amtStr} BNUT. Tx: ${depositTx.hash.slice(0,10)}…`;
+        panel.querySelector("#escrow-deposit-bnut-amount").value = "";
+        panel.querySelector("#escrow-deposit-bnut-note").value = "";
+        this._loadEscrowData(panel, escrowAddress, null);
+      } catch (err) {
+        statusEl.style.color = "#ff4444";
         statusEl.textContent = `⚠ ${err.reason || err.message?.slice(0, 80)}`;
       }
     };
