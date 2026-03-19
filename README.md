@@ -15,6 +15,16 @@ Use the right toolbar panel to switch networks; the contract address will be aut
 
 Early supporter DNFT sale proceeds route to the **DecentEscrow** contract — a transparent, on-chain community treasury visible to everyone on Optimistic Etherscan.
 
+The escrow supports the following tokens on Optimism Mainnet:
+
+| Token | Symbol | Address |
+|-------|--------|---------|
+| Ether | ETH | _(native)_ |
+| USD Coin | USDC | `0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85` |
+| BigNuten Token | **$BNUT** | `0x733c4d2Aae900E608147dd89Fa93606f89722823` |
+
+$BNUT is the BigNuten governance and bounty rewards token. It is live on Optimism and used in payroll and bounty settlements. Balances for ETH, USDC, and $BNUT are all displayed in the 🏦 DecentEscrow panel. Any wallet can deposit $BNUT to the escrow via the owner panel's **↓ Deposit $BNUT** action (requires an ERC-20 `approve` first, which the UI handles automatically).
+
 See [`docs/ESCROW.md`](./docs/ESCROW.md) for:
 - Contract address and Etherscan link
 - What the funds are used for (bounties, infrastructure, community)

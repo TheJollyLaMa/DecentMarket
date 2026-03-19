@@ -12,6 +12,15 @@ Single source of truth for all on-chain deployments of DecentMarket smart contra
 | Optimism Mainnet | DecentNFT | v0.2 | `0xe870f7b1D10C41dbc6b75598a5308B9a2Bb52958` | `abis/DecentNFT_v0.2.json` | [Optimism Etherscan](https://optimistic.etherscan.io/address/0xe870f7b1D10C41dbc6b75598a5308B9a2Bb52958) |
 | Optimism Mainnet | DecentEscrow | v0.1 | `0x23A457AD3C33d68E4fAd2FCa7c5d9a511E0C350e` | `abis/DecentEscrow_v0.1.json` | [Optimism Etherscan](https://optimistic.etherscan.io/address/0x23A457AD3C33d68E4fAd2FCa7c5d9a511E0C350e) |
 
+### Supported Escrow Tokens (Optimism Mainnet)
+
+| Token | Symbol | Address | Decimals | Notes |
+|-------|--------|---------|----------|-------|
+| Ether | ETH | _(native)_ | 18 | Native currency; deposit via `depositETH()` |
+| USD Coin | USDC | `0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85` | 6 | Native USDC (Circle) |
+| Bridged USDC | USDCe | `0x7F5c764cBc14f9669B88837ca1490cCa17c31607` | 6 | Bridged USDC |
+| BigNuten Token | $BNUT | `0x733c4d2Aae900E608147dd89Fa93606f89722823` | 18 | Governance & bounty rewards token; displayed in escrow balance panel |
+
 ---
 
 ## How the UI Chooses the Contract
