@@ -1761,7 +1761,7 @@ class RightToolbar extends HTMLElement {
 
           <!-- Deposit $BNUT into Escrow -->
           <div style="background:rgba(255,215,0,0.04);border:1px solid #ffd70033;border-radius:6px;padding:8px 10px;margin-bottom:8px;">
-            <div style="font-size:0.65rem;color:#b8860b;margin-bottom:4px;">🥜 Deposit $BNUT</div>
+            <div style="font-size:0.65rem;color:#b8860b;margin-bottom:4px;display:flex;align-items:center;gap:4px;"><img src="img/BigNuten.png" style="width:14px;height:14px;object-fit:contain;border-radius:2px;" alt="BNUT token icon" /> Deposit $BNUT</div>
             <div style="display:flex;flex-direction:column;gap:4px;">
               <div style="display:flex;gap:6px;flex-wrap:wrap;">
                 <input id="escrow-deposit-bnut-amount" placeholder="amount (BNUT, e.g. 1.5)" style="flex:1;min-width:80px;background:#001508;color:#ffd700;border:1px solid #ffd70044;border-radius:4px;padding:4px 6px;font-size:0.7rem;font-family:monospace;" />
@@ -1954,7 +1954,7 @@ class RightToolbar extends HTMLElement {
           <span style="color:#00ff88;">${(Number(usdcBal / 1000n) / 1000).toFixed(2)} USDC</span>
         </div>
         <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
-          <span style="color:#888;">🥜 BNUT</span>
+          <span style="color:#888;display:inline-flex;align-items:center;gap:4px;"><img src="img/BigNuten.png" style="width:14px;height:14px;object-fit:contain;border-radius:2px;" alt="BNUT token icon" /> BNUT</span>
           <span style="color:#ffd700;">${parseFloat(ethers.formatEther(bnutBal)).toFixed(4)} BNUT</span>
         </div>
         <div style="margin-top:6px;font-size:0.62rem;color:#555;">Owner: <span style="color:#00cc66;">${ownerAddr.slice(0,6)}…${ownerAddr.slice(-4)}</span></div>
