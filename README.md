@@ -5,11 +5,14 @@ A Decent Market With a Decent Head, a Decent Canvas, and a Decent Foot in a Web3
 
 | Network | Chain ID | Symbol | Contract (DecentNFT) |
 |---------|----------|--------|-----------------------|
+| Base Mainnet | 8453 (0x2105) | ETH | _Pending Base deployment_ |
 | Polygon Mainnet | 137 (0x89) | MATIC | `0x4cE20F0bbF7eA38488F9c9555EfD2b502E86A53E` (v0.1) |
-| Optimism Mainnet | 10 (0xa) | ETH | `0xe870f7b1D10C41dbc6b75598a5308B9a2Bb52958` (v0.2) |
+| Optimism Mainnet | 10 (0xa) | ETH | `0xe870f7b1D10C41dbc6b75598a5308B9a2Bb52958` (v0.2, legacy) |
 
-The DecentNFT v0.2 contract is live on Optimism at `0xe870f7b1D10C41dbc6b75598a5308B9a2Bb52958`.
-Use the right toolbar panel to switch networks; the contract address will be auto-filled for supported networks.
+The Base deployment is the current migration target. Select the active chain in
+MetaMask; the app reports the active chain and enables contract actions only when
+the corresponding verified address is configured. The Optimism deployment remains
+documented for legacy access and recovery.
 
 ## Community Escrow Treasury
 

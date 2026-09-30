@@ -3,6 +3,17 @@
  * Each key is a chain identifier; add new chains here as support expands.
  */
 export const CONTRACTS = {
+  base: {
+    chainId: '0x2105',        // 8453 in decimal
+    chainName: 'Base Mainnet',
+    nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+    rpcUrls: ['https://mainnet.base.org'],
+    blockExplorerUrls: ['https://basescan.org'],
+    addresses: {
+      DNFT: '',
+      ESCROW: '',
+    },
+  },
   polygon: {
     chainId: '0x89',        // 137 in decimal
     chainName: 'Polygon Mainnet',
@@ -27,7 +38,7 @@ export const CONTRACTS = {
       USDCe: '0x7F5c764cBc14f9669B88837ca1490cCa17c31607', // USDCe (bridged)      — 6 decimals
     },
   },
-  // Future chains — uncomment and fill in when support is added:
+  // Legacy networks remain available as address records; MetaMask controls switching.
   // ethereum: {
   //   chainId: '0x1',
   //   chainName: 'Ethereum Mainnet',
@@ -90,7 +101,7 @@ export const VERSIONS = [
   },
   {
     label: 'v0.2',
-    description: 'live on Optimism',
+    description: 'legacy Optimism',
     href: '/v0.2/',
     available: true,
     current: false,

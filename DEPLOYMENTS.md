@@ -21,11 +21,15 @@ Single source of truth for all on-chain deployments of DecentMarket smart contra
 | Bridged USDC | USDCe | `0x7F5c764cBc14f9669B88837ca1490cCa17c31607` | 6 | Bridged USDC |
 | BigNuten Token | $BNUT | `0x733c4d2Aae900E608147dd89Fa93606f89722823` | 18 | Governance & bounty rewards token; displayed in escrow balance panel |
 
+Base Mainnet is the current deployment target. Base DecentNFT and DecentEscrow
+addresses remain blank until deployment and verification are complete. The UI
+does not provide an in-app network switch; use MetaMask to change chains.
+
 ---
 
 ## How the UI Chooses the Contract
 
-The UI selects the correct contract address based on the user's active wallet network.
+The UI selects the correct contract address based on the user's active MetaMask network.
 
 **Config file:** [`js/config/contracts.js`](js/config/contracts.js)
 
@@ -45,15 +49,14 @@ optimism: {
 },
 ```
 
-The UI component that reads this config and auto-fills the contract address on network switch is:
+The UI component that reads this config and reports the active MetaMask network is:
 [`js/components/DecentCanvas/RightToolbar.js`](js/components/DecentCanvas/RightToolbar.js)
 
 ### Adding a New Chain or Updating an Address
 
 1. **Update `js/config/contracts.js`** — add a new key under `CONTRACTS` (or update an existing
    address in `addresses.DNFT`).
-2. **Update `js/components/DecentCanvas/RightToolbar.js`** — add the chain's hex ID and name to
-   the `NETWORKS` map so the toolbar switch button appears.
+2. **Update `js/components/DecentCanvas/RightToolbar.js`** — update the active-chain status display.
 3. **Update this file** — add a row to the [Deployed Contracts](#deployed-contracts) table above.
 
 ---

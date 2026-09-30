@@ -235,22 +235,15 @@ class RightToolbar extends HTMLElement {
           <span style="background:#00e5ff;color:#000;border-radius:4px;padding:2px 8px;font-size:0.7rem;font-weight:bold;">v0.2</span>
         </div>
 
-        <!-- Network switcher -->
+        <!-- Active MetaMask network -->
         <div style="
           background:rgba(0,229,255,0.04);
           border:1px solid #00e5ff22;
           border-radius:8px;
           padding:10px 12px;
         ">
-          <div style="font-size:0.65rem;color:#0088aa;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px;">🌐 Network</div>
-          <select id="settings-network-select" style="
-            width:100%;background:#000;color:#00e5ff;
-            border:1px solid #00e5ff88;border-radius:4px;
-            padding:6px 8px;font-size:0.75rem;font-family:monospace;cursor:pointer;
-          ">
-            <option value="0xa" ${chainId === '0xa' ? 'selected' : ''}>🔴 Optimism (v0.2 — active)</option>
-            <option value="0x89" ${chainId === '0x89' ? 'selected' : ''}>🟣 Polygon v0.1 (legacy)</option>
-          </select>
+          <div style="font-size:0.65rem;color:#0088aa;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px;">🌐 Active MetaMask network</div>
+          <div id="settings-network-name" style="color:#00e5ff;font-size:0.8rem;">Select a chain in MetaMask</div>
           <div id="settings-chain-status" style="font-size:0.65rem;color:#888;margin-top:6px;"></div>
         </div>
 
@@ -347,6 +340,7 @@ class RightToolbar extends HTMLElement {
 
     // Chain status display
     const chainStatusEl = panel.querySelector("#settings-chain-status");
+    const chainNameEl = panel.querySelector("#settings-network-name");
     const updateChainStatus = async () => {
       if (!window.ethereum) {
         chainStatusEl.textContent = "No wallet detected";
@@ -357,9 +351,11 @@ class RightToolbar extends HTMLElement {
         const id = await window.ethereum.request({ method: "eth_chainId" });
         const cfg = getChainConfig(id);
         if (cfg) {
+          if (chainNameEl) chainNameEl.textContent = cfg.chainName;
           chainStatusEl.textContent = `✓ Connected to ${cfg.chainName}`;
           chainStatusEl.style.color = id === "0xa" ? "#ff0420" : "#8247e5";
         } else {
+          if (chainNameEl) chainNameEl.textContent = `Unknown chain ${parseInt(id, 16)}`;
           chainStatusEl.textContent = `⚠️ Unknown network (${parseInt(id, 16)})`;
           chainStatusEl.style.color = "#f80";
         }
@@ -369,11 +365,6 @@ class RightToolbar extends HTMLElement {
     };
     updateChainStatus();
     window.ethereum?.on?.("chainChanged", updateChainStatus);
-
-    // Network switcher dropdown
-    panel.querySelector("#settings-network-select").addEventListener("change", async (e) => {
-      await this._switchChain(e.target.value, chainStatusEl);
-    });
 
     // Connect button (shown when not connected)
     const connectBtn = panel.querySelector("#settings-connect-btn");
