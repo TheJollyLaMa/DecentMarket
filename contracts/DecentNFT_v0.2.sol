@@ -71,6 +71,9 @@ contract DecentNFT_v0_2 is ERC1155, AccessControl, ERC2981 {
         address indexed minter
     );
 
+    /// @notice ERC-7572: collection-level metadata changed.
+    event ContractURIUpdated();
+
     // -------------------------------------------------------------------------
     // Storage
     // -------------------------------------------------------------------------
@@ -85,6 +88,9 @@ contract DecentNFT_v0_2 is ERC1155, AccessControl, ERC2981 {
 
     /// @notice Base URI applied when no per-token override is set.
     string private _baseTokenURI;
+
+    /// @notice Optional standalone collection metadata URI.
+    string private _collectionMetadataURI;
 
     /// @notice Per-token metadata, supply, and classification.
     mapping(uint256 => TokenInfo) private _tokenInfo;
@@ -132,12 +138,32 @@ contract DecentNFT_v0_2 is ERC1155, AccessControl, ERC2981 {
     }
 
     /**
+     * @notice ERC-7572 collection metadata: `<baseURI>collection.json`.
+     */
+    function contractURI() external view returns (string memory) {
+        if (bytes(_collectionMetadataURI).length > 0) {
+            return _collectionMetadataURI;
+        }
+        if (bytes(_baseTokenURI).length == 0) return "";
+        return string(abi.encodePacked(_baseTokenURI, "collection.json"));
+    }
+
+    /**
+     * @notice Set a standalone collection metadata URI, such as an IPFS file CID.
+     */
+    function setContractURI(string calldata contractURI_) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _collectionMetadataURI = contractURI_;
+        emit ContractURIUpdated();
+    }
+
+    /**
      * @notice Update the base URI. Only callable by DEFAULT_ADMIN_ROLE.
      * @param baseURI_ New base URI string.
      */
     function setBaseURI(string calldata baseURI_) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _baseTokenURI = baseURI_;
         emit URI(baseURI_, type(uint256).max); // signal global change
+        emit ContractURIUpdated();
     }
 
     /**
@@ -177,6 +203,10 @@ contract DecentNFT_v0_2 is ERC1155, AccessControl, ERC2981 {
         onlyRole(DEFAULT_ADMIN_ROLE)
         returns (uint256 tokenId)
     {
+        require(
+            bytes(_baseTokenURI).length > 0 || bytes(tokenURI_).length > 0,
+            "DecentNFT: metadata URI required"
+        );
         tokenId = _nextTokenId++;
 
         _tokenInfo[tokenId] = TokenInfo({

@@ -6,6 +6,8 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * @title DecentEscrow v0.1
@@ -32,11 +34,11 @@ import "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
  *
  * Deployment
  * ----------
- *   Deploy via Remix IDE on Optimism Mainnet.
+ *   Deploy on Base Mainnet (BigNuten_Vanilla `npm run deploy:base`).
  *   Constructor argument: `initialOwner` — the wallet that controls the escrow.
  *   After deployment update `js/config/contracts.js` → `addresses.ESCROW`.
  */
-contract DecentEscrow_v001 is Ownable, ERC1155Holder {
+contract DecentEscrow_v001 is Ownable, ERC1155Holder, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     // =========================================================================
@@ -166,6 +168,9 @@ contract DecentEscrow_v001 is Ownable, ERC1155Holder {
         uint256 expiresAt
     );
 
+    /// @notice Plan deactivated by owner.
+    event PlanDeactivated(uint256 indexed planId);
+
     // =========================================================================
     // Constructor
     // =========================================================================
@@ -262,7 +267,7 @@ contract DecentEscrow_v001 is Ownable, ERC1155Holder {
      * @param amount  Amount in wei.
      * @param reason  e.g. "Bounty payout — TheJollyLaMa/DecentMarket#45"
      */
-    function withdrawETH(uint256 amount, string calldata reason) external onlyOwner {
+    function withdrawETH(uint256 amount, string calldata reason) external onlyOwner nonReentrant {
         require(amount > 0, "DecentEscrow: zero amount");
         require(address(this).balance >= amount, "DecentEscrow: insufficient ETH balance");
         emit Withdrawn(address(0), msg.sender, amount, reason);
@@ -280,7 +285,7 @@ contract DecentEscrow_v001 is Ownable, ERC1155Holder {
         address token,
         uint256 amount,
         string calldata reason
-    ) external onlyOwner {
+    ) external onlyOwner nonReentrant {
         require(token != address(0), "DecentEscrow: use withdrawETH for ETH");
         require(amount > 0, "DecentEscrow: zero amount");
         emit Withdrawn(token, msg.sender, amount, reason);
@@ -299,7 +304,7 @@ contract DecentEscrow_v001 is Ownable, ERC1155Holder {
         uint256 tokenId,
         uint256 amount,
         address to
-    ) external onlyOwner {
+    ) external onlyOwner nonReentrant {
         require(amount > 0, "DecentEscrow: zero amount");
         require(to != address(0), "DecentEscrow: zero address");
         emit NFTWithdrawn(nftContract, tokenId, to, amount);
@@ -336,6 +341,11 @@ contract DecentEscrow_v001 is Ownable, ERC1155Holder {
         require(nftContract != address(0), "DecentEscrow: zero address");
         require(quantity > 0, "DecentEscrow: zero quantity");
         require(priceETH > 0 || priceAmount > 0, "DecentEscrow: no price set");
+        require((priceToken == address(0)) == (priceAmount == 0), "DecentEscrow: token price mismatch");
+        require(
+            IERC1155(nftContract).balanceOf(address(this), tokenId) >= quantity,
+            "DecentEscrow: escrow does not hold quantity"
+        );
 
         listingId = nextListingId++;
         listings[listingId] = Listing({
@@ -374,7 +384,7 @@ contract DecentEscrow_v001 is Ownable, ERC1155Holder {
      * @param listingId  Listing ID to purchase from.
      * @param amount     Number of editions to buy.
      */
-    function purchaseWithETH(uint256 listingId, uint256 amount) external payable {
+    function purchaseWithETH(uint256 listingId, uint256 amount) external payable whenNotPaused nonReentrant {
         Listing storage l = listings[listingId];
         require(l.active, "DecentEscrow: listing not active");
         require(l.priceETH > 0, "DecentEscrow: ETH purchase not available");
@@ -397,7 +407,7 @@ contract DecentEscrow_v001 is Ownable, ERC1155Holder {
      * @param listingId  Listing ID to purchase from.
      * @param amount     Number of editions to buy.
      */
-    function purchaseWithToken(uint256 listingId, uint256 amount) external {
+    function purchaseWithToken(uint256 listingId, uint256 amount) external whenNotPaused nonReentrant {
         Listing storage l = listings[listingId];
         require(l.active, "DecentEscrow: listing not active");
         require(l.priceToken != address(0) && l.priceAmount > 0, "DecentEscrow: token purchase not available");
@@ -432,6 +442,7 @@ contract DecentEscrow_v001 is Ownable, ERC1155Holder {
         uint256 pricePerPeriod,
         uint256 periodSeconds
     ) external onlyOwner returns (uint256 planId) {
+        require(bytes(name).length > 0, "DecentEscrow: empty name");
         require(pricePerPeriod > 0, "DecentEscrow: zero price");
         require(periodSeconds > 0,  "DecentEscrow: zero period");
 
@@ -454,7 +465,7 @@ contract DecentEscrow_v001 is Ownable, ERC1155Holder {
      *         The expiry timestamp is extended from max(now, current expiry).
      * @param planId  Plan to subscribe to.
      */
-    function subscribe(uint256 planId) external payable {
+    function subscribe(uint256 planId) external payable whenNotPaused nonReentrant {
         Plan storage p = plans[planId];
         require(p.active, "DecentEscrow: plan not active");
 
@@ -480,7 +491,23 @@ contract DecentEscrow_v001 is Ownable, ERC1155Holder {
      * @param planId  Plan to deactivate.
      */
     function deactivatePlan(uint256 planId) external onlyOwner {
+        require(plans[planId].active, "DecentEscrow: plan not active");
         plans[planId].active = false;
+        emit PlanDeactivated(planId);
+    }
+
+    // =========================================================================
+    // Emergency controls
+    // =========================================================================
+
+    /// @notice Pause purchases and subscriptions. Withdrawals stay available to the owner.
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    /// @notice Resume purchases and subscriptions.
+    function unpause() external onlyOwner {
+        _unpause();
     }
 
     // =========================================================================

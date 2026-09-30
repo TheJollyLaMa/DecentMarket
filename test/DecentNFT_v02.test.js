@@ -136,6 +136,20 @@ describe("DecentNFT_v0_2", function () {
       await decentNFT.registerToken(0, "", TokenKind.Product, ethers.ZeroAddress, 0);
       expect(await decentNFT.uri(0)).to.equal(BASE_URI + "0.json");
     });
+
+    it("allows a fresh deployment to wait for metadata before registering tokens", async function () {
+      const NFT = await ethers.getContractFactory("DecentNFT_v0_2");
+      const freshNFT = await NFT.deploy("", admin.address, 500);
+      await expect(
+        freshNFT.registerToken(0, "", TokenKind.Product, ethers.ZeroAddress, 0)
+      ).to.be.revertedWith("DecentNFT: metadata URI required");
+
+      expect(await freshNFT.contractURI()).to.equal("");
+      await freshNFT.setContractURI("ipfs://collection-cid");
+      await freshNFT.registerToken(0, "ipfs://token-zero-cid", TokenKind.Product, ethers.ZeroAddress, 0);
+      expect(await freshNFT.contractURI()).to.equal("ipfs://collection-cid");
+      expect(await freshNFT.uri(0)).to.equal("ipfs://token-zero-cid");
+    });
   });
 
   // ── URI management ───────────────────────────────────────────────────────────
@@ -149,6 +163,19 @@ describe("DecentNFT_v0_2", function () {
       const newBase = "ipfs://newroot/";
       await decentNFT.setBaseURI(newBase);
       expect(await decentNFT.uri(0)).to.equal(newBase + "0.json");
+    });
+
+    it("exposes ERC-7572 contractURI from the base URI", async function () {
+      await expect(decentNFT.setBaseURI("ipfs://newroot/")).to.emit(decentNFT, "ContractURIUpdated");
+      expect(await decentNFT.contractURI()).to.equal("ipfs://newroot/collection.json");
+    });
+
+    it("sets a standalone collection metadata URI for independent IPFS pinning", async function () {
+      const collectionURI = "ipfs://bafycollectioncid";
+      await expect(decentNFT.setContractURI(collectionURI)).to.emit(decentNFT, "ContractURIUpdated");
+      expect(await decentNFT.contractURI()).to.equal(collectionURI);
+      await expect(decentNFT.connect(addr1).setContractURI(collectionURI))
+        .to.be.revertedWithCustomError(decentNFT, "AccessControlUnauthorizedAccount");
     });
 
     it("allows admin to set per-token URI override", async function () {

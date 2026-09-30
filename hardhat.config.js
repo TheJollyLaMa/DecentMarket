@@ -26,11 +26,17 @@ module.exports = {
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
       chainId: 137,
     },
+    base: {
+      url: process.env.BASE_RPC_URL || "https://mainnet.base.org",
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      chainId: 8453,
+    },
   },
   etherscan: {
     apiKey: {
       polygon: process.env.POLYGONSCAN_API_KEY || "",
       polygonAmoy: process.env.POLYGONSCAN_API_KEY || "",
+      base: process.env.BASESCAN_API_KEY || "",
     },
   },
   paths: {

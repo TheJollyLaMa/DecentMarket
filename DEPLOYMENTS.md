@@ -25,6 +25,16 @@ Base Mainnet is the current deployment target. Base DecentNFT and DecentEscrow
 addresses remain blank until deployment and verification are complete. The UI
 does not provide an in-app network switch; use MetaMask to change chains.
 
+The Base redeployment is prepared but has not been sent. Legacy Optimism
+metadata CIDs are not assumed available. For the fresh Base collection, store
+each token JSON and `collection.json` as separate IPFS objects through the
+wallet-authorized Pinata relay and pin the same files with IPFS Desktop. Record
+the returned CIDs and use the per-token URI and collection URI setters. Publish
+the metadata CIDs as community data so independent BigNuten network nodes can
+retrieve and pin them under the community reward workflow. The Render relay
+authorizes Pinata uploads; it is not itself a persistent replica. Keep the
+deployer's local Kubo node and independent node pins as additional replicas.
+
 ---
 
 ## How the UI Chooses the Contract
@@ -71,7 +81,7 @@ All contracts are deployed via [Remix IDE](https://remix.ethereum.org) (no Hardh
 
 | Argument | Type | Description |
 |----------|------|-------------|
-| `baseURI_` | `string` | IPFS base URI including trailing slash, e.g. `ipfs://<rootCID>/` — token `n` resolves to `<baseURI>n.json` (e.g. `ipfs://<rootCID>/0.json`) |
+| `baseURI_` | `string` | IPFS base URI including trailing slash, e.g. `ipfs://<rootCID>/`. It may be blank at deployment; then registration is blocked until metadata is set, or each token is registered with its direct IPFS URI. |
 | `royaltyReceiver` | `address` | Wallet that receives ERC-2981 royalties |
 | `royaltyFeeBps` | `uint96` | Royalty in basis points (e.g. `500` = 5%) |
 
@@ -82,6 +92,11 @@ All contracts are deployed via [Remix IDE](https://remix.ethereum.org) (no Hardh
 3. Under **Deploy & Run**, select **Injected Provider** and connect your admin wallet.
 4. Fill in the three constructor arguments, then click **Deploy**.
 5. Copy the deployed address and update `js/config/contracts.js` and this file.
+
+For standalone JSON pins, set the collection file CID with `setContractURI` and
+each token file CID with `setTokenURI` (or pass the URI to `registerToken`).
+This avoids requiring a directory/root CID and lets Pinata, local IPFS Desktop,
+and community nodes independently pin the same metadata files.
 
 ### Verifying Roles After Deployment
 
