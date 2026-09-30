@@ -58,13 +58,38 @@ const ESCROW_ABI = [
 const USDC_OPTIMISM  = "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85"; // native USDC (Circle)
 const USDCE_OPTIMISM = "0x7F5c764cBc14f9669B88837ca1490cCa17c31607"; // USDCe (bridged)
 const BNUT_OPTIMISM  = "0x733c4d2Aae900E608147dd89Fa93606f89722823"; // $BNUT — BigNuten governance & rewards token
+const USDC_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+const BNUT_BASE = "0x25ACb773159Af5a5c672DEfe31C7Fff6a9A93736";
 
 // Human-readable labels for known Optimism tokens
 const KNOWN_TOKENS = {
   [USDC_OPTIMISM.toLowerCase()]:  "native USDC (Circle)",
   [USDCE_OPTIMISM.toLowerCase()]: "USDCe (bridged)",
   [BNUT_OPTIMISM.toLowerCase()]:  "$BNUT (BigNuten)",
+  [USDC_BASE.toLowerCase()]:      "USDC",
+  [BNUT_BASE.toLowerCase()]:      "$BNUT (BigNuten)",
 };
+
+function configForChainId(chainId) {
+  if (chainId == null) return null;
+  const hexId = typeof chainId === "bigint" ? `0x${chainId.toString(16)}` : String(chainId).toLowerCase();
+  return getChainConfig(hexId);
+}
+
+function selectedChainConfig() {
+  return window.ethereum?.chainId ? configForChainId(window.ethereum.chainId) : CONTRACTS.base;
+}
+
+async function providerChainConfig(provider) {
+  const { chainId } = await provider.getNetwork();
+  return configForChainId(chainId);
+}
+
+function requireContractAddress(config, contractName) {
+  const address = config?.addresses?.[contractName];
+  if (!address) throw new Error(`${config?.chainName || "Selected network"} ${contractName} contract is not configured.`);
+  return address;
+}
 
 // Values >= this threshold are displayed with an ETH equivalent (1 trillion wei = 0.000001 ETH).
 const WEI_DISPLAY_THRESHOLD = 1_000_000_000_000n;
@@ -174,12 +199,13 @@ class RightToolbar extends HTMLElement {
     this._clearModals();
 
     const chainId = window.ethereum?.chainId || null;
-    const chainCfg = chainId ? getChainConfig(chainId) : null;
+    const chainCfg = chainId ? configForChainId(chainId) : null;
     const address = window.ethereum?.selectedAddress || null;
     const isConnected = !!address;
     const shortAddr = address ? address.slice(0, 6) + "…" + address.slice(-4) : null;
 
-    const opCfg = CONTRACTS.optimism;
+    const activeCfg = chainCfg || (!chainId ? CONTRACTS.base : null);
+    const activeDNFT = activeCfg?.addresses?.DNFT || "";
     const polygonCfg = CONTRACTS.polygon;
 
     const panel = document.createElement("div");
@@ -255,16 +281,12 @@ class RightToolbar extends HTMLElement {
           padding:10px 12px;
         ">
           <div style="font-size:0.65rem;color:#0088aa;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">📄 Active Contract</div>
-          <div style="font-size:0.7rem;color:#ff6680;margin-bottom:2px;">Optimism v0.2</div>
+          <div style="font-size:0.7rem;color:#ff6680;margin-bottom:2px;">${activeCfg?.chainName || "Unsupported network"} DecentNFT</div>
           <div style="
             font-size:0.68rem;color:#aaa;word-break:break-all;margin-bottom:6px;
             padding:4px 6px;background:rgba(0,0,0,0.3);border-radius:4px;
-          ">${opCfg.addresses.DNFT}</div>
-          <a href="${opCfg.blockExplorerUrls[0]}/address/${opCfg.addresses.DNFT}"
-             target="_blank" rel="noopener noreferrer"
-             style="font-size:0.65rem;color:#ff0420;text-decoration:none;border-bottom:1px dashed #ff042055;">
-            View on Optimistic Etherscan ↗
-          </a>
+          ">${activeDNFT || "No DecentNFT configured for this network"}</div>
+          ${activeDNFT ? `<a href="${activeCfg.blockExplorerUrls[0]}/address/${activeDNFT}" target="_blank" rel="noopener noreferrer" style="font-size:0.65rem;color:#00e5ff;text-decoration:none;border-bottom:1px dashed #00e5ff55;">View on ${activeCfg.chainName} explorer ↗</a>` : ""}
 
           <div style="margin-top:10px;padding-top:8px;border-top:1px solid #00e5ff11;">
             <div style="font-size:0.7rem;color:#666;margin-bottom:2px;">Polygon v0.1 (legacy)</div>
@@ -449,8 +471,9 @@ class RightToolbar extends HTMLElement {
     const ethers = window.ethers;
     if (!roleEl || !ethers || !account) return;
     try {
-      const contractAddr = CONTRACTS.optimism.addresses.DNFT;
       const provider = new ethers.BrowserProvider(window.ethereum);
+      const chainCfg = await providerChainConfig(provider);
+      const contractAddr = requireContractAddress(chainCfg, "DNFT");
       const contract = new ethers.Contract(contractAddr, DECENT_NFT_ABI, provider);
       const [adminRole, minterRole] = await Promise.all([
         contract.DEFAULT_ADMIN_ROLE(),
@@ -506,9 +529,10 @@ class RightToolbar extends HTMLElement {
     const address = window.ethereum?.selectedAddress || null;
     const shortAddr = address ? address.slice(0, 6) + "…" + address.slice(-4) : null;
     const isConnected = !!address;
-    const opCfg = CONTRACTS.optimism;
-    const contractLabel = opCfg.addresses.DNFT.slice(0, 10) + "…" + opCfg.addresses.DNFT.slice(-4);
-    const escrowAddress = opCfg.addresses.ESCROW || "";
+    const activeCfg = selectedChainConfig();
+    const activeDNFT = activeCfg?.addresses?.DNFT || "";
+    const contractLabel = activeDNFT ? activeDNFT.slice(0, 10) + "…" + activeDNFT.slice(-4) : "Not configured";
+    const escrowAddress = activeCfg?.addresses?.ESCROW || "";
 
     return `
       <!-- Header -->
@@ -982,11 +1006,8 @@ class RightToolbar extends HTMLElement {
         const signer = await provider.getSigner();
         const account = await signer.getAddress();
 
-        // ── Auto-resolve Optimism v0.2 contract ───────────────────────────
-        const contractAddr = CONTRACTS.optimism.addresses.DNFT;
-        if (!contractAddr || !ethers.isAddress(contractAddr)) {
-          throw new Error("Optimism v0.2 contract address not configured.");
-        }
+        const chainCfg = await providerChainConfig(provider);
+        const contractAddr = requireContractAddress(chainCfg, "DNFT");
 
         // ── Upload image to IPFS (if file selected) ───────────────────────
         let finalImageUri = imageUri;
@@ -1097,10 +1118,7 @@ class RightToolbar extends HTMLElement {
 
         // ── Escrow & List (optional) ──────────────────────────────────────
         if (sendToEscrow) {
-          const escrowAddress = CONTRACTS.optimism.addresses.ESCROW;
-          if (!escrowAddress || !ethers.isAddress(escrowAddress)) {
-            throw new Error("Escrow contract address not configured for Optimism.");
-          }
+          const escrowAddress = requireContractAddress(chainCfg, "ESCROW");
 
           const priceETHStr = modal.querySelector("#mint-escrow-price-eth").value.trim() || "0";
           const priceUSDCStr = modal.querySelector("#mint-escrow-price-usdc").value.trim() || "0";
@@ -1124,7 +1142,9 @@ class RightToolbar extends HTMLElement {
           await transferTx.wait();
 
           // Create listing in escrow
-          const priceToken = priceUSDCAmount > 0n ? USDC_OPTIMISM : ethers.ZeroAddress;
+          const priceToken = priceUSDCAmount > 0n
+            ? requireContractAddress(chainCfg, "USDC")
+            : ethers.ZeroAddress;
           const escrowContract = new ethers.Contract(escrowAddress, ESCROW_ABI, signer);
           setStatus(`📋 Creating escrow listing…`);
           const listTx = await escrowContract.listDNFT(
@@ -1185,8 +1205,8 @@ class RightToolbar extends HTMLElement {
     });
 
     // Wire the DNFT contract function explorer at the bottom of the modal
-    const dnftAddress = CONTRACTS.optimism.addresses.DNFT;
-    this._wireDNFTFnExplorer(modal, dnftAddress);
+    const dnftAddress = selectedChainConfig()?.addresses?.DNFT || "";
+    if (dnftAddress) this._wireDNFTFnExplorer(modal, dnftAddress);
   }
 
   async _refreshMintModalHeader(modal) {
@@ -1212,8 +1232,9 @@ class RightToolbar extends HTMLElement {
     roleBadgeEl.textContent = "Checking…";
 
     try {
-      const contractAddr = CONTRACTS.optimism.addresses.DNFT;
       const provider = new ethers.BrowserProvider(window.ethereum);
+      const chainCfg = await providerChainConfig(provider);
+      const contractAddr = requireContractAddress(chainCfg, "DNFT");
       const contract = new ethers.Contract(contractAddr, DECENT_NFT_ABI, provider);
       const [adminRole, minterRole] = await Promise.all([
         contract.DEFAULT_ADMIN_ROLE(),
@@ -1378,14 +1399,12 @@ class RightToolbar extends HTMLElement {
   // ── Fetch all Product DNFTs from the Optimism contract ───────────────────
   // Uses view functions (nextTokenId, kindOf, uri, totalMinted, maxSupply) instead
   // of eth_getLogs so we never hit the RPC block-range limit.
-  async _loadGalleryProducts() {
-    if (this._galleryCache) return this._galleryCache;
-
+  async _loadGalleryProducts(chainCfg = selectedChainConfig()) {
     const ethers = window.ethers;
     if (!ethers) throw new Error("ethers.js not loaded");
 
-    const opCfg = CONTRACTS.optimism;
-    const contractAddr = opCfg.addresses.DNFT;
+    const contractAddr = requireContractAddress(chainCfg, "DNFT");
+    if (this._galleryCache?.chainId === chainCfg.chainId) return this._galleryCache.products;
 
     const QUERY_ABI = [
       "function nextTokenId() view returns (uint256)",
@@ -1396,7 +1415,7 @@ class RightToolbar extends HTMLElement {
       "function creatorOf(uint256 tokenId) view returns (address)",
     ];
 
-    const provider = new ethers.JsonRpcProvider(opCfg.rpcUrls[0]);
+    const provider = new ethers.JsonRpcProvider(chainCfg.rpcUrls[0]);
     const contract = new ethers.Contract(contractAddr, QUERY_ABI, provider);
 
     const nextId = await contract.nextTokenId();
@@ -1455,7 +1474,7 @@ class RightToolbar extends HTMLElement {
 
     // Newest first (highest tokenId registered last)
     products.sort((a, b) => b.blockNumber - a.blockNumber);
-    this._galleryCache = products;
+    this._galleryCache = { chainId: chainCfg.chainId, products };
     return products;
   }
 
@@ -1588,9 +1607,10 @@ class RightToolbar extends HTMLElement {
       },
     };
 
-    if (this._galleryCache) {
-      this._galleryCache.unshift(newProduct);
-    }
+    const chainId = selectedChainConfig()?.chainId;
+    const products = this._galleryCache?.chainId === chainId ? this._galleryCache.products : [];
+    products.unshift(newProduct);
+    this._galleryCache = { chainId, products };
 
     const body = document.getElementById("gallery-body");
     if (body) {
@@ -1600,7 +1620,7 @@ class RightToolbar extends HTMLElement {
     }
 
     document.dispatchEvent(new CustomEvent("gallery:products-loaded", {
-      detail: { products: this._galleryCache || [newProduct] },
+      detail: { products },
     }));
   }
 
@@ -1913,6 +1933,10 @@ class RightToolbar extends HTMLElement {
       }
 
       const provider = new ethers.BrowserProvider(window.ethereum);
+      const chainCfg = await providerChainConfig(provider);
+      if (!chainCfg || chainCfg.addresses?.ESCROW?.toLowerCase() !== escrowAddress.toLowerCase()) {
+        throw new Error("Escrow address does not match the selected network configuration.");
+      }
       const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, provider);
 
       // ── Resolve actual connected address asynchronously ──────────────────
@@ -1932,8 +1956,11 @@ class RightToolbar extends HTMLElement {
 
       let usdcBal = 0n;
       let bnutBal = 0n;
-      try { usdcBal = await escrow.getBalance(USDC_OPTIMISM); } catch { /* ignore */ }
-      try { bnutBal = await escrow.getBalance(BNUT_OPTIMISM); } catch { /* ignore */ }
+      const usdcAddress = chainCfg.addresses.USDC;
+      const bnutAddress = chainCfg.addresses.BNUT;
+      const usdcAddresses = [usdcAddress, chainCfg.addresses.USDCe].filter(Boolean).map(token => token.toLowerCase());
+      if (usdcAddress) try { usdcBal = await escrow.getBalance(usdcAddress); } catch { /* ignore */ }
+      if (bnutAddress) try { bnutBal = await escrow.getBalance(bnutAddress); } catch { /* ignore */ }
 
       balanceEl.innerHTML = `
         <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
@@ -1999,10 +2026,7 @@ class RightToolbar extends HTMLElement {
 
           // Compute the PayPal USD price for this listing.
           // PayPal is only offered for ETH-priced or USDC/USDCe-priced listings.
-          const isUsdcToken = l.priceToken && (
-            l.priceToken.toLowerCase() === USDC_OPTIMISM.toLowerCase() ||
-            l.priceToken.toLowerCase() === USDCE_OPTIMISM.toLowerCase()
-          );
+          const isUsdcToken = l.priceToken && usdcAddresses.includes(l.priceToken.toLowerCase());
           let paypalUsdPrice = null;
           if (l.priceETH > 0n && ethUsdRate !== null) {
             const ethAmount = parseFloat(ethers.formatEther(l.priceETH));
@@ -2117,9 +2141,9 @@ class RightToolbar extends HTMLElement {
           // Format price based on known token decimals (BNUT = 18, USDC/USDCe = 6, fallback = 18)
           const priceLabel = isEthPlan
             ? `${parseFloat(ethers.formatEther(p.pricePerPeriod)).toFixed(4)} ETH`
-            : p.paymentToken.toLowerCase() === BNUT_OPTIMISM.toLowerCase()
+            : p.paymentToken.toLowerCase() === (bnutAddress || "").toLowerCase()
               ? `${parseFloat(ethers.formatEther(p.pricePerPeriod)).toFixed(4)} BNUT`
-              : (p.paymentToken.toLowerCase() === USDC_OPTIMISM.toLowerCase() || p.paymentToken.toLowerCase() === USDCE_OPTIMISM.toLowerCase())
+              : usdcAddresses.includes(p.paymentToken.toLowerCase())
                 ? `${(Number(p.pricePerPeriod / 1000n) / 1000).toFixed(2)} ${tokenLabel}`
                 : `${parseFloat(ethers.formatEther(p.pricePerPeriod)).toFixed(4)} ${tokenLabel}`;
           return `
@@ -2159,8 +2183,9 @@ class RightToolbar extends HTMLElement {
     const ethers = window.ethers;
     if (!ethers) return;
 
-    const opCfg   = CONTRACTS.optimism;
-    const dnftAddr = opCfg.addresses.DNFT;
+    const runnerProvider = escrow.runner?.provider;
+    const chainCfg = runnerProvider ? await providerChainConfig(runnerProvider) : selectedChainConfig();
+    const dnftAddr = chainCfg?.addresses?.DNFT || "";
     if (!dnftAddr) return;
 
     // Build set of listed tokenIds for quick lookup.
@@ -2173,7 +2198,7 @@ class RightToolbar extends HTMLElement {
     // Reuse (or load) cached gallery products which carry metadata + image URIs
     let allProducts;
     try {
-      allProducts = await this._loadGalleryProducts();
+      allProducts = await this._loadGalleryProducts(chainCfg);
     } catch {
       allProducts = [];
     }
@@ -2634,6 +2659,10 @@ class RightToolbar extends HTMLElement {
         const ethers = window.ethers;
         if (!ethers) { statusEl.textContent = "⚠ ethers.js not loaded"; return; }
         const provider = new ethers.BrowserProvider(window.ethereum);
+        const chainCfg = await providerChainConfig(provider);
+        if (!chainCfg || chainCfg.addresses?.ESCROW?.toLowerCase() !== escrowAddress.toLowerCase()) {
+          throw new Error("Escrow address does not match the selected network configuration.");
+        }
         const signer = await provider.getSigner();
         const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, signer);
         const tx = await escrow.withdrawETH(ethers.parseEther(amt), reason);
@@ -2684,18 +2713,23 @@ class RightToolbar extends HTMLElement {
         const ethers = window.ethers;
         if (!ethers) { statusEl.textContent = "⚠ ethers.js not loaded"; return; }
         const provider = new ethers.BrowserProvider(window.ethereum);
+        const chainCfg = await providerChainConfig(provider);
+        if (!chainCfg || chainCfg.addresses?.ESCROW?.toLowerCase() !== escrowAddress.toLowerCase()) {
+          throw new Error("Escrow address does not match the selected network configuration.");
+        }
+        const bnutAddress = requireContractAddress(chainCfg, "BNUT");
         const signer = await provider.getSigner();
         const ERC20_ABI = [
           "function approve(address spender, uint256 amount) returns (bool)",
           "function allowance(address owner, address spender) view returns (uint256)",
         ];
-        const bnut = new ethers.Contract(BNUT_OPTIMISM, ERC20_ABI, signer);
+        const bnut = new ethers.Contract(bnutAddress, ERC20_ABI, signer);
         const weiAmt = ethers.parseEther(amtStr);
         const approveTx = await bnut.approve(escrowAddress, weiAmt);
         await approveTx.wait();
         statusEl.textContent = "⏳ Depositing $BNUT to escrow…";
         const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, signer);
-        const depositTx = await escrow.depositToken(BNUT_OPTIMISM, weiAmt, note || "$BNUT deposit");
+        const depositTx = await escrow.depositToken(bnutAddress, weiAmt, note || "$BNUT deposit");
         await depositTx.wait();
         statusEl.style.color = "#ffd700";
         statusEl.textContent = `✅ Deposited ${amtStr} BNUT. Tx: ${depositTx.hash.slice(0,10)}…`;
@@ -2772,7 +2806,9 @@ class RightToolbar extends HTMLElement {
         const priceETH = priceEthStr ? ethers.parseEther(priceEthStr) : 0n;
         // Use ethers.parseUnits for USDC (6 decimals) to avoid float precision loss
         const priceUSDC = priceUsdcStr ? ethers.parseUnits(priceUsdcStr, 6) : 0n;
-        const priceToken = priceUSDC > 0n ? USDC_OPTIMISM : ethers.ZeroAddress;
+        const priceToken = priceUSDC > 0n
+          ? requireContractAddress(chainCfg, "USDC")
+          : ethers.ZeroAddress;
 
         const tx = await escrow.listDNFT(nftContract, tokenId, priceETH, priceToken, priceUSDC, qty, note || "DNFT listing");
         await tx.wait();

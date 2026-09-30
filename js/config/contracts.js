@@ -10,8 +10,10 @@ export const CONTRACTS = {
     rpcUrls: ['https://mainnet.base.org'],
     blockExplorerUrls: ['https://basescan.org'],
     addresses: {
-      DNFT: '',
-      ESCROW: '',
+      DNFT: '0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B',
+      ESCROW: '0x31b07b83e99A9bdF379bf40225b8A80d3804C89d',
+      BNUT: '0x25ACb773159Af5a5c672DEfe31C7Fff6a9A93736',
+      USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
     },
   },
   polygon: {

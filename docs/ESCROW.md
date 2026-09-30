@@ -8,13 +8,19 @@ On-chain escrow for Decent Agency DNFT supporter sales, subscription management,
 
 | Network | Address | Explorer |
 |---------|---------|----------|
+| Base Mainnet (current) | `0x31b07b83e99A9bdF379bf40225b8A80d3804C89d` | [BaseScan](https://basescan.org/address/0x31b07b83e99A9bdF379bf40225b8A80d3804C89d) |
 | Optimism Mainnet | `0x23A457AD3C33d68E4fAd2FCa7c5d9a511E0C350e` | [Optimistic Etherscan](https://optimistic.etherscan.io/address/0x23A457AD3C33d68E4fAd2FCa7c5d9a511E0C350e) |
+
+The Base deployment is the current DecentMarket escrow. Its UI operations use
+the connected network’s configured escrow and token addresses. Base listings and
+subscription plans still need to be created before those purchase flows are live.
 
 ---
 
-## Deploying via Remix IDE
+## Legacy Optimism Deployment Reference
 
-This contract is designed to be deployed through [Remix IDE](https://remix.ethereum.org) — no CLI tooling required.
+The following Remix procedure documents the earlier Optimism deployment. Do not
+repeat it to configure the current Base deployment.
 
 ### Steps
 
@@ -30,7 +36,7 @@ This contract is designed to be deployed through [Remix IDE](https://remix.ether
 
 4. **Deploy**
    - In the Deploy & Run Transactions tab, select **Injected Provider — MetaMask**
-   - Make sure MetaMask is on **Optimism Mainnet** (chain ID 10)
+   - Make sure MetaMask is on **Optimism Mainnet** (chain ID 10) for this legacy deployment only
    - Set the constructor argument: `initialOwner` — paste your wallet address (TheJollyLaMa's)
    - Click **Deploy**
 
@@ -38,7 +44,7 @@ This contract is designed to be deployed through [Remix IDE](https://remix.ether
 
 6. **Copy the deployed address** from the Remix console
 
-### Post-deployment checklist
+### Historical Optimism deployment checklist
 
 After deploying, complete these steps to wire the contract into the dapp:
 
@@ -46,7 +52,7 @@ After deploying, complete these steps to wire the contract into the dapp:
 - [x] Paste it into `js/config/contracts.js` → `optimism.addresses.ESCROW`
 - [x] Update the table above in `docs/ESCROW.md`
 - [x] Add a row to `DEPLOYMENTS.md`
-- [ ] Verify on Optimistic Etherscan:
+- [ ] Verify the legacy address on Optimistic Etherscan:
   - Go to `https://optimistic.etherscan.io/address/0x23A457AD3C33d68E4fAd2FCa7c5d9a511E0C350e`
   - Click **Contract → Verify and Publish**
   - Compiler: `0.8.26`, Optimizer: enabled 200 runs, EVM: cancun
@@ -148,10 +154,10 @@ Owner creates Plans with a name, payment token, price, and period. Users call `s
 
 ## Upgrade Roadmap
 
-### Phase 1 — Simple Ownable (Current)
+### Phase 1 — Simple Ownable (Legacy Optimism deployment)
 - Single owner (TheJollyLaMa wallet)
 - DNFT marketplace + treasury + subscription skeleton
-- Verified on Optimistic Etherscan
+- Legacy deployment tracked on Optimistic Etherscan
 
 ### Phase 2 — Multi-Sig
 - `transferOwnership(gnosisSafe)` to a Gnosis Safe

@@ -3,30 +3,31 @@ A Decent Market With a Decent Head, a Decent Canvas, and a Decent Foot in a Web3
 
 ## Supported Networks
 
-| Network | Chain ID | Symbol | Contract (DecentNFT) |
-|---------|----------|--------|-----------------------|
-| Base Mainnet | 8453 (0x2105) | ETH | _Pending Base deployment_ |
-| Polygon Mainnet | 137 (0x89) | MATIC | `0x4cE20F0bbF7eA38488F9c9555EfD2b502E86A53E` (v0.1) |
-| Optimism Mainnet | 10 (0xa) | ETH | `0xe870f7b1D10C41dbc6b75598a5308B9a2Bb52958` (v0.2, legacy) |
+| Network | Chain ID | Symbol | DecentNFT | DecentEscrow |
+|---------|----------|--------|-----------|--------------|
+| Base Mainnet | 8453 (0x2105) | ETH | [`0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B`](https://basescan.org/address/0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B) (v0.2) | [`0x31b07b83e99A9bdF379bf40225b8A80d3804C89d`](https://basescan.org/address/0x31b07b83e99A9bdF379bf40225b8A80d3804C89d) |
+| Polygon Mainnet | 137 (0x89) | MATIC | `0x4cE20F0bbF7eA38488F9c9555EfD2b502E86A53E` (v0.1) | — |
+| Optimism Mainnet | 10 (0xa) | ETH | `0xe870f7b1D10C41dbc6b75598a5308B9a2Bb52958` (v0.2, legacy) | `0x23A457AD3C33d68E4fAd2FCa7c5d9a511E0C350e` (legacy) |
 
-The Base deployment is the current migration target. Select the active chain in
-MetaMask; the app reports the active chain and enables contract actions only when
-the corresponding verified address is configured. The Optimism deployment remains
-documented for legacy access and recovery.
+Base is the current default deployment. DecentNFT and DecentEscrow are deployed,
+and the UI routes contract reads and writes using the connected MetaMask chain.
+NFT metadata, listings, and subscription plans still need configuration before
+those sale flows are enabled. Optimism remains available as a legacy deployment.
 
 ## Community Escrow Treasury
 
-Early supporter DNFT sale proceeds route to the **DecentEscrow** contract — a transparent, on-chain community treasury visible to everyone on Optimistic Etherscan.
+Early supporter DNFT proceeds are intended for the deployed Base **DecentEscrow**
+contract. The Base escrow is live, but no sale listing is configured yet.
 
-The escrow supports the following tokens on Optimism Mainnet:
+The current Base escrow accepts ETH, Base USDC, and Base BNUT deposits:
 
 | Token | Symbol | Address |
 |-------|--------|---------|
 | Ether | ETH | _(native)_ |
-| USD Coin | USDC | `0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85` |
-| BigNuten Token | **$BNUT** | `0x733c4d2Aae900E608147dd89Fa93606f89722823` |
+| USD Coin | USDC | [`0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`](https://basescan.org/token/0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913) |
+| BigNuten Token | **$BNUT** | [`0x25ACb773159Af5a5c672DEfe31C7Fff6a9A93736`](https://basescan.org/token/0x25ACb773159Af5a5c672DEfe31C7Fff6a9A93736) |
 
-$BNUT is the BigNuten governance and bounty rewards token. It is live on Optimism and used in payroll and bounty settlements. Balances for ETH, USDC, and $BNUT are all displayed in the 🏦 DecentEscrow panel. Any wallet can deposit $BNUT to the escrow via the owner panel's **↓ Deposit $BNUT** action (requires an ERC-20 `approve` first, which the UI handles automatically).
+$BNUT is the BigNuten governance and rewards token. The Base token and escrow contracts are configured in the app; the escrow panel reads the selected network and any wallet can deposit BNUT after approving the escrow.
 
 See [`docs/ESCROW.md`](./docs/ESCROW.md) for:
 - Contract address and Etherscan link
