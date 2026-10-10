@@ -21,9 +21,12 @@ contract DecentJukeBox_v0_1 is AccessControl, ReentrancyGuard, Pausable, Multica
     uint256 public constant TIER_SIZE = 8;
     uint256 public constant LISTEN_PRICE = 250000;
     uint256 public constant MAX_LISTEN_BATCH = 50;
+    uint16 public constant PINNER_SHARE_BPS = 800;
+    uint16 public constant REPO_DEV_SHARE_BPS = 200;
     IERC20 public immutable paymentToken;
     IDJukeFundRouter public immutable fundRouter;
     bytes32 public immutable repoFundId;
+    bytes32 public immutable pinnerFundId;
     uint256 public nextRequestId;
     uint256 public headRequestId;
     uint256 public nextPurchaseId;
@@ -57,13 +60,15 @@ contract DecentJukeBox_v0_1 is AccessControl, ReentrancyGuard, Pausable, Multica
     event PlayFulfilled(uint256 indexed requestId, bytes32 indexed songId, bytes32 playbackProof, uint256 fundAmount);
     event ArtistWithdrawal(address indexed artist, uint256 amount);
     event ListensPurchased(uint256 indexed purchaseId, address indexed listener, bytes32[] songIds, uint256 amount);
+    event PinnerFundContribution(bytes32 indexed source, uint256 amount);
 
-    constructor(address token, address router, bytes32 fundId, address admin) {
+    constructor(address token, address router, bytes32 fundId, bytes32 pinnerFundId_, address admin) {
         require(token.code.length > 0 && router.code.length > 0 && admin != address(0), "Invalid deployment configuration");
-        require(fundId != bytes32(0) && IERC20Metadata(token).decimals() == 6, "Invalid fund or token decimals");
+        require(fundId != bytes32(0) && pinnerFundId_ != bytes32(0) && fundId != pinnerFundId_ && IERC20Metadata(token).decimals() == 6, "Invalid fund or token decimals");
         paymentToken = IERC20(token);
         fundRouter = IDJukeFundRouter(router);
         repoFundId = fundId;
+        pinnerFundId = pinnerFundId_;
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
     }
 
@@ -158,10 +163,11 @@ contract DecentJukeBox_v0_1 is AccessControl, ReentrancyGuard, Pausable, Multica
         request.fulfilled = true;
         headRequestId++;
         usedPlaybackProofs[playbackProof] = true;
-        uint256 fundAmount = request.amount / 10;
-        _creditArtists(request.recipients, request.sharesBps, request.amount - fundAmount);
-        _depositRepoFund(fundAmount);
-        emit PlayFulfilled(requestId, request.songId, playbackProof, fundAmount);
+        uint256 artistAmount = request.amount * (10000 - PINNER_SHARE_BPS - REPO_DEV_SHARE_BPS) / 10000;
+        uint256 repoDevAmount = request.amount * REPO_DEV_SHARE_BPS / 10000;
+        _creditArtists(request.recipients, request.sharesBps, artistAmount);
+        _depositRepoFund(repoDevAmount, request.amount * PINNER_SHARE_BPS / 10000, playbackProof);
+        emit PlayFulfilled(requestId, request.songId, playbackProof, repoDevAmount);
     }
 
     /// @notice On-demand personal listens; never touches the radio queue.
@@ -172,13 +178,15 @@ contract DecentJukeBox_v0_1 is AccessControl, ReentrancyGuard, Pausable, Multica
         uint256 balanceBefore = paymentToken.balanceOf(address(this));
         paymentToken.safeTransferFrom(msg.sender, address(this), amount);
         require(paymentToken.balanceOf(address(this)) - balanceBefore == amount, "Exact payment required");
-        uint256 songFund = LISTEN_PRICE / 10;
+        uint256 songArtist = LISTEN_PRICE * (10000 - PINNER_SHARE_BPS - REPO_DEV_SHARE_BPS) / 10000;
         for (uint256 index = 0; index < songIds.length; index++) {
             Song storage song = _songs[songIds[index]];
             require(song.enabled, "Song unavailable");
-            _creditArtists(song.recipients, song.sharesBps, LISTEN_PRICE - songFund);
+            _creditArtists(song.recipients, song.sharesBps, songArtist);
         }
-        _depositRepoFund(songFund * songIds.length);
+        _depositRepoFund(LISTEN_PRICE * songIds.length * REPO_DEV_SHARE_BPS / 10000,
+            LISTEN_PRICE * songIds.length * PINNER_SHARE_BPS / 10000,
+            keccak256(abi.encode("listen", purchaseId, songIds)));
         purchaseId = nextPurchaseId++;
         emit ListensPurchased(purchaseId, msg.sender, songIds, amount);
     }
@@ -194,10 +202,18 @@ contract DecentJukeBox_v0_1 is AccessControl, ReentrancyGuard, Pausable, Multica
         }
     }
 
-    function _depositRepoFund(uint256 fundAmount) private {
-        paymentToken.forceApprove(address(fundRouter), fundAmount);
-        fundRouter.fundToken(repoFundId, address(paymentToken), fundAmount);
-        paymentToken.forceApprove(address(fundRouter), 0);
+    function _depositRepoFund(uint256 repoAmount, uint256 pinnerAmount, bytes32 source) private {
+        if (repoAmount > 0) {
+            paymentToken.forceApprove(address(fundRouter), repoAmount);
+            fundRouter.fundToken(repoFundId, address(paymentToken), repoAmount);
+            paymentToken.forceApprove(address(fundRouter), 0);
+        }
+        if (pinnerAmount > 0) {
+            paymentToken.forceApprove(address(fundRouter), pinnerAmount);
+            fundRouter.fundToken(pinnerFundId, address(paymentToken), pinnerAmount);
+            paymentToken.forceApprove(address(fundRouter), 0);
+            emit PinnerFundContribution(source, pinnerAmount);
+        }
     }
 
     function withdrawArtistCredit() external nonReentrant {
