@@ -29,23 +29,29 @@ async function main() {
   await network.provider.send("hardhat_mine", ["0x1"]);
   const [admin, fulfiller, listener, artist, collaborator] = await ethers.getSigners();
   const fundId = ethers.id("dbusk-repo-dev");
+  const pinnerFundId = ethers.id("dbusk-pinners");
   const router = new ethers.Contract(SETTLEMENT_ROUTER, ROUTER_ABI, ethers.provider);
   const fund = await router.funds(fundId);
-  const checks = { repoFundExists: fund.exists, repoFundActive: fund.active, usdcApproved: await router.approvedAssets(BASE_USDC) };
-  if (!fund.exists) {
+  const pinnerFund = await router.funds(pinnerFundId);
+  const checks = { repoFundExists: fund.exists, repoFundActive: fund.active,
+    pinnerFundExists: pinnerFund.exists, pinnerFundActive: pinnerFund.active,
+    usdcApproved: await router.approvedAssets(BASE_USDC) };
+  if (!fund.exists || !pinnerFund.exists) {
     const routerAdmin = process.env.DBUSK_ROUTER_ADMIN || "0x807061DF657A7697c04045dA7d16D941861cAABc";
     await network.provider.send("hardhat_impersonateAccount", [routerAdmin]);
     await network.provider.send("hardhat_setBalance", [routerAdmin, "0x8AC7230489E80000"]);
     const adminRouter = new ethers.Contract(SETTLEMENT_ROUTER, ["function createFund(bytes32, string)"], await ethers.getSigner(routerAdmin));
-    await (await adminRouter.createFund(fundId, "https://thejollylama.github.io/DecentBusking/payroll-assets.json#dbusk-repo-dev")).wait();
-    checks.repoFundCreatedOnForkOnly = true;
+    if (!fund.exists) await (await adminRouter.createFund(fundId, "https://thejollylama.github.io/DecentBusking/payroll-assets.json#dbusk-repo-dev")).wait();
+    if (!pinnerFund.exists) await (await adminRouter.createFund(pinnerFundId, "https://thejollylama.github.io/DecentBusking/payroll-assets.json#dbusk-pinners")).wait();
+    checks.fundsCreatedOnForkOnly = true;
     checks.repoFundActive = (await router.funds(fundId)).active;
+    checks.pinnerFundActive = (await router.funds(pinnerFundId)).active;
   }
-  if (!checks.repoFundActive || !checks.usdcApproved) throw new Error(`Router not ready: ${JSON.stringify(checks)}`);
+  if (!checks.repoFundActive || !checks.pinnerFundActive || !checks.usdcApproved) throw new Error(`Router not ready: ${JSON.stringify(checks)}`);
 
   const nft = await (await ethers.getContractFactory("DecentNFT_v0_3")).deploy("", admin.address, 500);
   const djuke = await (await ethers.getContractFactory("DecentJukeBox_v0_1"))
-    .deploy(BASE_USDC, SETTLEMENT_ROUTER, fundId, admin.address);
+    .deploy(BASE_USDC, SETTLEMENT_ROUTER, fundId, pinnerFundId, admin.address);
   await djuke.grantRole(await djuke.FULFILLER_ROLE(), fulfiller.address);
   await djuke.grantRole(await djuke.REGISTRAR_ROLE(), fulfiller.address);
 
@@ -63,25 +69,28 @@ async function main() {
   const usdc = await ethers.getContractAt("IERC20", BASE_USDC);
   await fundUsdc(usdc, listener.address, 10_000_000n);
   const before = await router.fundBalances(fundId, BASE_USDC);
+  const pinnersBefore = await router.fundBalances(pinnerFundId, BASE_USDC);
   const price = await djuke.quote();
   await usdc.connect(listener).approve(await djuke.getAddress(), price);
   await djuke.connect(listener).requestPlay(songIds[1], price);
   await djuke.connect(fulfiller).fulfill(0, songIds[1], 0, ethers.id("rehearsal-play-0"));
   const fundDelta = (await router.fundBalances(fundId, BASE_USDC)) - before;
+  const pinnerDelta = (await router.fundBalances(pinnerFundId, BASE_USDC)) - pinnersBefore;
   const credits = [await djuke.artistCredits(artist.address), await djuke.artistCredits(collaborator.address)];
   await usdc.connect(listener).approve(await djuke.getAddress(), 500000n);
   await djuke.connect(listener).purchaseListens(songIds, 500000n);
   const listenFundDelta = (await router.fundBalances(fundId, BASE_USDC)) - before - fundDelta;
+  const listenPinnerDelta = (await router.fundBalances(pinnerFundId, BASE_USDC)) - pinnersBefore - pinnerDelta;
   const queueAfterListens = (await djuke.pendingCount()).toString();
   await djuke.connect(artist).withdrawArtistCredit();
 
   const result = { ...checks, batchMintGas: batchReceipt.gasUsed.toString(), batchTokens: (await nft.nextTokenId()).toString(),
-    priceUnits: price.toString(), repoFundDeltaUnits: fundDelta.toString(),
+    priceUnits: price.toString(), repoFundDeltaUnits: fundDelta.toString(), pinnerFundDeltaUnits: pinnerDelta.toString(),
     artistCreditUnits: credits[0].toString(), collaboratorCreditUnits: credits[1].toString(),
-    listenPlaylistFundDeltaUnits: listenFundDelta.toString(), queueAfterListens,
+    listenPlaylistFundDeltaUnits: listenFundDelta.toString(), listenPlaylistPinnerFundDeltaUnits: listenPinnerDelta.toString(), queueAfterListens,
     artistWithdrawnUnits: (await usdc.balanceOf(artist.address)).toString(), broadcast: false };
-  if (price !== 250000n || fundDelta !== 25000n || credits[0] !== 157500n || credits[1] !== 67500n ||
-    listenFundDelta !== 50000n || queueAfterListens !== "0") {
+  if (price !== 250000n || fundDelta !== 5000n || pinnerDelta !== 20000n || credits[0] !== 157500n || credits[1] !== 67500n ||
+    listenFundDelta !== 10000n || listenPinnerDelta !== 40000n || queueAfterListens !== "0") {
     throw new Error(`Unexpected rehearsal amounts: ${JSON.stringify(result)}`);
   }
   console.log(JSON.stringify(result, null, 2));
