@@ -11,13 +11,14 @@ describe("DecentJukeBox_v0_1", function () {
   let collaborator;
   const songId = ethers.id("canonical-song");
   const fundId = ethers.id("dbusk-repo-dev");
+  const pinnerFundId = ethers.id("dbusk-pinners");
 
   beforeEach(async function () {
     [admin, listener, artist, collaborator] = await ethers.getSigners();
     token = await (await ethers.getContractFactory("MockDJukeToken")).deploy();
     router = await (await ethers.getContractFactory("MockDJukeRouter")).deploy();
     jukebox = await (await ethers.getContractFactory("DecentJukeBox_v0_1"))
-      .deploy(await token.getAddress(), await router.getAddress(), fundId, admin.address);
+      .deploy(await token.getAddress(), await router.getAddress(), fundId, pinnerFundId, admin.address);
     await jukebox.configureSong(songId, "ipfs://recording", [artist.address], [10000]);
     await token.mint(listener.address, 1000000000);
     await token.connect(listener).approve(await jukebox.getAddress(), ethers.MaxUint256);
@@ -38,12 +39,13 @@ describe("DecentJukeBox_v0_1", function () {
     expect(await jukebox.quote()).to.equal(500000);
   });
 
-  it("escrows requests, routes ten percent to the fund and credits ninety percent after fulfillment", async function () {
+  it("escrows requests, routes two percent to repo-dev and eight percent to pinners after fulfillment", async function () {
     await jukebox.connect(listener).requestPlay(songId, 250000);
     expect(await router.received(fundId)).to.equal(0);
     expect(await jukebox.artistCredits(artist.address)).to.equal(0);
     await expect(jukebox.fulfill(0, songId, 0, ethers.id("play-0"))).to.emit(jukebox, "PlayFulfilled");
-    expect(await router.received(fundId)).to.equal(25000);
+    expect(await router.received(fundId)).to.equal(5000);
+    expect(await router.received(pinnerFundId)).to.equal(20000);
     expect(await jukebox.artistCredits(artist.address)).to.equal(225000);
     expect(await token.allowance(await jukebox.getAddress(), await router.getAddress())).to.equal(0);
     await jukebox.connect(artist).withdrawArtistCredit();
@@ -112,7 +114,8 @@ describe("DecentJukeBox_v0_1", function () {
     await expect(jukebox.connect(listener).purchaseListens([songId, duet, songId], 750000))
       .to.emit(jukebox, "ListensPurchased").withArgs(0, listener.address, [songId, duet, songId], 750000);
     expect(balance - await token.balanceOf(listener.address)).to.equal(750000);
-    expect(await router.received(fundId)).to.equal(75000);
+    expect(await router.received(fundId)).to.equal(15000);
+    expect(await router.received(pinnerFundId)).to.equal(60000);
     expect(await jukebox.artistCredits(artist.address)).to.equal(225000 * 2 + 157500);
     expect(await jukebox.artistCredits(collaborator.address)).to.equal(67500);
     expect(await jukebox.pendingCount()).to.equal(0);
@@ -131,6 +134,7 @@ describe("DecentJukeBox_v0_1", function () {
     await jukebox.pauseRequests();
     await expect(jukebox.connect(listener).purchaseListens([songId], 250000)).to.be.revertedWithCustomError(jukebox, "EnforcedPause");
     expect(await router.received(fundId)).to.equal(0);
+    expect(await router.received(pinnerFundId)).to.equal(0);
   });
 
   it("lets registrars add new songs only, never altering existing payees", async function () {
