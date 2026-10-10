@@ -19,11 +19,14 @@ contract DecentJukeBox_v0_1 is AccessControl, ReentrancyGuard, Pausable, Multica
     bytes32 public constant REGISTRAR_ROLE = keccak256("REGISTRAR_ROLE");
     uint256 public constant BASE_PRICE = 250000;
     uint256 public constant TIER_SIZE = 8;
+    uint256 public constant LISTEN_PRICE = 250000;
+    uint256 public constant MAX_LISTEN_BATCH = 50;
     IERC20 public immutable paymentToken;
     IDJukeFundRouter public immutable fundRouter;
     bytes32 public immutable repoFundId;
     uint256 public nextRequestId;
     uint256 public headRequestId;
+    uint256 public nextPurchaseId;
     mapping(address => uint256) public artistCredits;
     mapping(bytes32 => bool) public usedPlaybackProofs;
 
@@ -53,6 +56,7 @@ contract DecentJukeBox_v0_1 is AccessControl, ReentrancyGuard, Pausable, Multica
     event RequestReplaced(uint256 indexed requestId, bytes32 indexed previousSongId, bytes32 indexed songId, uint256 revision);
     event PlayFulfilled(uint256 indexed requestId, bytes32 indexed songId, bytes32 playbackProof, uint256 fundAmount);
     event ArtistWithdrawal(address indexed artist, uint256 amount);
+    event ListensPurchased(uint256 indexed purchaseId, address indexed listener, bytes32[] songIds, uint256 amount);
 
     constructor(address token, address router, bytes32 fundId, address admin) {
         require(token.code.length > 0 && router.code.length > 0 && admin != address(0), "Invalid deployment configuration");
@@ -155,19 +159,45 @@ contract DecentJukeBox_v0_1 is AccessControl, ReentrancyGuard, Pausable, Multica
         headRequestId++;
         usedPlaybackProofs[playbackProof] = true;
         uint256 fundAmount = request.amount / 10;
-        uint256 artistAmount = request.amount - fundAmount;
-        uint256 credited;
-        for (uint256 index = 0; index < request.recipients.length; index++) {
-            uint256 share = index + 1 == request.recipients.length
-                ? artistAmount - credited
-                : artistAmount * request.sharesBps[index] / 10000;
-            credited += share;
-            artistCredits[request.recipients[index]] += share;
+        _creditArtists(request.recipients, request.sharesBps, request.amount - fundAmount);
+        _depositRepoFund(fundAmount);
+        emit PlayFulfilled(requestId, request.songId, playbackProof, fundAmount);
+    }
+
+    /// @notice On-demand personal listens; never touches the radio queue.
+    function purchaseListens(bytes32[] calldata songIds, uint256 maxTotal) external whenNotPaused nonReentrant returns (uint256 purchaseId) {
+        require(songIds.length > 0 && songIds.length <= MAX_LISTEN_BATCH, "Invalid listen batch");
+        uint256 amount = LISTEN_PRICE * songIds.length;
+        require(amount <= maxTotal, "Price exceeds approval");
+        uint256 balanceBefore = paymentToken.balanceOf(address(this));
+        paymentToken.safeTransferFrom(msg.sender, address(this), amount);
+        require(paymentToken.balanceOf(address(this)) - balanceBefore == amount, "Exact payment required");
+        uint256 songFund = LISTEN_PRICE / 10;
+        for (uint256 index = 0; index < songIds.length; index++) {
+            Song storage song = _songs[songIds[index]];
+            require(song.enabled, "Song unavailable");
+            _creditArtists(song.recipients, song.sharesBps, LISTEN_PRICE - songFund);
         }
+        _depositRepoFund(songFund * songIds.length);
+        purchaseId = nextPurchaseId++;
+        emit ListensPurchased(purchaseId, msg.sender, songIds, amount);
+    }
+
+    function _creditArtists(address[] storage recipients, uint16[] storage sharesBps, uint256 artistAmount) private {
+        uint256 credited;
+        for (uint256 index = 0; index < recipients.length; index++) {
+            uint256 share = index + 1 == recipients.length
+                ? artistAmount - credited
+                : artistAmount * sharesBps[index] / 10000;
+            credited += share;
+            artistCredits[recipients[index]] += share;
+        }
+    }
+
+    function _depositRepoFund(uint256 fundAmount) private {
         paymentToken.forceApprove(address(fundRouter), fundAmount);
         fundRouter.fundToken(repoFundId, address(paymentToken), fundAmount);
         paymentToken.forceApprove(address(fundRouter), 0);
-        emit PlayFulfilled(requestId, request.songId, playbackProof, fundAmount);
     }
 
     function withdrawArtistCredit() external nonReentrant {

@@ -105,6 +105,34 @@ describe("DecentJukeBox_v0_1", function () {
     await expect(jukebox.connect(listener).requestPlay(songId, 250000, { value: 1 })).to.be.reverted;
   });
 
+  it("sells on-demand listens and playlists without touching the radio queue", async function () {
+    const duet = ethers.id("duet-recording");
+    await jukebox.configureSong(duet, "ipfs://duet", [artist.address, collaborator.address], [7000, 3000]);
+    const balance = await token.balanceOf(listener.address);
+    await expect(jukebox.connect(listener).purchaseListens([songId, duet, songId], 750000))
+      .to.emit(jukebox, "ListensPurchased").withArgs(0, listener.address, [songId, duet, songId], 750000);
+    expect(balance - await token.balanceOf(listener.address)).to.equal(750000);
+    expect(await router.received(fundId)).to.equal(75000);
+    expect(await jukebox.artistCredits(artist.address)).to.equal(225000 * 2 + 157500);
+    expect(await jukebox.artistCredits(collaborator.address)).to.equal(67500);
+    expect(await jukebox.pendingCount()).to.equal(0);
+    expect(await jukebox.quote()).to.equal(250000);
+    expect(await token.balanceOf(await jukebox.getAddress())).to.equal(675000);
+  });
+
+  it("rejects listen purchases above approval, for disabled songs, empty or oversized, and while paused", async function () {
+    await expect(jukebox.connect(listener).purchaseListens([songId, songId], 250000)).to.be.revertedWith("Price exceeds approval");
+    await expect(jukebox.connect(listener).purchaseListens([], 0)).to.be.revertedWith("Invalid listen batch");
+    await expect(jukebox.connect(listener).purchaseListens(Array(51).fill(songId), 51n * 250000n)).to.be.revertedWith("Invalid listen batch");
+    await expect(jukebox.connect(listener).purchaseListens([ethers.id("unknown")], 250000)).to.be.revertedWith("Song unavailable");
+    await jukebox.setSongEnabled(songId, false);
+    await expect(jukebox.connect(listener).purchaseListens([songId], 250000)).to.be.revertedWith("Song unavailable");
+    await jukebox.setSongEnabled(songId, true);
+    await jukebox.pauseRequests();
+    await expect(jukebox.connect(listener).purchaseListens([songId], 250000)).to.be.revertedWithCustomError(jukebox, "EnforcedPause");
+    expect(await router.received(fundId)).to.equal(0);
+  });
+
   it("lets registrars add new songs only, never altering existing payees", async function () {
     await jukebox.grantRole(await jukebox.REGISTRAR_ROLE(), collaborator.address);
     const fresh = ethers.id("registered-by-worker");

@@ -69,13 +69,19 @@ async function main() {
   await djuke.connect(fulfiller).fulfill(0, songIds[1], 0, ethers.id("rehearsal-play-0"));
   const fundDelta = (await router.fundBalances(fundId, BASE_USDC)) - before;
   const credits = [await djuke.artistCredits(artist.address), await djuke.artistCredits(collaborator.address)];
+  await usdc.connect(listener).approve(await djuke.getAddress(), 500000n);
+  await djuke.connect(listener).purchaseListens(songIds, 500000n);
+  const listenFundDelta = (await router.fundBalances(fundId, BASE_USDC)) - before - fundDelta;
+  const queueAfterListens = (await djuke.pendingCount()).toString();
   await djuke.connect(artist).withdrawArtistCredit();
 
   const result = { ...checks, batchMintGas: batchReceipt.gasUsed.toString(), batchTokens: (await nft.nextTokenId()).toString(),
     priceUnits: price.toString(), repoFundDeltaUnits: fundDelta.toString(),
     artistCreditUnits: credits[0].toString(), collaboratorCreditUnits: credits[1].toString(),
+    listenPlaylistFundDeltaUnits: listenFundDelta.toString(), queueAfterListens,
     artistWithdrawnUnits: (await usdc.balanceOf(artist.address)).toString(), broadcast: false };
-  if (price !== 250000n || fundDelta !== 25000n || credits[0] !== 157500n || credits[1] !== 67500n) {
+  if (price !== 250000n || fundDelta !== 25000n || credits[0] !== 157500n || credits[1] !== 67500n ||
+    listenFundDelta !== 50000n || queueAfterListens !== "0") {
     throw new Error(`Unexpected rehearsal amounts: ${JSON.stringify(result)}`);
   }
   console.log(JSON.stringify(result, null, 2));
