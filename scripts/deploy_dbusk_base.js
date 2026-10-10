@@ -1,0 +1,74 @@
+// Deploys DecentNFT_v0_3 and DecentJukeBox_v0_1 to Base for DecentBusking.
+// Dry-run by default; set CONFIRM_DEPLOY=yes to broadcast.
+//   npx hardhat run scripts/deploy_dbusk_base.js --network base
+// Required env: PRIVATE_KEY (deployer = admin), DBUSK_FULFILLER (worker wallet: fulfills plays and registers new songs).
+const fs = require("fs");
+const path = require("path");
+const { ethers, network } = require("hardhat");
+
+const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+const SETTLEMENT_ROUTER = "0x8ecca903e2a6Daa8CCbB933700e4F2C58C44A4B5";
+const REPO_FUND_SLUG = "dbusk-repo-dev";
+const ROUTER_ABI = [
+  "function funds(bytes32) view returns (string metadataUri, bool active, bool exists)",
+  "function approvedAssets(address) view returns (bool)",
+  "function paused() view returns (bool)",
+];
+
+async function main() {
+  const live = network.name === "base";
+  const confirm = process.env.CONFIRM_DEPLOY === "yes";
+  const [deployer] = await ethers.getSigners();
+  if (!deployer) throw new Error("Set PRIVATE_KEY in your local environment");
+  const chainId = Number((await ethers.provider.getNetwork()).chainId);
+  if (chainId !== 8453) throw new Error(`Expected Base (8453), connected to ${chainId}`);
+  const fulfiller = process.env.DBUSK_FULFILLER;
+  if (!ethers.isAddress(fulfiller || "")) throw new Error("Set DBUSK_FULFILLER to the worker's dedicated fulfillment wallet address");
+  if (fulfiller.toLowerCase() === deployer.address.toLowerCase()) throw new Error("Use a separate fulfillment wallet, not the admin wallet");
+
+  const fundId = ethers.id(REPO_FUND_SLUG);
+  const router = new ethers.Contract(SETTLEMENT_ROUTER, ROUTER_ABI, ethers.provider);
+  const fund = await router.funds(fundId);
+  if (!fund.exists || !fund.active) throw new Error(`Router fund ${REPO_FUND_SLUG} must exist and be active`);
+  if (!(await router.approvedAssets(BASE_USDC))) throw new Error("USDC is not approved on the settlement router");
+  if (await router.paused()) throw new Error("Settlement router is paused");
+
+  const balance = await ethers.provider.getBalance(deployer.address);
+  console.log(JSON.stringify({ network: network.name, chainId, admin: deployer.address,
+    adminEth: ethers.formatEther(balance), fulfiller, router: SETTLEMENT_ROUTER, usdc: BASE_USDC, repoFund: REPO_FUND_SLUG }, null, 2));
+
+  const NFT = await ethers.getContractFactory("DecentNFT_v0_3");
+  const DJuke = await ethers.getContractFactory("DecentJukeBox_v0_1");
+  const nftDeploy = await NFT.getDeployTransaction("", deployer.address, 500);
+  const djukeDeploy = await DJuke.getDeployTransaction(BASE_USDC, SETTLEMENT_ROUTER, fundId, deployer.address);
+  const gas = (await ethers.provider.estimateGas({ ...nftDeploy, from: deployer.address }))
+    + (await ethers.provider.estimateGas({ ...djukeDeploy, from: deployer.address })) + 120000n;
+  const fee = await ethers.provider.getFeeData();
+  console.log(`Estimated gas ${gas} (~${ethers.formatEther(gas * (fee.maxFeePerGas || fee.gasPrice))} ETH at current max fee)`);
+  if (live && !confirm) {
+    console.log("Dry run complete. Re-run with CONFIRM_DEPLOY=yes to broadcast.");
+    return;
+  }
+
+  const nft = await NFT.deploy("", deployer.address, 500);
+  await nft.waitForDeployment();
+  const djuke = await DJuke.deploy(BASE_USDC, SETTLEMENT_ROUTER, fundId, deployer.address);
+  await djuke.waitForDeployment();
+  const grant = await djuke.grantRole(await djuke.FULFILLER_ROLE(), fulfiller);
+  await grant.wait();
+  const registrar = await djuke.grantRole(await djuke.REGISTRAR_ROLE(), fulfiller);
+  await registrar.wait();
+  if (!(await djuke.hasRole(await djuke.FULFILLER_ROLE(), fulfiller)) || !(await djuke.hasRole(await djuke.REGISTRAR_ROLE(), fulfiller))) {
+    throw new Error("Worker role grants did not confirm");
+  }
+
+  const result = { network: network.name, chainId, deployedAt: new Date().toISOString(), admin: deployer.address,
+    decentNftV03: await nft.getAddress(), djukeV01: await djuke.getAddress(), fulfiller,
+    router: SETTLEMENT_ROUTER, usdc: BASE_USDC, repoFund: REPO_FUND_SLUG };
+  const output = path.join(__dirname, `../deployments/dbusk-${network.name}.json`);
+  fs.mkdirSync(path.dirname(output), { recursive: true });
+  fs.writeFileSync(output, JSON.stringify(result, null, 2) + "\n");
+  console.log(JSON.stringify(result, null, 2));
+}
+
+main().catch(error => { console.error(error.message); process.exitCode = 1; });

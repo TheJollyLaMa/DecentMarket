@@ -13,6 +13,10 @@ module.exports = {
     },
   },
   networks: {
+    hardhat: process.env.BASE_FORK_RPC
+      ? { chainId: 8453, forking: { url: process.env.BASE_FORK_RPC },
+          chains: { 8453: { hardforkHistory: { cancun: 0 } } } }
+      : {},
     localhost: {
       url: "http://127.0.0.1:8545",
     },
