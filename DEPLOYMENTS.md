@@ -11,6 +11,9 @@ Single source of truth for all on-chain deployments of DecentMarket smart contra
 | Polygon Mainnet | DecentNFT | v0.1 | `0x4cE20F0bbF7eA38488F9c9555EfD2b502E86A53E` | not tracked in repo | [Polygonscan](https://polygonscan.com/address/0x4cE20F0bbF7eA38488F9c9555EfD2b502E86A53E) |
 | Optimism Mainnet | DecentNFT | v0.2 | `0xe870f7b1D10C41dbc6b75598a5308B9a2Bb52958` | `abis/DecentNFT_v0.2.json` | [Optimism Etherscan](https://optimistic.etherscan.io/address/0xe870f7b1D10C41dbc6b75598a5308B9a2Bb52958) |
 | Optimism Mainnet | DecentEscrow | v0.1 | `0x23A457AD3C33d68E4fAd2FCa7c5d9a511E0C350e` | `abis/DecentEscrow_v0.1.json` | [Optimism Etherscan](https://optimistic.etherscan.io/address/0x23A457AD3C33d68E4fAd2FCa7c5d9a511E0C350e) |
+| Base Mainnet | DecentNFT | v0.2 | `0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B` | legacy app collection | [BaseScan](https://basescan.org/address/0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B) |
+| Base Mainnet | DecentNFT | v0.3 | `0x64D5aDc50E5513975EfF7e9ba366B7eE58586fa3` | `abis/DecentNFT_v0.3.json` | [BaseScan](https://basescan.org/address/0x64D5aDc50E5513975EfF7e9ba366B7eE58586fa3) |
+| Base Mainnet | DecentJukeBox | v0.1 | `0x153ef59a57C9A88cbB7822252B5d9D0B11E48F0E` | `abis/DecentJukeBox_v0.1.json` | [BaseScan](https://basescan.org/address/0x153ef59a57C9A88cbB7822252B5d9D0B11E48F0E) |
 
 ### Supported Escrow Tokens (Optimism Mainnet)
 
@@ -21,11 +24,22 @@ Single source of truth for all on-chain deployments of DecentMarket smart contra
 | Bridged USDC | USDCe | `0x7F5c764cBc14f9669B88837ca1490cCa17c31607` | 6 | Bridged USDC |
 | BigNuten Token | $BNUT | `0x733c4d2Aae900E608147dd89Fa93606f89722823` | 18 | Governance & bounty rewards token; displayed in escrow balance panel |
 
-Base Mainnet is the current deployment target. Base DecentNFT and DecentEscrow
-addresses remain blank until deployment and verification are complete. The UI
-does not provide an in-app network switch; use MetaMask to change chains.
+Base Mainnet is the active deployment target. DecentNFT v0.2 remains the existing
+collection; v0.3 is a fresh, empty collection and does not migrate any v0.2 token
+IDs. DecentJukeBox v0.1 is deployed with the 90/8/2 artist/pinner/repo allocation.
+Its deployer and dedicated fulfiller/registrar roles were verified on Base on
+2026-10-10. Deployment transactions: NFT
+`0x4d9d38f11eb1c8f4babc4002c488c23d1bbf3663e8ce3cd8e6eaa14345cc1eff`; DJuke
+`0xd2e6905a525edb53f1a8a88d683ad8581b0c5f8068d740b26289fac72d2a16ca`. Worker
+role grants: FULFILLER
+`0x924e3b96405d85ce3500fe8e3dd96c207477eb165012ddd24d7c5fc757dc265a`; REGISTRAR
+`0x368159e6601a2ac33631f8fe1023b18bf224971bd9e2bcf8ac791dea4e08b3fb`.
+Addresses and receipt metadata are in `deployments/dbusk-base.json`. The deploy
+script now writes addresses before worker role setup and refuses a second Base
+deployment when the manifest exists. The UI does not provide an in-app network
+switch; use MetaMask to change chains.
 
-The Base redeployment is prepared but has not been sent. Legacy Optimism
+The fresh Base v0.3 collection currently has no products. Legacy Optimism
 metadata CIDs are not assumed available. For the fresh Base collection, store
 each token JSON and `collection.json` as separate IPFS objects through the
 wallet-authorized Pinata relay and pin the same files with IPFS Desktop. Record

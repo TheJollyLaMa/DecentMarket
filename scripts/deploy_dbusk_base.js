@@ -19,6 +19,10 @@ const ROUTER_ABI = [
 async function main() {
   const live = network.name === "base";
   const confirm = process.env.CONFIRM_DEPLOY === "yes";
+  const output = path.join(__dirname, `../deployments/dbusk-${network.name}.json`);
+  if (live && fs.existsSync(output)) {
+    throw new Error(`Deployment manifest already exists at ${output}; refusing to deploy duplicate contracts`);
+  }
   const [deployer] = await ethers.getSigners();
   if (!deployer) throw new Error("Set PRIVATE_KEY in your local environment");
   const chainId = Number((await ethers.provider.getNetwork()).chainId);
@@ -58,22 +62,40 @@ async function main() {
 
   const nft = await NFT.deploy("", deployer.address, 500);
   await nft.waitForDeployment();
+  const nftDeployment = nft.deploymentTransaction();
+  if (live && nftDeployment) await nftDeployment.wait(2);
   const djuke = await DJuke.deploy(BASE_USDC, SETTLEMENT_ROUTER, fundId, pinnerFundId, deployer.address);
   await djuke.waitForDeployment();
-  const grant = await djuke.grantRole(await djuke.FULFILLER_ROLE(), fulfiller);
-  await grant.wait();
-  const registrar = await djuke.grantRole(await djuke.REGISTRAR_ROLE(), fulfiller);
-  await registrar.wait();
-  if (!(await djuke.hasRole(await djuke.FULFILLER_ROLE(), fulfiller)) || !(await djuke.hasRole(await djuke.REGISTRAR_ROLE(), fulfiller))) {
-    throw new Error("Worker role grants did not confirm");
-  }
+  const djukeDeployment = djuke.deploymentTransaction();
+  if (live && djukeDeployment) await djukeDeployment.wait(2);
 
   const result = { network: network.name, chainId, deployedAt: new Date().toISOString(), admin: deployer.address,
     decentNftV03: await nft.getAddress(), djukeV01: await djuke.getAddress(), fulfiller,
     router: SETTLEMENT_ROUTER, usdc: BASE_USDC, repoFund: REPO_FUND_SLUG, pinnerFund: PINNER_FUND_SLUG,
-    repoDevShareBps: 200, pinnerShareBps: 800 };
-  const output = path.join(__dirname, `../deployments/dbusk-${network.name}.json`);
+    repoDevShareBps: 200, pinnerShareBps: 800,
+    deploymentTxs: { decentNftV03: nftDeployment?.hash, djukeV01: djukeDeployment?.hash },
+    workerRoles: { fulfiller: false, registrar: false } };
   fs.mkdirSync(path.dirname(output), { recursive: true });
+  fs.writeFileSync(output, JSON.stringify(result, null, 2) + "\n");
+  console.log(`Deployment addresses recorded at ${output} before role setup.`);
+
+  const roles = [
+    ["fulfiller", ethers.id("FULFILLER_ROLE")],
+    ["registrar", ethers.id("REGISTRAR_ROLE")],
+  ];
+  for (const [name, role] of roles) {
+    if (!(await djuke.hasRole(role, fulfiller))) {
+      await djuke.grantRole.staticCall(role, fulfiller);
+      const transaction = await djuke.grantRole(role, fulfiller);
+      const receipt = await transaction.wait(live ? 2 : 1);
+      if (receipt?.status !== 1) throw new Error(`Worker ${name} role grant did not confirm: ${transaction.hash}`);
+    }
+    if (!(await djuke.hasRole(role, fulfiller))) throw new Error(`Worker ${name} role grant is not visible on chain`);
+    result.workerRoles[name] = true;
+    fs.writeFileSync(output, JSON.stringify(result, null, 2) + "\n");
+  }
+
+  result.workerRolesConfirmed = true;
   fs.writeFileSync(output, JSON.stringify(result, null, 2) + "\n");
   console.log(JSON.stringify(result, null, 2));
 }
