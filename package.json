@@ -11,7 +11,9 @@
     "export:abi": "node scripts/export_abi.js",
     "export:dbusk-abis": "hardhat compile && node scripts/export_dbusk_abis.js",
     "rehearse:dbusk:fork": "BASE_FORK_RPC=${BASE_FORK_RPC:-https://base-rpc.publicnode.com} hardhat run scripts/rehearse_dbusk_fork.js",
+    "rehearse:devert:fork": "BASE_FORK_RPC=${BASE_FORK_RPC:-https://base-rpc.publicnode.com} hardhat test test/DeVert_v01.test.js --grep \"rehearses campaign purchase\"",
     "deploy:dbusk:base": "hardhat run scripts/deploy_dbusk_base.js --network base",
+    "deploy:devert:base": "hardhat run scripts/deploy_devert_base.js --network base",
     "configure:djuke:base": "hardhat run scripts/configure_djuke_songs.js --network base"
   },
   "devDependencies": {

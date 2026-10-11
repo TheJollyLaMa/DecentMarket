@@ -14,6 +14,28 @@ Single source of truth for all on-chain deployments of DecentMarket smart contra
 | Base Mainnet | DecentNFT | v0.2 | `0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B` | legacy app collection | [BaseScan](https://basescan.org/address/0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B) |
 | Base Mainnet | DecentNFT | v0.3 | `0x64D5aDc50E5513975EfF7e9ba366B7eE58586fa3` | `abis/DecentNFT_v0.3.json` | [BaseScan](https://basescan.org/address/0x64D5aDc50E5513975EfF7e9ba366B7eE58586fa3) |
 | Base Mainnet | DecentJukeBox | v0.1 | `0x153ef59a57C9A88cbB7822252B5d9D0B11E48F0E` | `abis/DecentJukeBox_v0.1.json` | [BaseScan](https://basescan.org/address/0x153ef59a57C9A88cbB7822252B5d9D0B11E48F0E) |
+| Base Mainnet | DeVert | v0.1 | `0x135Cbc573F87637158eb3186C87c584fb0B34CD9` | `abis/DeVert_v0.1.json` | [BaseScan](https://basescan.org/address/0x135Cbc573F87637158eb3186C87c584fb0B34CD9) |
+
+### DeVert v0.1 (Deployed, Paused)
+
+DeVert v0.1 is deployed on Base but remains paused and is not live. Address:
+`0x135Cbc573F87637158eb3186C87c584fb0B34CD9`. Deployment transaction:
+`0x4850be6aa2539550b74800eebc47e8636dbd9eac92a71f9fd64a9026427dfeb4`, block
+`52453922`. The deployed code and roles were independently verified. The project
+owner `0x807061DF657A7697c04045dA7d16D941861cAABc` has the admin role; the
+existing DJuke fulfiller `0x4894698f2B5cAF13Fad4Aa8fbaFE3618b960909F` has the
+DeVert scheduler role. Deployment metadata is in
+`deployments/devert-v01-base.json`.
+
+Each campaign purchase also includes a separate Base ETH scheduler top-up. The
+checkout quotes 500,000 scheduler gas units at the current fee cap; the contract
+checks that the attached value covers the included transaction's effective gas
+price and forwards the full amount to the scheduler wallet. Any fee-cap surplus
+stays in that wallet as operating reserve. This does not change the USDC offer,
+the 45/45/8/2 split, or the advertiser's separate transaction gas cost. Only set
+the public app's DeVert address and unpause after main-radio staging playback,
+durable impression recovery, and role/expiry/overbid checks pass. The public
+checkout address remains unset; no campaign purchase or ad playback has occurred.
 
 ### Supported Escrow Tokens (Optimism Mainnet)
 

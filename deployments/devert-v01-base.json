@@ -1,0 +1,24 @@
+{
+  "network": "base",
+  "chainId": 8453,
+  "preparedAt": "2026-10-11T05:39:48.603Z",
+  "predictedAddress": "0x135Cbc573F87637158eb3186C87c584fb0B34CD9",
+  "admin": "0x807061DF657A7697c04045dA7d16D941861cAABc",
+  "scheduler": "0x4894698f2B5cAF13Fad4Aa8fbaFE3618b960909F",
+  "djuke": "0x333Aa353d6fc70aE79Cf91CE090645CD740FEf59",
+  "router": "0x8ecca903e2a6Daa8CCbB933700e4F2C58C44A4B5",
+  "usdc": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  "fundSlugs": [
+    "dbusk-playback",
+    "dbusk-top10",
+    "dbusk-pinners",
+    "dbusk-repo-dev"
+  ],
+  "phase": "deployed-paused-not-live",
+  "deploymentTx": "0x4850be6aa2539550b74800eebc47e8636dbd9eac92a71f9fd64a9026427dfeb4",
+  "address": "0x135Cbc573F87637158eb3186C87c584fb0B34CD9",
+  "deployedAt": "2026-10-11T05:39:53.243Z",
+  "deploymentBlock": 52453922,
+  "paused": true,
+  "schedulerRoleConfirmed": true
+}
