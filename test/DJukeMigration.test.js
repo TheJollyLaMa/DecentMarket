@@ -1,8 +1,33 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { validateCatalog } = require("../scripts/deploy_djuke_v02");
+const { validateCatalog, MigrationProvider } = require("../scripts/deploy_djuke_v02");
 
 describe("DJuke migration catalog", function () {
+  it("serializes migration RPC requests below the public provider rate limit", async function () {
+    const http = require("node:http");
+    const received = [];
+    const server = http.createServer((request, response) => {
+      let body = "";
+      request.on("data", chunk => { body += chunk; });
+      request.on("end", () => {
+        received.push(Date.now());
+        const payload = JSON.parse(body);
+        response.setHeader("content-type", "application/json");
+        response.end(JSON.stringify({ jsonrpc: "2.0", id: payload.id, result: "0x1" }));
+      });
+    });
+    await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+    const provider = new MigrationProvider(`http://127.0.0.1:${server.address().port}`);
+    try {
+      await Promise.all([provider.send("eth_blockNumber", []), provider.send("eth_blockNumber", []), provider.send("eth_blockNumber", [])]);
+      expect(received.length).to.equal(3);
+      expect(received[2] - received[0]).to.be.at.least(170);
+    } finally {
+      provider.destroy();
+      server.closeAllConnections();
+      await new Promise(resolve => server.close(resolve));
+    }
+  });
   it("requires unique recording identities and exact existing recipient splits", async function () {
     const [owner] = await ethers.getSigners();
     const song = { songId: ethers.id("song"), audioURI: "ipfs://recording", recipients: [owner.address], sharesBps: [10000] };
@@ -14,6 +39,7 @@ describe("DJuke migration catalog", function () {
 
   (process.env.BASE_FORK_RPC ? it : it.skip)("rehearses gas-funded fulfillment against Base USDC and the production fund router", async function () {
     const { network } = require("hardhat");
+    await network.provider.send("evm_mine");
     const [admin, worker] = await ethers.getSigners();
     const owner = "0x807061DF657A7697c04045dA7d16D941861cAABc";
     const oldAddress = "0x153ef59a57C9A88cbB7822252B5d9D0B11E48F0E";

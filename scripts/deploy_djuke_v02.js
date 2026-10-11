@@ -12,6 +12,25 @@ const OLD_ABI = ["function getSong(bytes32) view returns((string audioURI,bool e
   "function pendingCount() view returns(uint256)", "function paused() view returns(bool)", "function pauseRequests()",
   "function hasRole(bytes32,address) view returns(bool)"];
 
+class MigrationProvider extends ethers.JsonRpcProvider {
+  constructor(url) {
+    super(url, 8453, { staticNetwork: true, batchMaxCount: 1 });
+    this.requestQueue = Promise.resolve();
+    this.nextRequestAt = 0;
+  }
+
+  _send(payload) {
+    const result = this.requestQueue.then(async () => {
+      const delay = this.nextRequestAt - Date.now();
+      if (delay > 0) await new Promise(resolve => setTimeout(resolve, delay));
+      this.nextRequestAt = Date.now() + 100;
+      return super._send(payload);
+    });
+    this.requestQueue = result.catch(() => {});
+    return result;
+  }
+}
+
 function validateCatalog(songs) {
   if (!Array.isArray(songs) || !songs.length || songs.length > 5000) throw new Error("Invalid catalog size");
   const identities = new Set();
@@ -37,7 +56,7 @@ async function retryRead(operation) {
 async function main() {
   if (!process.env.DBUSK_ENV_FILE) throw new Error("Set DBUSK_ENV_FILE to the local ignored environment file");
   dotenv.config({ path: process.env.DBUSK_ENV_FILE, override: true, quiet: true });
-  const provider = new ethers.JsonRpcProvider(process.env.BASE_RPC_URL || "https://base-rpc.publicnode.com");
+  const provider = new MigrationProvider(process.env.DJUKE_DEPLOY_RPC_URL || process.env.BASE_RPC_URL || "https://mainnet.base.org");
   try {
     if (Number((await provider.getNetwork()).chainId) !== 8453) throw new Error("Base-only deployment");
     const signer = new ethers.Wallet(process.env.MINT_OWNER_PRIVATE_KEY, provider);
@@ -115,6 +134,17 @@ async function main() {
       write();
     }
     if (await provider.getCode(manifest.address) === "0x") throw new Error("Recorded deployment not visible; resolve it without redeploying");
+    for (const record of [{ hash: manifest.deploymentTx, kind: "deployment" }, ...manifest.transactions]) {
+      if (!record.hash) throw new Error("Recorded deployment hash missing; resolve it without redeploying");
+      const receipt = await retryRead(() => provider.getTransactionReceipt(record.hash));
+      if (receipt?.status !== 1 || await receipt.confirmations() < 2) throw new Error(`Recorded ${record.kind} transaction is not confirmed; no new transactions sent`);
+      if (record.kind === "deployment") {
+        if (receipt.contractAddress?.toLowerCase() !== manifest.address.toLowerCase()) throw new Error("Recorded deployment address mismatch");
+        manifest.deploymentBlock = receipt.blockNumber;
+      }
+    }
+    manifest.phase = "deployed";
+    write();
     const contract = new ethers.Contract(manifest.address, artifact.abi, signer);
     if ((await contract.gasWorker()).toLowerCase() !== WORKER.toLowerCase() || await contract.maxGasContributionWei() !== cap ||
         (await contract.paymentToken()).toLowerCase() !== USDC.toLowerCase() || (await contract.fundRouter()).toLowerCase() !== ROUTER.toLowerCase()) throw new Error("Deployment configuration mismatch");
@@ -159,5 +189,11 @@ async function main() {
   } finally { provider.destroy(); }
 }
 
-module.exports = { validateCatalog };
-if (require.main === module) main().catch(() => { console.error("DJuke deployment/migration stopped. Inspect the recorded manifest and confirmed receipts before retrying; no automatic redeploy."); process.exitCode = 1; });
+module.exports = { validateCatalog, MigrationProvider };
+if (require.main === module) main().catch(error => {
+  console.error(JSON.stringify({ code: error.code || "MIGRATION_STOPPED", reason: String(error.shortMessage || error.reason || error.message).slice(0, 200) }));
+  const rpcMessage = error.error?.message || error.info?.error?.message;
+  if (typeof rpcMessage === "string") console.error(JSON.stringify({ rpcReason: rpcMessage.replace(/0x[0-9a-fA-F]{64,}/g, "[redacted]").slice(0, 200) }));
+  console.error("DJuke deployment/migration stopped. Inspect the recorded manifest and confirmed receipts before retrying; no automatic redeploy.");
+  process.exitCode = 1;
+});
