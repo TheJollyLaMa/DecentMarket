@@ -50,8 +50,8 @@ contract DecentJukeBox_v0_1 is AccessControl, ReentrancyGuard, Pausable, Multica
         uint16[] sharesBps;
     }
 
-    mapping(bytes32 => Song) private _songs;
-    mapping(uint256 => Request) private _requests;
+    mapping(bytes32 => Song) internal _songs;
+    mapping(uint256 => Request) internal _requests;
 
     event SongConfigured(bytes32 indexed songId, string audioURI, address[] recipients, uint16[] sharesBps);
     event SongStatusChanged(bytes32 indexed songId, bool enabled);
@@ -83,7 +83,7 @@ contract DecentJukeBox_v0_1 is AccessControl, ReentrancyGuard, Pausable, Multica
     }
 
     function configureSong(bytes32 songId, string calldata audioURI, address[] calldata recipients, uint16[] calldata sharesBps)
-        external onlyRole(DEFAULT_ADMIN_ROLE)
+        external virtual onlyRole(DEFAULT_ADMIN_ROLE)
     {
         _setSong(songId, audioURI, recipients, sharesBps);
     }
@@ -96,7 +96,7 @@ contract DecentJukeBox_v0_1 is AccessControl, ReentrancyGuard, Pausable, Multica
         _setSong(songId, audioURI, recipients, sharesBps);
     }
 
-    function _setSong(bytes32 songId, string calldata audioURI, address[] calldata recipients, uint16[] calldata sharesBps) private {
+    function _setSong(bytes32 songId, string memory audioURI, address[] memory recipients, uint16[] memory sharesBps) internal {
         require(songId != bytes32(0) && bytes(audioURI).length > 0, "Song identity required");
         require(recipients.length > 0 && recipients.length <= 16 && recipients.length == sharesBps.length, "Invalid split length");
         uint256 total;
@@ -123,7 +123,11 @@ contract DecentJukeBox_v0_1 is AccessControl, ReentrancyGuard, Pausable, Multica
         emit SongStatusChanged(songId, enabled);
     }
 
-    function requestPlay(bytes32 songId, uint256 maxPrice) external whenNotPaused nonReentrant returns (uint256 requestId) {
+    function requestPlay(bytes32 songId, uint256 maxPrice) external virtual whenNotPaused nonReentrant returns (uint256 requestId) {
+        return _requestPlay(songId, maxPrice);
+    }
+
+    function _requestPlay(bytes32 songId, uint256 maxPrice) internal returns (uint256 requestId) {
         Song storage song = _songs[songId];
         require(song.enabled, "Song unavailable");
         uint256 amount = quote();
@@ -172,26 +176,37 @@ contract DecentJukeBox_v0_1 is AccessControl, ReentrancyGuard, Pausable, Multica
 
     /// @notice On-demand personal listens; never touches the radio queue.
     function purchaseListens(bytes32[] calldata songIds, uint256 maxTotal) external whenNotPaused nonReentrant returns (uint256 purchaseId) {
+        return _purchaseListens(songIds, maxTotal);
+    }
+
+    function _purchaseListens(bytes32[] memory songIds, uint256 maxTotal) internal returns (uint256 purchaseId) {
         require(songIds.length > 0 && songIds.length <= MAX_LISTEN_BATCH, "Invalid listen batch");
-        uint256 amount = LISTEN_PRICE * songIds.length;
+        uint256 amount;
+        for (uint256 index = 0; index < songIds.length; index++) amount += _listenPrice(songIds[index]);
         require(amount <= maxTotal, "Price exceeds approval");
         uint256 balanceBefore = paymentToken.balanceOf(address(this));
         paymentToken.safeTransferFrom(msg.sender, address(this), amount);
         require(paymentToken.balanceOf(address(this)) - balanceBefore == amount, "Exact payment required");
-        uint256 songArtist = LISTEN_PRICE * (10000 - PINNER_SHARE_BPS - REPO_DEV_SHARE_BPS) / 10000;
+        uint256 repoAmount;
+        uint256 pinnerAmount;
         for (uint256 index = 0; index < songIds.length; index++) {
             Song storage song = _songs[songIds[index]];
             require(song.enabled, "Song unavailable");
+            uint256 songPrice = _listenPrice(songIds[index]);
+            uint256 songArtist = songPrice * (10000 - PINNER_SHARE_BPS - REPO_DEV_SHARE_BPS) / 10000;
             _creditArtists(song.recipients, song.sharesBps, songArtist);
+            repoAmount += songPrice * REPO_DEV_SHARE_BPS / 10000;
+            pinnerAmount += songPrice - songArtist - songPrice * REPO_DEV_SHARE_BPS / 10000;
         }
-        _depositRepoFund(LISTEN_PRICE * songIds.length * REPO_DEV_SHARE_BPS / 10000,
-            LISTEN_PRICE * songIds.length * PINNER_SHARE_BPS / 10000,
+        _depositRepoFund(repoAmount, pinnerAmount,
             keccak256(abi.encode("listen", purchaseId, songIds)));
         purchaseId = nextPurchaseId++;
         emit ListensPurchased(purchaseId, msg.sender, songIds, amount);
     }
 
-    function _creditArtists(address[] storage recipients, uint16[] storage sharesBps, uint256 artistAmount) private {
+    function _listenPrice(bytes32) internal view virtual returns (uint256) { return LISTEN_PRICE; }
+
+    function _creditArtists(address[] storage recipients, uint16[] storage sharesBps, uint256 artistAmount) internal {
         uint256 credited;
         for (uint256 index = 0; index < recipients.length; index++) {
             uint256 share = index + 1 == recipients.length
@@ -202,7 +217,7 @@ contract DecentJukeBox_v0_1 is AccessControl, ReentrancyGuard, Pausable, Multica
         }
     }
 
-    function _depositRepoFund(uint256 repoAmount, uint256 pinnerAmount, bytes32 source) private {
+    function _depositRepoFund(uint256 repoAmount, uint256 pinnerAmount, bytes32 source) internal {
         if (repoAmount > 0) {
             paymentToken.forceApprove(address(fundRouter), repoAmount);
             fundRouter.fundToken(repoFundId, address(paymentToken), repoAmount);
