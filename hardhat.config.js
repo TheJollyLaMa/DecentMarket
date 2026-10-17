@@ -19,7 +19,7 @@ module.exports = {
   },
   networks: {
     hardhat: process.env.BASE_FORK_RPC
-      ? { chainId: 8453, forking: { url: process.env.BASE_FORK_RPC },
+      ? { chainId: 8453, hardfork: "cancun", forking: { url: process.env.BASE_FORK_RPC },
           chains: { 8453: { hardforkHistory: { cancun: 0 } } } }
       : {},
     localhost: {
@@ -42,7 +42,7 @@ module.exports = {
     },
   },
   etherscan: {
-    apiKey: {
+    apiKey: process.env.ETHERSCAN_API_KEY || {
       polygon: process.env.POLYGONSCAN_API_KEY || "",
       polygonAmoy: process.env.POLYGONSCAN_API_KEY || "",
       base: process.env.BASESCAN_API_KEY || "",
