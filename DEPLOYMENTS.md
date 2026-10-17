@@ -16,6 +16,7 @@ Single source of truth for all on-chain deployments of DecentMarket smart contra
 | Base Mainnet | DecentJukeBox | v0.1 | `0x153ef59a57C9A88cbB7822252B5d9D0B11E48F0E` | `abis/DecentJukeBox_v0.1.json` | [BaseScan](https://basescan.org/address/0x153ef59a57C9A88cbB7822252B5d9D0B11E48F0E) |
 | Base Mainnet | DeVert | v0.1 | `0x135Cbc573F87637158eb3186C87c584fb0B34CD9` | `abis/DeVert_v0.1.json` | [BaseScan](https://basescan.org/address/0x135Cbc573F87637158eb3186C87c584fb0B34CD9) |
 | Base Mainnet | DeVertQueue | v0.1 | `0x9ebf98367319E6c8b15b5517d808CCfEb3dddA61` | `abis/DeVertQueue_v0.1.json` | [BaseScan verified source](https://basescan.org/address/0x9ebf98367319E6c8b15b5517d808CCfEb3dddA61#code) |
+| Base Mainnet | DeVertQueue | v0.2 | `0xe54609f022A8D760417E7cc0Eea6360b6E1D11Bb` | `abis/DeVertQueue_v0.2.json` | [BaseScan verified source](https://basescan.org/address/0xe54609f022A8D760417E7cc0Eea6360b6E1D11Bb#code) |
 
 ### DeVert paid queue v0.1
 
@@ -43,8 +44,52 @@ against the deployed campaign source, settling through the deployed router and
 claiming a removed-request refund. Run
 `BASE_FORK_RPC=https://mainnet.base.org npx hardhat test test/DeVertQueue_base_fork.test.js`.
 The rehearsal mines a local block before calls; no mainnet transaction is sent.
-Public checkout remains disabled pending controlled live acceptance in
-DecentBusking. Verification uses `ETHERSCAN_API_KEY` with Etherscan V2.
+The authorized $1 live test passed on October 17, 2026, with automatic
+[settlement](https://basescan.org/tx/0xd3bb497a52c16d3854710e453ffe5f62c4e8a5229cc06b04a6129adf74e936cd).
+Public checkout was subsequently disabled because v0.1 does not distinguish
+normal-slot bumps from double-price immediate plays. Existing purchases remain
+valid; do not reinterpret their purchased priority.
+Verification uses `ETHERSCAN_API_KEY` with Etherscan V2.
+
+### DeVert paid queue v0.2 (deployed, checkout disabled)
+
+Deployed October 17, 2026, [transaction](https://basescan.org/tx/0x48e8c5ce12cefc8a735e9af016d5475ac290db50e2924bba9d54fd9fc58b5240),
+block 52723789. The [deployment record](deployments/devert-queue-v02-base.json)
+includes constructor arguments. Source is verified on Basescan using Solidity
+0.8.26, optimizer 200 runs, Cancun EVM. Roles, dependency addresses, 1 USDC bump
+quote, 2 USDC immediate quote, zero pending requests and worker gas were
+independently read back. The operator authorized deployment and read-only
+publication only; no new live paid acceptance request has been submitted.
+
+The campaign contract and $5 USDC/week campaign purchases are unchanged.
+`contracts/DeVertQueue_v0.2.sol` adds two separate FIFO tiers:
+
+- `tier=0`: queue bump at the base quote, for the next normal advert-break slot.
+- `tier=1`: immediate extra break after the current recording, costing exactly
+  twice that quote. Immediate requests take priority before playback starts;
+  no request interrupts audio already playing or a protected show.
+
+The shared base quote is $1 times `2 ** floor(pendingCount / 7)` across both
+tiers. `quoteForTier` exposes exact quotes and `headRequestIdForTier` exposes
+each tier's FIFO head. Settlement enforces FIFO per tier, rather than a global
+head that would prevent an immediate play from settling ahead of an older bump.
+Escrow, immutable purchased media, moderation roles, payer-only removal refunds,
+128-position scan bounds, unique playback proofs and 45/45/8/2 routing are
+preserved. The fulfiller still attests naturally completed playback; scheduling
+timing is enforced by the radio, not independently proven on-chain.
+
+Validation: six v0.2 unit tests plus the unchanged eight v0.1 unit tests, and
+local Base-fork settlement/refund rehearsals for both versions. The fork test
+funds an impersonated payer only within Hardhat when necessary; it never sends
+a mainnet transaction.
+
+Use `DEVERT_QUEUE_VERSION=2` with `scripts/deploy_devert_queue.js` for a dry run.
+Separate authorization and `CONFIRM_DEPLOY=yes` are required to broadcast.
+The script checks that the legacy queue's pending count and USDC reserves are
+empty and writes a new `deployments/devert-queue-v02-base.json` record rather
+than overwriting the verified v0.1 deployment. Configure the worker with the
+new address and version 2, retain checkout disabled, and perform separately
+authorized live acceptance of both tiers before enabling it.
 
 ### DeVert v0.1 (Deployed, Paused)
 

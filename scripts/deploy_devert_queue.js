@@ -38,10 +38,20 @@ async function main() {
     if (!fund.exists || !fund.active) throw new Error(`Fund must exist and be active: ${slug}`);
   }
   const args = [token, campaigns, routerAddress, ...slugs.map(ethers.id), admin, worker];
-  const artifact = await artifacts.readArtifact("DeVertQueue_v0_1");
+  const version = process.env.DEVERT_QUEUE_VERSION || "2";
+  if (version !== "1" && version !== "2") throw new Error("DEVERT_QUEUE_VERSION must be 1 or 2");
+  if (version === "2") {
+    const legacyAddress = "0x9ebf98367319E6c8b15b5517d808CCfEb3dddA61";
+    const legacy = new ethers.Contract(legacyAddress, ["function pendingCount() view returns(uint256)"], ethers.provider);
+    const usdc = new ethers.Contract(token, ["function balanceOf(address) view returns(uint256)"], ethers.provider);
+    if (await legacy.pendingCount() !== 0n || await usdc.balanceOf(legacyAddress) !== 0n) {
+      throw new Error("Drain legacy paid requests and outstanding refund reserves before switching queue contracts");
+    }
+  }
+  const artifact = await artifacts.readArtifact(version === "2" ? "DeVertQueue_v0_2" : "DeVertQueue_v0_1");
   const factory = new ethers.ContractFactory(artifact.abi, artifact.bytecode, ethers.provider);
   const deployment = await factory.getDeployTransaction(...args);
-  const output = path.join(__dirname, "../deployments/devert-queue-base.json");
+  const output = path.join(__dirname, version === "2" ? "../deployments/devert-queue-v02-base.json" : "../deployments/devert-queue-base.json");
   if (fs.existsSync(output)) throw new Error("A deployment record already exists; review it before deploying again");
   const gas = await ethers.provider.estimateGas({ ...deployment, from: admin });
   const fees = await ethers.provider.getFeeData();
@@ -50,7 +60,7 @@ async function main() {
   const estimatedMaxCost = gas * gasPrice;
   const balance = await ethers.provider.getBalance(admin);
   if (balance < estimatedMaxCost) throw new Error("Admin has insufficient Base ETH for the estimated deployment");
-  console.log(JSON.stringify({ network: network.name, chainId, admin, worker, token, campaigns,
+  console.log(JSON.stringify({ network: network.name, chainId, version, admin, worker, token, campaigns,
     router: routerAddress, funds: slugs, gas: gas.toString(),
     estimatedMaxCostEth: ethers.formatEther(estimatedMaxCost), constructorArguments: args }, null, 2));
   if (process.env.CONFIRM_DEPLOY !== "yes") {
@@ -62,13 +72,13 @@ async function main() {
   if (!signer || signer.address.toLowerCase() !== admin.toLowerCase()) throw new Error("The signer must match DBUSK_ADMIN");
   const contract = await factory.connect(signer).deploy(...args);
   fs.mkdirSync(path.dirname(output), { recursive: true });
-  const pending = { chainId, address: contract.target, transactionHash: contract.deploymentTransaction().hash,
+  const pending = { chainId, version: Number(version), address: contract.target, transactionHash: contract.deploymentTransaction().hash,
     constructorArguments: args, status: "pending", submittedAt: new Date().toISOString() };
   fs.writeFileSync(output, JSON.stringify(pending, null, 2) + "\n", { flag: "wx" });
   console.log(`Deployment submitted: ${pending.transactionHash}`);
   await contract.waitForDeployment();
   const receipt = await contract.deploymentTransaction().wait(2);
-  const result = { chainId, address: contract.target, transactionHash: receipt.hash,
+  const result = { chainId, version: Number(version), address: contract.target, transactionHash: receipt.hash,
     deploymentBlock: receipt.blockNumber, constructorArguments: args, deployedAt: new Date().toISOString() };
   fs.writeFileSync(output, JSON.stringify(result, null, 2) + "\n");
   console.log(JSON.stringify(result, null, 2));
