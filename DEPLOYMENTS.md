@@ -15,6 +15,36 @@ Single source of truth for all on-chain deployments of DecentMarket smart contra
 | Base Mainnet | DecentNFT | v0.3 | `0x64D5aDc50E5513975EfF7e9ba366B7eE58586fa3` | `abis/DecentNFT_v0.3.json` | [BaseScan](https://basescan.org/address/0x64D5aDc50E5513975EfF7e9ba366B7eE58586fa3) |
 | Base Mainnet | DecentJukeBox | v0.1 | `0x153ef59a57C9A88cbB7822252B5d9D0B11E48F0E` | `abis/DecentJukeBox_v0.1.json` | [BaseScan](https://basescan.org/address/0x153ef59a57C9A88cbB7822252B5d9D0B11E48F0E) |
 | Base Mainnet | DeVert | v0.1 | `0x135Cbc573F87637158eb3186C87c584fb0B34CD9` | `abis/DeVert_v0.1.json` | [BaseScan](https://basescan.org/address/0x135Cbc573F87637158eb3186C87c584fb0B34CD9) |
+| Base Mainnet | DeVertQueue | v0.1 | `0x9ebf98367319E6c8b15b5517d808CCfEb3dddA61` | `abis/DeVertQueue_v0.1.json` | [BaseScan verified source](https://basescan.org/address/0x9ebf98367319E6c8b15b5517d808CCfEb3dddA61#code) |
+
+### DeVert paid queue v0.1
+
+Deployed October 17, 2026, transaction
+[`0x787351b818b6621bd1ced2606d825aab6b8d18fc40c6a455d370c14a5b0706bf`](https://basescan.org/tx/0x787351b818b6621bd1ced2606d825aab6b8d18fc40c6a455d370c14a5b0706bf),
+block 52722248. Constructor arguments are recorded in
+[`deployments/devert-queue-base.json`](deployments/devert-queue-base.json).
+The verified compiler is Solidity 0.8.26, optimizer 200 runs, Cancun EVM.
+The admin is `0x807061DF657A7697c04045dA7d16D941861cAABc`; the fulfiller is
+`0x4894698f2B5cAF13Fad4Aa8fbaFE3618b960909F`. Roles and dependencies were
+independently read back after deployment.
+
+This independent FIFO queue does not replace the campaign source. Requests
+require an active explicitly approved campaign and reserve native Base USDC
+until the trusted radio fulfiller attests completed audible playback. Starting
+price is 1 USDC, doubling per seven pending requests, with a bounded 128-position
+window. Expiry does not invalidate purchased playback. Removal authorizes a
+full refund to each payer for their unplayed requests, including while paused.
+There is no automatic waiting-time refund or administrative withdrawal.
+Completed payments route 45% playback, 45% Top 10, 8% pinners and 2% repo
+development through the existing settlement router.
+
+Validation: eight contract unit tests plus a Base fork rehearsal purchasing
+against the deployed campaign source, settling through the deployed router and
+claiming a removed-request refund. Run
+`BASE_FORK_RPC=https://mainnet.base.org npx hardhat test test/DeVertQueue_base_fork.test.js`.
+The rehearsal mines a local block before calls; no mainnet transaction is sent.
+Public checkout remains disabled pending controlled live acceptance in
+DecentBusking. Verification uses `ETHERSCAN_API_KEY` with Etherscan V2.
 
 ### DeVert v0.1 (Deployed, Paused)
 
