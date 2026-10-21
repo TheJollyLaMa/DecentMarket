@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { loadGalleryProducts, resolveMarketAsset } from '../js/market-gallery.mjs';
+import { loadGalleryProducts, publicMarketProvider, resolveMarketAsset } from '../js/market-gallery.mjs';
 import { verifyPublicListing } from '../js/market-releases.mjs';
 import { BASE } from '../js/supporter-mint.mjs';
 import { IPFSSession } from '../vendor/decent-head/2.0.0/js/ipfs.js';
@@ -10,6 +10,14 @@ const manifest = JSON.parse(readFileSync(new URL('../releases/decenthead-v2.0.0/
 const entry = JSON.parse(readFileSync(new URL('../releases/listings.json', import.meta.url)))[0];
 const cid = manifest.front.slice(7);
 globalThis.window = new EventTarget();
+test('public RPC has a ten-second deadline and at most ten calls per batch', () => {
+  const provider = publicMarketProvider({
+    FetchRequest: class { constructor(url) { this.url = url; } },
+    JsonRpcProvider: class { constructor(request, network, options) { this.request = request; this.network = network; this.options = options; } },
+  }, 'https://mainnet.base.org');
+  assert.equal(provider.request.timeout, 10000);
+  assert.equal(provider.options.batchMaxCount, 10);
+});
 
 test('gallery publishes newest token before blocked older metadata and limits concurrency', async () => {
   let releaseOld, active = 0, peak = 0;

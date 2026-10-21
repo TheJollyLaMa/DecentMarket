@@ -15,7 +15,7 @@ const browser = await chromium.launch();
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = [], requests = [];
-  let musicRequest, uploads = 0;
+  let musicRequest, uploads = 0, collectionScans = 0;
   await page.route('https://api.pinata.cloud/pinning/pinFileToIPFS', route => {
     uploads++;
     assert.equal(route.request().headers().authorization, 'Bearer synthetic-test-only');
@@ -46,6 +46,7 @@ try {
         const tx = call.params[0];
         const iface = tx.to.toLowerCase() === BASE.DNFT.toLowerCase() ? nft : escrow;
         const parsed = iface.parseTransaction({ data: tx.data });
+        if (parsed.name === 'nextTokenId') collectionScans++;
         const values = { uri: [manifest.metadataURI], balanceOf: [1000], royaltyInfo: [manifest.creatorAddress, 1000],
           paused: [false], listings: [BASE.DNFT, 70, 0, BASE.USDC, 10000000, 1000, true, 'Supporter'],
           nextTokenId: [71], kindOf: [parsed.name === 'kindOf' && parsed.args[0] === 70n ? 0 : 1], maxSupply: [1000], totalMinted: [1000] };
@@ -78,6 +79,7 @@ try {
   assert.deepEqual(await page.evaluate(() => window.walletCalls), []);
   assert.equal(requests.some(url => /w3s\.link|web3\.storage/.test(url)), false);
   await page.waitForFunction(() => document.querySelector('decent-canvas')._productSprites?.['70']?.sprite?.userData?.twoSided);
+  assert.equal(collectionScans, 0, 'Entry loads prepared releases, not the entire collection');
   const mesh = await page.evaluate(() => {
     const c = document.querySelector('decent-canvas'), sprite = c._productSprites['70'].sprite;
     return { mesh: sprite.isMesh, front: !!sprite.material[4].map, back: !!sprite.material[5].map,
@@ -90,6 +92,8 @@ try {
   assert.match(await page.getByRole('link', { name: 'Review / buy this edition · 10 USDC on Base', exact: true }).getAttribute('href'), /listingId=0/);
   await page.locator('#nft-detail-close').click();
   await page.getByRole('button', { name: 'Filter DNFTs in space', exact: true }).click();
+  await page.waitForFunction(() => !document.querySelector('decent-right-toolbar')._spaceLoading);
+  assert.equal(collectionScans, 1, 'Opening filters explicitly loads collection');
   await page.locator('#modal-space-filters select').selectOption('music');
   await page.waitForFunction(() => Object.keys(document.querySelector('decent-canvas')._productSprites).length === 0);
   await page.locator('#modal-space-filters select').selectOption('supporter');
