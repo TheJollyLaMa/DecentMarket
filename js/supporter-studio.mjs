@@ -1,6 +1,8 @@
 import { ethers, BASE, STEPS, SupporterMint, validateRelease, validateMetadata, newSession, nextStep, transactionFor, buildEvidence, releaseKey, ESCROW_ABI, NFT_ABI } from './supporter-mint.mjs';
+import '../vendor/decent-head/2.0.0/js/main.js';
+import { marketBrowserProvider } from './market-wallet.mjs';
 const $ = id => document.getElementById(id);
-let manifest, studio;
+let manifest, studio, busy = false;
 const titles = { register: 'Register release', mint: 'Mint 1,000 editions to creator', transfer: 'Transfer 1,000 editions to escrow', list: 'List 1,000 editions at 10 USDC each' };
 function status(message, error = false) { $('status').textContent = message; $('status').dataset.error = String(error); }
 function download(name, value) {
@@ -14,12 +16,17 @@ async function jsonFile(id) {
   return JSON.parse(await file.text());
 }
 async function action(callback) {
+  if (busy) return;
+  busy = true;
   const controls = [...document.querySelectorAll('button')];
   const disabled = controls.map(button => button.disabled);
   controls.forEach(button => { button.disabled = true; });
-  try { await callback(); }
+  try {
+    if (studio && window.DecentHead.getWallet().snapshot().connected) studio.provider = window.DecentHead.getWallet().snapshot().provider;
+    await callback();
+  }
   catch (error) { status(error.shortMessage || error.message, true); }
-  finally { controls.forEach((button, i) => { button.disabled = disabled[i]; }); render(); }
+  finally { busy = false; controls.forEach((button, i) => { button.disabled = disabled[i]; }); render(); }
 }
 function render() {
   $('transactions').hidden = !studio?.session;
@@ -34,7 +41,7 @@ function render() {
   }));
   const step = session && nextStep(session);
   $('step-summary').textContent = step ? `${titles[step]} · Base · ${step === 'list' ? 'DecentEscrow' : 'DecentNFT'} · 0 ETH sent + gas. Your wallet confirms only this step.` : '';
-  $('next').disabled = !session || !step || !$('consent').checked;
+  $('next').disabled = busy || !session || !step || !$('consent').checked || !window.DecentHead.getWallet().snapshot().connected;
   $('next').textContent = session?.pending ? 'Check pending transaction (no new send)' : step ? titles[step] : 'All steps verified';
   $('transaction-review').textContent = step ? JSON.stringify({
     chain: 'Base (8453)', from: session.account, ...transactionFor(manifest, session, step),
@@ -67,9 +74,7 @@ $('load-head').onclick = () => action(async () => {
 $('load-files').onclick = () => action(async () => load(await jsonFile('manifest-file'), await jsonFile('metadata-file')));
 $('connect').onclick = () => action(async () => {
   if (!$('consent').checked) throw new Error('Review and confirm the official release before connecting');
-  if (!window.ethereum) throw new Error('Open this page in your MetaMask-enabled browser');
-  const provider = new ethers.BrowserProvider(window.ethereum);
-  await provider.send('eth_requestAccounts', []);
+  const provider = await marketBrowserProvider();
   studio = new SupporterMint(manifest, { provider });
   const { account } = await studio.wallet();
   await studio.verifyProgress();
@@ -80,6 +85,7 @@ $('connect').onclick = () => action(async () => {
 });
 $('consent').onchange = render;
 async function exclusive(callback) {
+  if (!window.DecentHead.getWallet().snapshot().connected) throw new Error('Wallet disconnected. Reconnect and review before continuing.');
   if (!navigator.locks) throw new Error('This browser needs Web Locks support for safe signing. Use a current Chrome/Edge/Firefox browser.');
   return navigator.locks.request(releaseKey(manifest), { ifAvailable: true }, async lock => {
     if (!lock) throw new Error('Another tab is processing this release. Wait and reload.');
@@ -128,6 +134,8 @@ $('evidence').onclick = () => action(async () => {
   $('purchase').href = evidence.purchaseUrl; $('purchase').hidden = false;
   status('Current listing verified. Evidence downloaded for steward registration; notifier still checks 12 confirmations. No Discord message sent.');
 });
-window.ethereum?.on?.('accountsChanged', () => status('Wallet account changed. Reconnect/review before the next step.', true));
-window.ethereum?.on?.('chainChanged', () => status('Wallet network changed. Base is required; reconnect before the next step.', true));
+window.addEventListener('decenthead:wallet', event => {
+  if (!event.detail.connected) status('Wallet disconnected. Progress is preserved; reconnect before continuing.', true);
+  render();
+});
 render();

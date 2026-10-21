@@ -130,3 +130,10 @@ BASE_URL=http://127.0.0.1:8792 npm run test:supporter:browser
 `SCREENSHOT_PATH` optionally records the mobile final state. CI runs both the
 unit suite and browser rehearsal. Browser fixtures intercept asset gateways;
 actual IPFS availability and real wallet signing are separate live gates.
+# Shared header and wallet
+
+The Studio uses the released DecentHead v2 foundation and the same selected
+wallet session as its header. If several wallets are detected, choose using
+the fox first. Disconnect preserves the saved four-step progress but requires
+reconnection before the next step. No connection is requested on load.
+See [the adoption boundary](./DECENTHEAD-ADOPTION.md).

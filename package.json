@@ -6,6 +6,8 @@
     "compile": "hardhat compile",
     "test": "hardhat test",
     "test:supporter": "node --test test/supporter-mint.test.mjs test/supporter-display.test.mjs",
+    "test:market-adoption": "node --test test/market-adoption.test.mjs",
+    "test:market-adoption:browser": "node test/market-adoption.browser.mjs",
     "test:supporter:browser": "node test/supporter-studio.browser.mjs",
     "deploy:local": "hardhat run scripts/deploy_DecentNFT_v02.js --network localhost",
     "deploy:amoy": "hardhat run scripts/deploy_DecentNFT_v02.js --network amoy",

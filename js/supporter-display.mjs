@@ -3,7 +3,8 @@ export function resolveCollectibleAsset(uri) {
   if (uri.startsWith('ipfs://')) {
     const path = uri.slice(7).replace(/^ipfs\//, '');
     if (!/^[a-zA-Z0-9]+(?:\/[^?#]*)?$/.test(path)) return '';
-    return `https://ipfs.io/ipfs/${path}`;
+    const gateway = globalThis.DECENT_CONFIG?.providers?.gateway || 'https://ipfs.io/ipfs/';
+    return `${gateway.replace(/\/?$/, '/')}${path}`;
   }
   try {
     const url = new URL(uri);

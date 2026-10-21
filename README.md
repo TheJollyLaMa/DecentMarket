@@ -1,6 +1,21 @@
 # DecentMarket
 A Decent Market With a Decent Head, a Decent Canvas, and a Decent Foot in a Web3 space to display a gallery of Decent Assets and Tools in a coordinate system.
 
+## Shared Head and live releases
+
+Market and its Supporter Release Studio now adopt the unmodified released
+**DecentHead v2.0.0** foundation: shared selected-wallet session, ENS orbit,
+chain spark icons, themed About/IPFS dialogs and inert ankh menus.
+Pinata/local Kubo replace the active retired web3.storage upload path.
+See [adoption provenance, boundaries and validation](./docs/DECENTHEAD-ADOPTION.md).
+
+The public release shelf verifies listings without connecting a wallet.
+**DecentHead v2.0.0: Base token 70, escrow listing 0, 10 USDC per edition.**
+Stock and sale status are checked live; use its purchase link to review current
+terms before buying. Its mint/listing evidence is published on the
+[official Head release](https://github.com/TheJollyLaMa/DecentHead/releases/tag/v2.0.0).
+Market's own next version and Supporter edition remain separate upcoming work.
+
 ## Supported Networks
 
 | Network | Chain ID | Symbol | DecentNFT | DecentEscrow |
@@ -10,14 +25,16 @@ A Decent Market With a Decent Head, a Decent Canvas, and a Decent Foot in a Web3
 | Optimism Mainnet | 10 (0xa) | ETH | `0xe870f7b1D10C41dbc6b75598a5308B9a2Bb52958` (v0.2, legacy) | `0x23A457AD3C33d68E4fAd2FCa7c5d9a511E0C350e` (legacy) |
 
 Base is the current default deployment. DecentNFT and DecentEscrow are deployed,
-and the UI routes contract reads and writes using the connected MetaMask chain.
-NFT metadata, listings, and subscription plans still need configuration before
-those sale flows are enabled. Optimism remains available as a legacy deployment.
+and the UI routes legacy contract controls using the selected shared wallet chain.
+The public Supporter shelf uses Base independently of wallet connection.
+Subscription plans and further product listings require their own configuration.
+Optimism remains available as a legacy deployment.
 
 ## Community Escrow Treasury
 
 Early supporter DNFT proceeds are intended for the deployed Base **DecentEscrow**
-contract. The Base escrow is live, but no sale listing is configured yet.
+contract. The Base escrow is live and Head's first Supporter sale is stocked as
+listing **0**. Other products must be prepared, signed and listed separately.
 
 The current Base escrow accepts ETH, Base USDC, and Base BNUT deposits:
 

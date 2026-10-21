@@ -4,8 +4,9 @@ const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright')
 const base = process.env.BASE_URL || 'http://127.0.0.1:8792';
 const browser = await chromium.launch();
 const errors = [];
+let page;
 try {
-  const page = await browser.newPage({ acceptDownloads: true });
+  page = await browser.newPage({ acceptDownloads: true });
   page.on('pageerror', error => errors.push(error.message));
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64');
   await page.route('https://gateway.pinata.cloud/**', route => route.fulfill({ contentType: 'image/png', body: png }));
@@ -92,10 +93,10 @@ try {
   await page.goto(`${base}/supporter.html`);
   assert.deepEqual(await page.evaluate(() => window.rpcMethods), []);
   await page.getByRole('button', { name: 'Load DecentHead v2.0.0' }).click();
-  await page.getByText('Prepared metadata preserved exactly.', { exact: false }).waitFor();
+  await page.locator('main #status').filter({ hasText: 'Prepared metadata preserved exactly.' }).waitFor();
   assert.deepEqual(await page.evaluate(() => window.rpcMethods), []);
   await page.getByRole('button', { name: 'Connect creator wallet' }).click();
-  await page.getByRole('status').getByText('Review and confirm', { exact: false }).waitFor();
+  await page.locator('main #status').filter({ hasText: 'Review and confirm' }).waitFor();
   await page.getByRole('checkbox').check();
   await page.getByRole('button', { name: 'Connect creator wallet' }).click();
   await page.getByText('NFT admin and escrow owner verified', { exact: false }).waitFor();
@@ -103,13 +104,13 @@ try {
   await page.evaluate(() => { window.rejectNextTx = true; });
   await page.getByRole('button', { name: 'Register release', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#status').dataset.error === 'true');
-  assert.match(await page.getByRole('status').textContent(), /reject|denied/i);
+  assert.match(await page.locator('main #status').textContent(), /reject|denied/i);
   assert.equal(await page.locator('#progress').getByText('Verified — Register release', { exact: false }).count(), 0);
   for (const label of ['Register release', 'Mint 1,000 editions to creator', 'Transfer 1,000 editions to escrow', 'List 1,000 editions at 10 USDC each']) {
     const downloading = page.waitForEvent('download');
     await page.getByRole('button', { name: label, exact: true }).click();
     await downloading;
-    await page.getByRole('status').getByText('Step confirmed and saved.', { exact: false }).waitFor();
+    await page.locator('main #status').filter({ hasText: 'Step confirmed and saved.' }).waitFor();
     if (label === 'Register release') {
       await page.reload();
       await page.getByRole('button', { name: 'Load DecentHead v2.0.0' }).click();
@@ -130,4 +131,12 @@ try {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   if (process.env.SCREENSHOT_PATH) await page.screenshot({ path: process.env.SCREENSHOT_PATH, fullPage: true });
   console.log('PASS: real studio UI + ethers/EIP1193 fixture; consent, all four transactions, reload resume, evidence export, mobile layout; no page errors or real signing.');
+} catch (error) {
+  console.error('Studio status:', await page?.locator('main #status').textContent(), 'Page errors:', errors);
+  console.error('Layout:', await page.evaluate(() => {
+    const items = [];
+    function inspect(root) { for (const e of root.querySelectorAll('*')) { const r=e.getBoundingClientRect(); if (r.right > innerWidth) items.push({ tag:e.tagName, class:e.className?.baseVal ?? e.className, right:r.right, width:r.width }); if(e.shadowRoot) inspect(e.shadowRoot); } }
+    inspect(document); return { width:document.documentElement.scrollWidth, items:items.slice(0,20) };
+  }));
+  throw error;
 } finally { await browser.close(); }
