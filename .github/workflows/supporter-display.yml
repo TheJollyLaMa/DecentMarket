@@ -1,0 +1,17 @@
+name: Supporter collectible display
+on:
+  push:
+    paths: ['js/supporter-display.mjs', 'js/components/DecentCanvas.js', 'test/supporter-display.test.mjs', '.github/workflows/supporter-display.yml']
+  pull_request:
+    paths: ['js/supporter-display.mjs', 'js/components/DecentCanvas.js', 'test/supporter-display.test.mjs', '.github/workflows/supporter-display.yml']
+permissions:
+  contents: read
+jobs:
+  display:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test test/supporter-display.test.mjs

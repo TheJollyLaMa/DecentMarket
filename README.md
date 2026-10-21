@@ -39,6 +39,24 @@ See [`docs/ESCROW.md`](./docs/ESCROW.md) for:
 
 ## DNFT Metadata Standard
 
+### Two-sided Supporter editions
+
+The existing product gallery reads `image` for the front and
+`properties.back_image` for the back (HTTP(S) or `ipfs://`). Editions with both
+are displayed as thin rotating 3D collectibles, not flat sprites. The detail
+panel's **View back / View front** button also works with reduced motion enabled;
+automatic collectible rotation stops under that preference. Existing single-image
+tokens keep their sprite display. A failed back-image request is logged and keeps
+the front usable; changing galleries discards stale texture requests.
+
+Version, release date, creator identity and the original $10 USDC price belong
+on the artwork and immutable metadata. They are historical release stamps, not
+live resale prices or a promise of retained value. The shared
+[Supporter release protocol](https://github.com/TheJollyLaMa/DecentHead/blob/main/docs/SUPPORTER-RELEASES.md)
+prepares these assets and verifies mint/listing evidence before Discord announcements.
+
+Focused display tests: `node --test test/supporter-display.test.mjs`.
+
 DNFT metadata follows the [OpenSea ERC-1155 metadata standard](https://docs.opensea.io/docs/metadata-standards).
 
 ### tokenURI convention
@@ -234,5 +252,4 @@ const metadata = buildDNFTMetadata({
   },
 });
 ```
-
 
