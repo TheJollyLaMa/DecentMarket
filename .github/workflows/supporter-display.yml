@@ -1,9 +1,9 @@
 name: Supporter collectible display
 on:
   push:
-    paths: ['js/supporter-display.mjs', 'js/components/DecentCanvas.js', 'test/supporter-display.test.mjs', '.github/workflows/supporter-display.yml']
+    paths: ['js/supporter-*.mjs', 'js/vendor/**', 'js/config/contracts.js', 'js/components/DecentCanvas.js', 'js/components/DecentCanvas/RightToolbar.js', 'test/supporter-*', 'supporter.html', 'css/supporter-studio.css', 'releases/**', 'package*.json', '.github/workflows/supporter-display.yml']
   pull_request:
-    paths: ['js/supporter-display.mjs', 'js/components/DecentCanvas.js', 'test/supporter-display.test.mjs', '.github/workflows/supporter-display.yml']
+    paths: ['js/supporter-*.mjs', 'js/vendor/**', 'js/config/contracts.js', 'js/components/DecentCanvas.js', 'js/components/DecentCanvas/RightToolbar.js', 'test/supporter-*', 'supporter.html', 'css/supporter-studio.css', 'releases/**', 'package*.json', '.github/workflows/supporter-display.yml']
 permissions:
   contents: read
 jobs:
@@ -14,4 +14,29 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - run: node --test test/supporter-display.test.mjs
+      - run: npm run test:supporter
+      - run: node --check js/supporter-studio.mjs
+  studio-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install --with-deps chromium
+      - name: Rehearse prepared release without real signatures
+        env:
+          BASE_URL: http://127.0.0.1:8792
+        run: |
+          python3 -m http.server 8792 --bind 127.0.0.1 &
+          server=$!
+          trap 'kill "$server"' EXIT
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent --output /dev/null "$BASE_URL/supporter.html"; then break; fi
+            sleep 1
+          done
+          curl --fail --silent --output /dev/null "$BASE_URL/supporter.html"
+          npm run test:supporter:browser

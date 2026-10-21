@@ -253,6 +253,23 @@ const metadata = buildDNFTMetadata({
 });
 ```
 
+## Prepared Supporter releases
+
+Open the [Supporter Release Studio](supporter.html) from the landing-page link
+or **Mint New DNFT** modal to use an existing pinned release without rebuilding
+its metadata. It separately registers, mints 1,000 editions, transfers to escrow,
+and lists at 10 USDC on Base with explicit 10% creator royalties. Progress and
+receipt IDs persist between steps; public backup/restore and pending-transaction
+reconciliation avoid restarting a partially completed release. Other-browser
+or external mints still require manual reconciliation, not a new registration.
+
+The verified DecentHead v2.0.0 preparation is included as the first preset.
+Other products import both official prepared JSON files. No automatic signing
+or Discord posting is performed. See [setup, recovery and evidence registration](docs/SUPPORTER-STUDIO.md).
+
+Validate with `npm run test:supporter`; browser rehearsal:
+`BASE_URL=http://127.0.0.1:8792 npm run test:supporter:browser`.
+
 ## License
 
 Code: [Apache-2.0](LICENSE) · Art and docs: [CC BY 4.0](LICENSES/CC-BY-4.0.txt) · Please keep the [NOTICE](NOTICE) and give The Jolly LaMa / A Decent Agency a head nod when you reuse this work.

@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "repo": "TheJollyLaMa/DecentHead",
+  "version": "v2.0.0",
+  "commit": "072a5206489d0e4a3f2576c56f8debb729d933c9",
+  "releaseDate": "2026-10-21T21:28:52.000Z",
+  "creator": "thejollylama.eth",
+  "creatorAddress": "0x807061DF657A7697c04045dA7d16D941861cAABc",
+  "ensChainId": 1,
+  "ensObservedBlock": 26243674,
+  "priceUSDC": "10000000",
+  "chainId": 8453,
+  "quantity": "1000",
+  "codeArchiveCid": "QmZwzHyuSABPNnkdhWBSVqMaGDvbJwLB1aCaZkVQjguzE6",
+  "front": "ipfs://QmcuhKLo46hwSdUQJm93VoHeB1YrpjhzeySg6Q7D9srabS",
+  "back": "ipfs://QmRq8x1MWw4iXrBXZSJyuptPHnjJxJF7Qe2CVHKmV7i61Z",
+  "animation": "ipfs://QmYTd9LqYcuVyjkjFV5DzEmKNkWYu4JJuEbdqhma28p96v",
+  "summary": "The Decent web3 foundation IPFS on the left, your wallet on the right, your story in the center. - Shared Pinata/local Kubo storage controls, explicit host backup/restore adapters and opt-in community pins; no retired web3.storage client. - Click-only EIP-6963/MetaMask discovery ",
+  "metadataURI": "ipfs://QmVGmpz63TS9XkTHMxf2sybHv5k9Vdoyr2Spi9QqZ4pzfj"
+}
