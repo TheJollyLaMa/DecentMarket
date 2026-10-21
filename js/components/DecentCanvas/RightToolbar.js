@@ -521,6 +521,11 @@ class RightToolbar extends HTMLElement {
     });
 
     modal.innerHTML = this._buildMintModalHTML();
+    const prepared = document.createElement("a");
+    prepared.href = new URL("../../../supporter.html", import.meta.url).href;
+    prepared.textContent = "Supporter release? Open the prepared-release studio →";
+    prepared.style.cssText = "display:block;padding:16px;color:#7af0c6;border-bottom:1px solid #7af0c655;font:600 14px system-ui";
+    modal.prepend(prepared);
     document.body.appendChild(modal);
     this._wireMintModal(modal);
   }

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Supporter Release Studio · DecentMarket</title>
+  <link rel="stylesheet" href="css/supporter-studio.css">
+  <script type="module" src="js/supporter-studio.mjs"></script>
+</head>
+<body>
+  <main>
+    <header><a href="./">☥ DecentMarket</a><h1>Supporter Release Studio</h1>
+      <p>Your release. Your wallet. One verified step at a time.</p></header>
+    <section>
+      <h2>1 · Load a prepared release</h2>
+      <button id="load-head">Load DecentHead v2.0.0</button>
+      <details><summary>Another product / version</summary>
+        <p>Download both JSON assets from that product's official GitHub release. This studio never rebuilds or uploads your metadata.</p>
+        <label>supporter-release.json <input id="manifest-file" type="file" accept=".json,application/json"></label>
+        <label>supporter-metadata.json <input id="metadata-file" type="file" accept=".json,application/json"></label>
+        <button id="load-files">Review imported release</button>
+      </details>
+      <p>Already registered or minted through another tool? Do not start again here.
+        Recover/import your studio progress first or ask the steward to reconcile the existing transactions.</p>
+    </section>
+    <section id="review" hidden>
+      <h2>2 · Review before connecting</h2>
+      <div class="faces"><img id="front" alt="Release front"><img id="back" alt="Release back"></div>
+      <pre id="release-summary"></pre>
+      <p><a id="source" target="_blank" rel="noopener noreferrer">Official GitHub release</a> ·
+        <a id="metadata-link" target="_blank" rel="noopener noreferrer">Pinned metadata</a></p>
+      <p>1,000 editions · 10 USDC each · Base · 10% resale royalty signal to the creator.
+        Royalties depend on marketplace support. No financial return promised.
+        Primary-sale USDC stays in the owner-controlled escrow until withdrawn.</p>
+      <label><input id="consent" type="checkbox"> I verified the official release, metadata and wallet address, and have not registered this release elsewhere.</label>
+      <button id="connect">Connect creator wallet</button>
+      <p id="wallet-status">No wallet connection requested.</p>
+    </section>
+    <section id="transactions" hidden>
+      <h2>3 · Confirm one transaction at a time</h2>
+      <p>Each action sends <strong>0 ETH</strong> plus network gas. No USDC payment or broad NFT approval is required from you.</p>
+      <ol id="progress"></ol>
+      <p id="step-summary"></p>
+      <details><summary>Exact transaction details</summary><pre id="transaction-review"></pre></details>
+      <button id="next" disabled>Connect first</button>
+      <details><summary>Recover a pending / replaced transaction</summary>
+        <p>If a wallet/network interruption hid the transaction hash, copy it from wallet activity.
+          We verify its account, nonce, target and exact calldata before accepting it.
+          Never restart the release to recover a pending step.</p>
+        <label>Public transaction hash <input id="recovery-hash" placeholder="0x…" autocomplete="off"></label>
+        <button id="recover">Check receipt (does not send)</button>
+      </details>
+      <details><summary>Progress backup / restore</summary>
+        <p>Progress is stored in this browser and bound to the release/account. Download after every step.
+          Use one browser/tab for signing. Clearing browser data loses recovery information.
+          A different browser cannot automatically discover an earlier registration.</p>
+        <button id="backup">Download progress</button>
+        <label>Restore progress JSON <input id="progress-file" type="file" accept=".json,application/json"></label>
+        <button id="restore">Verify and restore progress</button>
+      </details>
+    </section>
+    <section id="finished" hidden>
+      <h2>4 · Verify listing and register public evidence</h2>
+      <label>Product purchase route <input id="purchase-base" type="url" value="https://thejollylama.github.io/DecentHead/supporter/buy.html"></label>
+      <button id="evidence">Verify stock and download evidence</button>
+      <a id="purchase" hidden target="_blank" rel="noopener noreferrer">Review live purchase listing</a>
+      <p>Downloading is not announcement registration. Give this public evidence file to your steward to register on the product release.
+        The notifier independently checks 12 confirmations and the listing before sending.
+        This studio never asks for a webhook, private key or seed phrase.</p>
+    </section>
+    <p id="status" role="status" aria-live="polite">Ready to review a release. No transactions sent.</p>
+  </main>
+</body>
+</html>

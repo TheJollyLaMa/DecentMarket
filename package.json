@@ -5,6 +5,8 @@
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",
+    "test:supporter": "node --test test/supporter-mint.test.mjs test/supporter-display.test.mjs",
+    "test:supporter:browser": "node test/supporter-studio.browser.mjs",
     "deploy:local": "hardhat run scripts/deploy_DecentNFT_v02.js --network localhost",
     "deploy:amoy": "hardhat run scripts/deploy_DecentNFT_v02.js --network amoy",
     "deploy:polygon": "hardhat run scripts/deploy_DecentNFT_v02.js --network polygon",
@@ -19,7 +21,8 @@
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "dotenv": "^16.6.1",
-    "hardhat": "^2.22.0"
+    "hardhat": "^2.22.0",
+    "playwright": "1.64.1"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.1.0"
