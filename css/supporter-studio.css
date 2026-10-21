@@ -1,5 +1,6 @@
 :root { color-scheme:dark; font:16px/1.6 system-ui,sans-serif; color:#eaf8ff; background:#07111c; }
 body { margin:0; background:radial-gradient(ellipse at 15% 0,#26354c88,transparent 50%),radial-gradient(ellipse at 100% 20%,#145c4c66,transparent 60%); }
+decent-header { display:block; overflow-x:clip; }
 main { max-width:900px; margin:auto; padding:24px 16px 60px; overflow-wrap:anywhere; }
 h1 { color:#b6ffe3; text-shadow:0 0 22px #7af0c666; line-height:1.2; }
 h2 { font-size:1.2rem; color:#b6ffe3; }

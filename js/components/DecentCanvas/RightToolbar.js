@@ -1,4 +1,6 @@
 import { CONTRACTS, getChainConfig, PAYPAL_CONFIG } from '../../config/contracts.js';
+import { marketEthereum, marketBrowserProvider } from '../../market-wallet.mjs';
+import { loadGalleryProducts, publicMarketProvider, resolveMarketAsset } from '../../market-gallery.mjs';
 import {
   uploadFileToIPFS,
   uploadMetadataToIPFS,
@@ -77,7 +79,7 @@ function configForChainId(chainId) {
 }
 
 function selectedChainConfig() {
-  return window.ethereum?.chainId ? configForChainId(window.ethereum.chainId) : CONTRACTS.base;
+  return marketEthereum()?.chainId ? configForChainId(marketEthereum().chainId) : CONTRACTS.base;
 }
 
 async function providerChainConfig(provider) {
@@ -198,9 +200,9 @@ class RightToolbar extends HTMLElement {
   async _openSettingsPanel() {
     this._clearModals();
 
-    const chainId = window.ethereum?.chainId || null;
+    const chainId = marketEthereum()?.chainId || null;
     const chainCfg = chainId ? configForChainId(chainId) : null;
-    const address = window.ethereum?.selectedAddress || null;
+    const address = marketEthereum()?.selectedAddress || null;
     const isConnected = !!address;
     const shortAddr = address ? address.slice(0, 6) + "…" + address.slice(-4) : null;
 
@@ -341,7 +343,7 @@ class RightToolbar extends HTMLElement {
 
     // Close button — also removes the chainChanged listener
     const removeChainListener = () => {
-      window.ethereum?.off?.("chainChanged", updateChainStatus);
+      marketEthereum()?.off?.("chainChanged", updateChainStatus);
     };
     panel.querySelector("#settings-close").onclick = () => {
       removeChainListener();
@@ -364,13 +366,13 @@ class RightToolbar extends HTMLElement {
     const chainStatusEl = panel.querySelector("#settings-chain-status");
     const chainNameEl = panel.querySelector("#settings-network-name");
     const updateChainStatus = async () => {
-      if (!window.ethereum) {
+      if (!marketEthereum()) {
         chainStatusEl.textContent = "No wallet detected";
         chainStatusEl.style.color = "#f80";
         return;
       }
       try {
-        const id = await window.ethereum.request({ method: "eth_chainId" });
+        const id = await marketEthereum().request({ method: "eth_chainId" });
         const cfg = getChainConfig(id);
         if (cfg) {
           if (chainNameEl) chainNameEl.textContent = cfg.chainName;
@@ -386,18 +388,18 @@ class RightToolbar extends HTMLElement {
       }
     };
     updateChainStatus();
-    window.ethereum?.on?.("chainChanged", updateChainStatus);
+    marketEthereum()?.on?.("chainChanged", updateChainStatus);
 
     // Connect button (shown when not connected)
     const connectBtn = panel.querySelector("#settings-connect-btn");
     if (connectBtn) {
       connectBtn.addEventListener("click", async () => {
-        if (!window.ethereum) {
+        if (!marketEthereum()) {
           alert("MetaMask not detected. Please install MetaMask!");
           return;
         }
         try {
-          await window.ethereum.request({ method: "eth_requestAccounts" });
+          await marketEthereum().request({ method: "eth_requestAccounts" });
           panel.remove();
           this._openSettingsPanel();
         } catch (err) {
@@ -423,11 +425,11 @@ class RightToolbar extends HTMLElement {
   }
 
   async _switchChain(hexId, statusEl) {
-    if (!window.ethereum) return;
+    if (!marketEthereum()) return;
     const cfg = getChainConfig(hexId);
     if (!cfg) return;
     try {
-      await window.ethereum.request({
+      await marketEthereum().request({
         method: "wallet_switchEthereumChain",
         params: [{ chainId: hexId }],
       });
@@ -438,7 +440,7 @@ class RightToolbar extends HTMLElement {
     } catch (err) {
       if (err.code === 4902) {
         try {
-          await window.ethereum.request({
+          await marketEthereum().request({
             method: "wallet_addEthereumChain",
             params: [{
               chainId: cfg.chainId,
@@ -471,7 +473,7 @@ class RightToolbar extends HTMLElement {
     const ethers = window.ethers;
     if (!roleEl || !ethers || !account) return;
     try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      const provider = await marketBrowserProvider();
       const chainCfg = await providerChainConfig(provider);
       const contractAddr = requireContractAddress(chainCfg, "DNFT");
       const contract = new ethers.Contract(contractAddr, DECENT_NFT_ABI, provider);
@@ -531,7 +533,7 @@ class RightToolbar extends HTMLElement {
   }
 
   _buildMintModalHTML() {
-    const address = window.ethereum?.selectedAddress || null;
+    const address = marketEthereum()?.selectedAddress || null;
     const shortAddr = address ? address.slice(0, 6) + "…" + address.slice(-4) : null;
     const isConnected = !!address;
     const activeCfg = selectedChainConfig();
@@ -862,10 +864,10 @@ class RightToolbar extends HTMLElement {
 
     // Auto-detect wallet + role in the status bar
     const _onAccountsChanged = () => this._refreshMintModalHeader(modal);
-    window.ethereum?.on?.("accountsChanged", _onAccountsChanged);
+    marketEthereum()?.on?.("accountsChanged", _onAccountsChanged);
 
     const _closeModal = () => {
-      window.ethereum?.off?.("accountsChanged", _onAccountsChanged);
+      marketEthereum()?.off?.("accountsChanged", _onAccountsChanged);
       modal.remove();
     };
 
@@ -1004,9 +1006,9 @@ class RightToolbar extends HTMLElement {
         }
 
         // ── Connect wallet ────────────────────────────────────────────────
-        if (!window.ethereum) throw new Error("MetaMask not found. Please install MetaMask.");
+        if (!marketEthereum()) throw new Error("MetaMask not found. Please install MetaMask.");
         setStatus("🔗 Connecting wallet…");
-        const provider = new ethers.BrowserProvider(window.ethereum);
+        const provider = await marketBrowserProvider();
         await provider.send("eth_requestAccounts", []);
         const signer = await provider.getSigner();
         const account = await signer.getAddress();
@@ -1221,8 +1223,8 @@ class RightToolbar extends HTMLElement {
     const roleBadgeEl = modal.querySelector("#mint-role-badge");
     if (!walletStatusEl || !roleBadgeEl || !ethers) return;
 
-    const accounts = window.ethereum
-      ? await window.ethereum.request({ method: "eth_accounts" }).catch(() => [])
+    const accounts = marketEthereum()
+      ? await marketEthereum().request({ method: "eth_accounts" }).catch(() => [])
       : [];
     const account = accounts[0] || null;
 
@@ -1237,7 +1239,7 @@ class RightToolbar extends HTMLElement {
     roleBadgeEl.textContent = "Checking…";
 
     try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      const provider = await marketBrowserProvider();
       const chainCfg = await providerChainConfig(provider);
       const contractAddr = requireContractAddress(chainCfg, "DNFT");
       const contract = new ethers.Contract(contractAddr, DECENT_NFT_ABI, provider);
@@ -1401,7 +1403,7 @@ class RightToolbar extends HTMLElement {
     }
   }
 
-  // ── Fetch all Product DNFTs from the Optimism contract ───────────────────
+  // ── Fetch Product DNFTs on the selected network ─────────────────────────
   // Uses view functions (nextTokenId, kindOf, uri, totalMinted, maxSupply) instead
   // of eth_getLogs so we never hit the RPC block-range limit.
   async _loadGalleryProducts(chainCfg = selectedChainConfig()) {
@@ -1420,67 +1422,19 @@ class RightToolbar extends HTMLElement {
       "function creatorOf(uint256 tokenId) view returns (address)",
     ];
 
-    const provider = new ethers.JsonRpcProvider(chainCfg.rpcUrls[0]);
+    const provider = publicMarketProvider(ethers, chainCfg.rpcUrls[0]);
     const contract = new ethers.Contract(contractAddr, QUERY_ABI, provider);
 
-    const nextId = await contract.nextTokenId();
-    const count = Number(nextId);
-
-    const products = [];
-    for (let i = 0; i < count; i++) {
-      const tokenId = BigInt(i);
-      let kind;
-      try {
-        kind = await contract.kindOf(tokenId);
-      } catch (err) {
-        console.warn(`Gallery: failed to fetch kindOf for token #${i}:`, err);
-        continue;
-      }
-      // kind 0 = Product, kind 1 = Achievement — only show Products
-      if (Number(kind) !== 0) continue;
-
-      let uri = "";
-      let maxSupplyCount = "0";
-      let totalMintedCount = "0";
-      try {
-        [uri, maxSupplyCount, totalMintedCount] = await Promise.all([
-          contract.uri(tokenId).then(v => v).catch(() => ""),
-          contract.maxSupply(tokenId).then(v => v.toString()).catch(() => "0"),
-          contract.totalMinted(tokenId).then(v => v.toString()).catch(() => "0"),
-        ]);
-      } catch (err) {
-        console.warn(`Gallery: failed to fetch data for token #${i}:`, err);
-      }
-
-      let metadata = null;
-      if (uri) {
-        try {
-          const metaUrl = this._resolveIpfsUrl(uri);
-          const resp = await fetch(metaUrl);
-          if (resp.ok) metadata = await resp.json();
-        } catch (err) {
-          console.warn(`Gallery: failed to fetch metadata for token #${i} (${uri}):`, err);
-        }
-      }
-      if (!metadata) {
-        metadata = { name: `Token #${i}`, description: "", image: "" };
-      }
-
-      products.push({
-        tokenId: i.toString(),
-        maxSupply: maxSupplyCount,
-        totalMinted: totalMintedCount,
-        uri,
-        // tokenId is registration order — lower = older; sort newest-first below
-        blockNumber: i,
-        metadata,
+    this._galleryErrors = [];
+    try {
+      const { products, errors } = await loadGalleryProducts(contract, {
+        onProgress: products => this._renderGalleryCards(products),
       });
-    }
-
-    // Newest first (highest tokenId registered last)
-    products.sort((a, b) => b.blockNumber - a.blockNumber);
-    this._galleryCache = { chainId: chainCfg.chainId, products };
-    return products;
+      for (const error of errors) console.warn('[Market gallery]', error);
+      this._galleryErrors = errors;
+      if (!errors.length) this._galleryCache = { chainId: chainCfg.chainId, products };
+      return products;
+    } finally { provider.destroy(); }
   }
 
   // ── Render all gallery cards ──────────────────────────────────────────────
@@ -1494,6 +1448,12 @@ class RightToolbar extends HTMLElement {
     }
 
     body.innerHTML = "";
+    if (this._galleryErrors?.length) {
+      const warning = document.createElement('p');
+      warning.textContent = `Partial gallery: ${this._galleryErrors.length} token or metadata reads failed. Close and reopen to retry. Details are in the browser console.`;
+      warning.style.color = '#ffd780';
+      body.append(warning);
+    }
     for (const product of products) {
       body.appendChild(this._buildGalleryCard(product));
     }
@@ -1631,18 +1591,7 @@ class RightToolbar extends HTMLElement {
 
   // ── Resolve ipfs:// URI to an HTTP gateway URL ────────────────────────────
   _resolveIpfsUrl(uri) {
-    if (!uri) return "";
-    if (uri.startsWith("ipfs://")) {
-      const withoutProto = uri.slice(7);
-      const slashIdx = withoutProto.indexOf("/");
-      if (slashIdx === -1) {
-        return `https://${withoutProto}.ipfs.w3s.link/`;
-      }
-      const cid = withoutProto.slice(0, slashIdx);
-      const path = withoutProto.slice(slashIdx);
-      return `https://${cid}.ipfs.w3s.link${path}`;
-    }
-    return uri;
+    return resolveMarketAsset(uri);
   }
 
   // ── Safe URL check (prevents XSS via javascript: etc.) ───────────────────
@@ -1665,10 +1614,10 @@ class RightToolbar extends HTMLElement {
     // Signal canvas to clear gallery sprites — escrow view takes over the 3D space
     document.dispatchEvent(new CustomEvent("gallery:cleared"));
 
-    const chainId = window.ethereum?.chainId || null;
+    const chainId = marketEthereum()?.chainId || null;
     const chainCfg = chainId ? getChainConfig(chainId) : null;
     const escrowAddress = chainCfg?.addresses?.ESCROW || "";
-    const userAddress = window.ethereum?.selectedAddress || null;
+    const userAddress = marketEthereum()?.selectedAddress || null;
 
     const panel = document.createElement("div");
     panel.id = "modal-escrow";
@@ -1894,7 +1843,7 @@ class RightToolbar extends HTMLElement {
     }
     document.addEventListener("keydown", _escKey);
 
-    if (escrowAddress && window.ethereum) {
+    if (escrowAddress && marketEthereum()) {
       this._loadEscrowData(panel, escrowAddress, userAddress);
     }
 
@@ -1937,21 +1886,14 @@ class RightToolbar extends HTMLElement {
         return;
       }
 
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const chainCfg = await providerChainConfig(provider);
+      const chainCfg = selectedChainConfig();
       if (!chainCfg || chainCfg.addresses?.ESCROW?.toLowerCase() !== escrowAddress.toLowerCase()) {
         throw new Error("Escrow address does not match the selected network configuration.");
       }
+      const provider = publicMarketProvider(ethers, chainCfg.rpcUrls[0]);
       const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, provider);
 
-      // ── Resolve actual connected address asynchronously ──────────────────
-      // window.ethereum.selectedAddress is not reliably populated in modern wallets;
-      // use provider.listAccounts() to get the current address.
-      let resolvedUserAddress = userAddress;
-      try {
-        const accounts = await provider.listAccounts();
-        if (accounts.length > 0) resolvedUserAddress = await accounts[0].getAddress();
-      } catch { /* keep the passed value if the call fails */ }
+      const resolvedUserAddress = marketEthereum().selectedAddress;
 
       // ── Balances ──────────────────────────────────────────────────────────
       const [ethBal, ownerAddr] = await Promise.all([
@@ -2326,7 +2268,7 @@ class RightToolbar extends HTMLElement {
       statusEl.textContent = "⏳ Sending purchase transaction…";
       const ethers = window.ethers;
       if (!ethers) { statusEl.textContent = "⚠ ethers.js not loaded"; return; }
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      const provider = await marketBrowserProvider();
       const signer = await provider.getSigner();
       const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, signer);
 
@@ -2354,7 +2296,7 @@ class RightToolbar extends HTMLElement {
       const ethers = window.ethers;
       if (!ethers) { statusEl.textContent = "⚠ ethers.js not loaded"; return; }
 
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      const provider = await marketBrowserProvider();
       const signer = await provider.getSigner();
 
       // Fetch listing to get priceToken, priceAmount, and NFT details
@@ -2634,7 +2576,7 @@ class RightToolbar extends HTMLElement {
       statusEl.textContent = "⏳ Sending subscription transaction…";
       const ethers = window.ethers;
       if (!ethers) { statusEl.textContent = "⚠ ethers.js not loaded"; return; }
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      const provider = await marketBrowserProvider();
       const signer = await provider.getSigner();
       const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, signer);
       const tx = isEthPlan
@@ -2663,7 +2605,7 @@ class RightToolbar extends HTMLElement {
         statusEl.textContent = "⏳ Sending withdrawal…";
         const ethers = window.ethers;
         if (!ethers) { statusEl.textContent = "⚠ ethers.js not loaded"; return; }
-        const provider = new ethers.BrowserProvider(window.ethereum);
+        const provider = await marketBrowserProvider();
         const chainCfg = await providerChainConfig(provider);
         if (!chainCfg || chainCfg.addresses?.ESCROW?.toLowerCase() !== escrowAddress.toLowerCase()) {
           throw new Error("Escrow address does not match the selected network configuration.");
@@ -2692,7 +2634,7 @@ class RightToolbar extends HTMLElement {
         statusEl.textContent = "⏳ Sending ERC-20 withdrawal…";
         const ethers = window.ethers;
         if (!ethers) { statusEl.textContent = "⚠ ethers.js not loaded"; return; }
-        const provider = new ethers.BrowserProvider(window.ethereum);
+        const provider = await marketBrowserProvider();
         const signer = await provider.getSigner();
         const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, signer);
         const tx = await escrow.withdrawToken(tokenAddress, ethers.parseUnits(amtStr, decimals), reason);
@@ -2717,7 +2659,7 @@ class RightToolbar extends HTMLElement {
         statusEl.textContent = "⏳ Approving $BNUT transfer…";
         const ethers = window.ethers;
         if (!ethers) { statusEl.textContent = "⚠ ethers.js not loaded"; return; }
-        const provider = new ethers.BrowserProvider(window.ethereum);
+        const provider = await marketBrowserProvider();
         const chainCfg = await providerChainConfig(provider);
         if (!chainCfg || chainCfg.addresses?.ESCROW?.toLowerCase() !== escrowAddress.toLowerCase()) {
           throw new Error("Escrow address does not match the selected network configuration.");
@@ -2758,7 +2700,7 @@ class RightToolbar extends HTMLElement {
         statusEl.textContent = "⏳ Depositing NFT to escrow…";
         const ethers = window.ethers;
         if (!ethers) { statusEl.textContent = "⚠ ethers.js not loaded"; return; }
-        const provider = new ethers.BrowserProvider(window.ethereum);
+        const provider = await marketBrowserProvider();
         const signer = await provider.getSigner();
         const ownerAddress = await signer.getAddress();
         const ERC1155_ABI = [
@@ -2804,7 +2746,7 @@ class RightToolbar extends HTMLElement {
         statusEl.textContent = "⏳ Creating listing…";
         const ethers = window.ethers;
         if (!ethers) { statusEl.textContent = "⚠ ethers.js not loaded"; return; }
-        const provider = new ethers.BrowserProvider(window.ethereum);
+        const provider = await marketBrowserProvider();
         const signer = await provider.getSigner();
         const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, signer);
 
@@ -2832,7 +2774,7 @@ class RightToolbar extends HTMLElement {
         statusEl.textContent = "⏳ Delisting…";
         const ethers = window.ethers;
         if (!ethers) { statusEl.textContent = "⚠ ethers.js not loaded"; return; }
-        const provider = new ethers.BrowserProvider(window.ethereum);
+        const provider = await marketBrowserProvider();
         const signer = await provider.getSigner();
         const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, signer);
         const tx = await escrow.delistDNFT(listingId);
@@ -2856,7 +2798,7 @@ class RightToolbar extends HTMLElement {
         statusEl.textContent = "⏳ Withdrawing NFT…";
         const ethers = window.ethers;
         if (!ethers) { statusEl.textContent = "⚠ ethers.js not loaded"; return; }
-        const provider = new ethers.BrowserProvider(window.ethereum);
+        const provider = await marketBrowserProvider();
         const signer = await provider.getSigner();
         const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, signer);
         const tx = await escrow.withdrawNFT(nftContract, tokenId, amount, to);
@@ -2883,7 +2825,7 @@ class RightToolbar extends HTMLElement {
         statusEl.textContent = "⏳ Creating plan…";
         const ethers = window.ethers;
         if (!ethers) { statusEl.textContent = "⚠ ethers.js not loaded"; return; }
-        const provider = new ethers.BrowserProvider(window.ethereum);
+        const provider = await marketBrowserProvider();
         const signer = await provider.getSigner();
         const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, signer);
         const isEthPlan = paymentToken === ethers.ZeroAddress || paymentToken === "0x0000000000000000000000000000000000000000";
@@ -2912,7 +2854,7 @@ class RightToolbar extends HTMLElement {
         statusEl.textContent = "⏳ Deactivating plan…";
         const ethers = window.ethers;
         if (!ethers) { statusEl.textContent = "⚠ ethers.js not loaded"; return; }
-        const provider = new ethers.BrowserProvider(window.ethereum);
+        const provider = await marketBrowserProvider();
         const signer = await provider.getSigner();
         const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, signer);
         const tx = await escrow.deactivatePlan(planId);
@@ -3121,7 +3063,7 @@ class RightToolbar extends HTMLElement {
         resultEl.textContent = "⏳ …";
 
         try {
-          const provider = new ethers.BrowserProvider(window.ethereum);
+          const provider = await marketBrowserProvider();
           const isRead = fn.mutability === "view" || fn.mutability === "pure";
 
           if (isRead) {
@@ -3300,7 +3242,7 @@ class RightToolbar extends HTMLElement {
         resultEl.textContent = "⏳ …";
 
         try {
-          const provider = new ethers.BrowserProvider(window.ethereum);
+          const provider = await marketBrowserProvider();
           const isRead = fn.mutability === "view" || fn.mutability === "pure";
 
           if (isRead) {

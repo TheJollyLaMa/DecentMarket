@@ -28,9 +28,9 @@ class DecentCanvas extends HTMLElement {
     // Scene setup
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x000000);
-    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    this.camera = new THREE.PerspectiveCamera(75, this.clientWidth / this.clientHeight, 0.1, 1000);
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.setSize(this.clientWidth, this.clientHeight);
     // Attach renderer.domElement to this custom element
     this.appendChild(this.renderer.domElement);
 
@@ -116,8 +116,9 @@ class DecentCanvas extends HTMLElement {
     };
     this.renderer.domElement.addEventListener('click', (event) => {
       const mouse = new THREE.Vector2();
-      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+      const rect = this.renderer.domElement.getBoundingClientRect();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
       const raycaster = new THREE.Raycaster();
       raycaster.setFromCamera(mouse, this.camera);
       const intersects = raycaster.intersectObjects(this.scene.children);
@@ -292,9 +293,9 @@ class DecentCanvas extends HTMLElement {
     animate();
     // Handle resizing to keep camera and renderer in sync with window size
     window.addEventListener('resize', () => {
-      this.camera.aspect = window.innerWidth / window.innerHeight;
+      this.camera.aspect = this.clientWidth / this.clientHeight;
       this.camera.updateProjectionMatrix();
-      this.renderer.setSize(window.innerWidth, window.innerHeight);
+      this.renderer.setSize(this.clientWidth, this.clientHeight);
     });
   }
 
@@ -350,7 +351,7 @@ class DecentCanvas extends HTMLElement {
     }
   }
 
-  _openNFTDetailModal({ token, metadata, isProduct }) {
+  _openNFTDetailModal({ token, metadata, isProduct, purchaseUrl }) {
     // Remove any existing NFT detail modals
     const existing = document.getElementById('nft-detail-modal');
     if (existing) existing.remove();
@@ -387,11 +388,7 @@ class DecentCanvas extends HTMLElement {
     const opensea_url = product?.opensea_url || '';
 
     // Gateway-resolve ipfs:// image for display
-    let displayImg = token;
-    if (displayImg?.startsWith('ipfs://')) {
-      const cid = displayImg.replace('ipfs://', '');
-      displayImg = `https://${cid}.ipfs.w3s.link/`;
-    }
+    const displayImg = resolveMarketAsset(token);
 
     // Check ownership (ERC-1155 balanceOf) — async, filled in after render
     const productBadge = isProduct
@@ -460,6 +457,15 @@ class DecentCanvas extends HTMLElement {
     }, 0);
 
     // Async ownership check
+    if (purchaseUrl && this._isSafeUrl(purchaseUrl)) {
+      const link = document.createElement('a');
+      link.href = purchaseUrl;
+      link.textContent = 'Review / buy this edition · 10 USDC on Base';
+      link.target = '_blank'; link.rel = 'noopener noreferrer';
+      const cta = m.querySelector('#nft-detail-cta');
+      cta.replaceChildren(link);
+      return;
+    }
     this._checkNFTOwnership({ metadata, opensea_url }).then(ctaHTML => {
       const ctaEl = m.querySelector('#nft-detail-cta');
       if (ctaEl) ctaEl.innerHTML = ctaHTML;
@@ -477,14 +483,14 @@ class DecentCanvas extends HTMLElement {
     const tokenId = metadata?.tokenId ?? null;
     const contractAddr = localStorage.getItem('decentNFT_address') || '';
 
-    if (!window.ethereum || !contractAddr || tokenId === null) {
+    if (!marketEthereum().selectedAddress || !contractAddr || tokenId === null) {
       return this._buildPurchaseCTA(opensea_url, btnBase);
     }
 
     try {
       const ethers = window.ethers;
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+      const provider = await marketBrowserProvider();
+      const accounts = await marketEthereum().request({ method: 'eth_accounts' });
       if (!accounts || accounts.length === 0) return this._buildPurchaseCTA(opensea_url, btnBase);
 
       const account = accounts[0];
@@ -575,7 +581,7 @@ class DecentCanvas extends HTMLElement {
           // Open NFT detail modal
           if (typeof this.uiLayer.dispatchEvent === 'function') {
             this.uiLayer.dispatchEvent(new CustomEvent('open-nft-modal', {
-              detail: { x, y: z, token: displayImg, metadata: product.metadata, isProduct: true },
+              detail: { x, y: z, token: displayImg, metadata: product.metadata, isProduct: true, purchaseUrl: product.purchaseUrl },
             }));
           }
         };
@@ -631,18 +637,7 @@ class DecentCanvas extends HTMLElement {
 
   // ── Resolve ipfs:// URI to an HTTP gateway URL (canvas helper) ──────────────
   _resolveCanvasIpfsUrl(uri) {
-    if (!uri) return "";
-    if (uri.startsWith("ipfs://")) {
-      const withoutProto = uri.slice(7);
-      const slashIdx = withoutProto.indexOf("/");
-      if (slashIdx === -1) {
-        return `https://${withoutProto}.ipfs.w3s.link/`;
-      }
-      const cid = withoutProto.slice(0, slashIdx);
-      const path = withoutProto.slice(slashIdx);
-      return `https://${cid}.ipfs.w3s.link${path}`;
-    }
-    return uri;
+    return resolveMarketAsset(uri);
   }
 
   // ── Remove all escrow sprites from the 3D scene ───────────────────────────
@@ -765,3 +760,5 @@ class DecentCanvas extends HTMLElement {
 }
 
 customElements.define('decent-canvas', DecentCanvas);
+import { marketEthereum, marketBrowserProvider } from '../market-wallet.mjs';
+import { resolveMarketAsset } from '../market-gallery.mjs';

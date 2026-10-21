@@ -5,8 +5,8 @@
  * (Product NFTs, Achievement NFTs, future DNFT types) can share the same
  * upload and metadata-building logic without duplication.
  *
- * IPFS provider: web3.storage w3up browser client (loaded as window.w3up via
- * the <script> tag in index.html that serves browser.min.js from IPFS itself).
+ * IPFS provider: the shared DecentHead session (Pinata or local Kubo).
+ * Credentials are session-only and configured by the header's IPFS control.
  *
  * Metadata standard
  * -----------------
@@ -58,94 +58,39 @@
  *
  * Never store HTTP gateway URLs on-chain — gateways may change but CIDs are
  * permanent.  Resolve `ipfs://` URIs in the UI via a public gateway such as
- * https://<cid>.ipfs.w3s.link/ when a human-readable link is needed.
+ * the gateway configured by the host when a human-readable link is needed.
  */
 
-// ---------------------------------------------------------------------------
-// w3up client (web3.storage)
-// ---------------------------------------------------------------------------
-
-/**
- * Returns a ready-to-use web3.storage w3up client.
- *
- * Resolution order (first match wins):
- *   1. `window.w3upClient` — the authenticated client set by the header's
- *      IPFSStatus component after the user logs in via the IPFS button.
- *      This is the preferred source because it guarantees the correct
- *      authenticated space is already active.
- *   2. `window._w3upClientInstance` — an ipfs.js-level cache from a previous
- *      call in the same page session.
- *   3. A freshly-created client loaded from IndexedDB credentials (fallback).
- *      This path only succeeds if the user has previously authenticated in a
- *      prior session; it will throw when no space is found, prompting the user
- *      to connect via the header IPFS button.
- *
- * @returns {Promise<object>} The w3up client with a current space set.
- * @throws {Error} If the w3up library is not loaded or no authenticated space is found.
- */
-export async function getW3upClient() {
-  if (!window.w3up) {
-    throw new Error(
-      "IPFS (w3up) library not loaded. Ensure browser.min.js is included in index.html."
-    );
-  }
-
-  // ── Priority 1: use the client already authenticated via the header ─────────
-  // The header's IPFSStatus component sets window.w3upClient when the user
-  // connects through the IPFS button, ensuring the correct space is active.
-  if (window.w3upClient) {
-    // w3up's currentSpace can be either a method or a property depending on the
-    // client version — IPFSStatus.js handles both forms (see updateUIConnected).
-    const currentSpace =
-      typeof window.w3upClient.currentSpace === "function"
-        ? window.w3upClient.currentSpace()
-        : window.w3upClient.currentSpace;
-    if (currentSpace) {
-      // Keep ipfs.js cache in sync so subsequent calls are instant.
-      window._w3upClientInstance = window.w3upClient;
-      return window.w3upClient;
-    }
-  }
-
-  // ── Priority 2: ipfs.js session cache ────────────────────────────────────────
-  if (window._w3upClientInstance) return window._w3upClientInstance;
-
-  // ── Priority 3: restore from IndexedDB credentials (fallback) ───────────────
-  // This path creates a new client whose credentials come from IndexedDB (stored
-  // during a previous login).  It will only have spaces if the user has logged in
-  // before; otherwise it throws, directing the user to connect via the header.
-  const { create } = window.w3up;
-  const client = await create();
-
-  const spaces = client.spaces();
-  if (!spaces || spaces.length === 0) {
-    throw new Error(
-      "No authenticated IPFS space found. Please connect to web3.storage via the IPFS button in the header first."
-    );
-  }
-
-  // Activate the first available space (the user's default space).
-  await client.setCurrentSpace(spaces[0].did());
-  // Cache locally only — window.w3upClient is owned by the header's IPFSStatus.
-  window._w3upClientInstance = client;
-  return client;
-}
+import { validCID } from '../vendor/decent-head/2.0.0/js/ipfs.js';
 
 // ---------------------------------------------------------------------------
 // File upload
 // ---------------------------------------------------------------------------
 
 /**
- * Upload a browser File object to IPFS via web3.storage w3up.
+ * Upload a browser File using the same provider and credentials as the header.
  *
  * @param {File} file  Any File (image, video, model, …).
  * @returns {Promise<string>} The `ipfs://<cid>` URI for the uploaded file.
  */
 export async function uploadFileToIPFS(file) {
-  const client = await getW3upClient();
-  const cid = await client.uploadFile(file);
+  const session = globalThis.DecentHead?.getIpfs();
+  if (!session) throw new Error('DecentHead storage session is not ready');
+  if (!(file instanceof Blob)) throw new Error('Select a file to upload');
+  const body = new FormData();
+  body.append('file', file, file.name || 'asset');
+  let cid;
+  if (session.provider === 'local') {
+    const response = await session.request(`${session.options.local.apiUrl.replace(/\/$/, '')}/api/v0/add?pin=true`, { method: 'POST', body });
+    cid = JSON.parse((await response.text()).trim().split('\n').at(-1)).Hash;
+  } else {
+    const response = await session.request(session.options.pinata.uploadUrl, { method: 'POST', headers: session.headers(), body });
+    cid = (await response.json()).IpfsHash;
+  }
+  if (!validCID(cid)) throw new Error('Storage provider returned an invalid CID');
   // Always return an ipfs:// URI — never an HTTP gateway URL.
-  return `ipfs://${cid.toString()}`;
+  window.dispatchEvent(new CustomEvent('decenthead:ipfs', { detail: { ...session.snapshot(), action: 'upload', cid } }));
+  return `ipfs://${cid}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -258,14 +203,11 @@ export function buildDNFTMetadata({
  * @returns {Promise<string>} The `ipfs://<cid>` tokenURI for the metadata.
  */
 export async function uploadMetadataToIPFS(metadata) {
-  const client = await getW3upClient();
   const blob = new Blob([JSON.stringify(metadata, null, 2)], {
     type: "application/json",
   });
   const metaFile = new File([blob], "metadata.json", { type: "application/json" });
-  const cid = await client.uploadFile(metaFile);
-  // tokenURI convention: always ipfs://<cid>, never an HTTP gateway URL.
-  return `ipfs://${cid.toString()}`;
+  return uploadFileToIPFS(metaFile);
 }
 
 // ---------------------------------------------------------------------------
