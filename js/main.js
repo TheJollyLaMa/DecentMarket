@@ -1,4 +1,4 @@
-import '../vendor/decent-head/2.0.0/js/main.js';
+import './market-head.mjs';
 
 import './components/DecentCanvas.js';
 
@@ -9,4 +9,7 @@ new ResizeObserver(() => {
   document.documentElement.style.setProperty('--market-header-height', `${header.getBoundingClientRect().height}px`);
   window.dispatchEvent(new Event('resize'));
 }).observe(header);
-void showPublicReleases();
+void showPublicReleases().then(() => document.dispatchEvent(new Event('market:load-gallery')));
+document.addEventListener('market:load-gallery', event => {
+  if (event.detail?.refresh) void showPublicReleases();
+});

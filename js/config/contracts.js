@@ -26,20 +26,6 @@ export const CONTRACTS = {
       DNFT: '0x4cE20F0bbF7eA38488F9c9555EfD2b502E86A53E',
     },
   },
-  optimism: {
-    chainId: '0xa',         // 10 in decimal
-    chainName: 'Optimism Mainnet',
-    nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-    rpcUrls: ['https://mainnet.optimism.io'],
-    blockExplorerUrls: ['https://optimistic.etherscan.io'],
-    addresses: {
-      DNFT:  '0xe870f7b1D10C41dbc6b75598a5308B9a2Bb52958',
-      ESCROW: '0x23A457AD3C33d68E4fAd2FCa7c5d9a511E0C350e',
-      BNUT:  '0x733c4d2Aae900E608147dd89Fa93606f89722823', // $BNUT ERC-20 (BigNuten) — 18 decimals
-      USDC:  '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', // native USDC (Circle) — 6 decimals
-      USDCe: '0x7F5c764cBc14f9669B88837ca1490cCa17c31607', // USDCe (bridged)      — 6 decimals
-    },
-  },
   // Legacy networks remain available as address records; MetaMask controls switching.
   // ethereum: {
   //   chainId: '0x1',
@@ -103,9 +89,9 @@ export const VERSIONS = [
   },
   {
     label: 'v0.2',
-    description: 'legacy Optimism',
+    description: 'archived deployment (sunset)',
     href: '/v0.2/',
-    available: true,
+    available: false,
     current: false,
   },
 ];

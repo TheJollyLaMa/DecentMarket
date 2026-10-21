@@ -1,9 +1,9 @@
 name: Supporter collectible display
 on:
   push:
-    paths: ['js/supporter-*.mjs', 'js/market-*.mjs', 'js/main.js', 'js/ipfs.js', 'js/vendor/**', 'vendor/decent-head/**', 'decent-head.config.js', 'index.html', 'css/styles.css', 'js/config/contracts.js', 'js/components/DecentCanvas.js', 'js/components/DecentCanvas/RightToolbar.js', 'test/supporter-*', 'test/market-*', 'supporter.html', 'css/supporter-studio.css', 'releases/**', 'package*.json', '.github/workflows/supporter-display.yml']
+    paths: ['js/**', 'vendor/**', 'decent-head.config.js', 'index.html', 'css/**', 'test/supporter-*', 'test/market-*', 'supporter.html', 'releases/**', 'package*.json', '.github/workflows/supporter-display.yml']
   pull_request:
-    paths: ['js/supporter-*.mjs', 'js/market-*.mjs', 'js/main.js', 'js/ipfs.js', 'js/vendor/**', 'vendor/decent-head/**', 'decent-head.config.js', 'index.html', 'css/styles.css', 'js/config/contracts.js', 'js/components/DecentCanvas.js', 'js/components/DecentCanvas/RightToolbar.js', 'test/supporter-*', 'test/market-*', 'supporter.html', 'css/supporter-studio.css', 'releases/**', 'package*.json', '.github/workflows/supporter-display.yml']
+    paths: ['js/**', 'vendor/**', 'decent-head.config.js', 'index.html', 'css/**', 'test/supporter-*', 'test/market-*', 'supporter.html', 'releases/**', 'package*.json', '.github/workflows/supporter-display.yml']
 permissions:
   contents: read
 jobs:
@@ -41,4 +41,5 @@ jobs:
           done
           curl --fail --silent --output /dev/null "$BASE_URL/supporter.html"
           npm run test:supporter:browser
+          npm run test:supporter:embedded
           npm run test:market-adoption:browser

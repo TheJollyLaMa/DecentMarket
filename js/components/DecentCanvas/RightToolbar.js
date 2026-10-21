@@ -1,6 +1,7 @@
 import { CONTRACTS, getChainConfig, PAYPAL_CONFIG } from '../../config/contracts.js';
 import { marketEthereum, marketBrowserProvider } from '../../market-wallet.mjs';
 import { loadGalleryProducts, publicMarketProvider, resolveMarketAsset } from '../../market-gallery.mjs';
+import { mountMintLanes } from '../../market-mint-panel.mjs';
 import {
   uploadFileToIPFS,
   uploadMetadataToIPFS,
@@ -56,18 +57,12 @@ const ESCROW_ABI = [
   "function supportsInterface(bytes4 interfaceId) view returns (bool)",
 ];
 
-// ── Known token addresses ─────────────────────────────────────────────────────
-const USDC_OPTIMISM  = "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85"; // native USDC (Circle)
-const USDCE_OPTIMISM = "0x7F5c764cBc14f9669B88837ca1490cCa17c31607"; // USDCe (bridged)
-const BNUT_OPTIMISM  = "0x733c4d2Aae900E608147dd89Fa93606f89722823"; // $BNUT — BigNuten governance & rewards token
+// ── Active Base tokens ────────────────────────────────────────────────────────
 const USDC_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const BNUT_BASE = "0x25ACb773159Af5a5c672DEfe31C7Fff6a9A93736";
 
-// Human-readable labels for known Optimism tokens
+// Human-readable labels for active tokens
 const KNOWN_TOKENS = {
-  [USDC_OPTIMISM.toLowerCase()]:  "native USDC (Circle)",
-  [USDCE_OPTIMISM.toLowerCase()]: "USDCe (bridged)",
-  [BNUT_OPTIMISM.toLowerCase()]:  "$BNUT (BigNuten)",
   [USDC_BASE.toLowerCase()]:      "USDC",
   [BNUT_BASE.toLowerCase()]:      "$BNUT (BigNuten)",
 };
@@ -99,6 +94,27 @@ const WEI_DISPLAY_THRESHOLD = 1_000_000_000_000n;
 class RightToolbar extends HTMLElement {
   connectedCallback() {
     this._galleryCache = null;
+    this._preparedProducts = [];
+    this._publicProducts = [];
+    this._onPreparedProducts = event => {
+      this._preparedProducts = event.detail.products;
+      this._publishSpaceProducts(this._publicProducts);
+    };
+    this._onLoadGallery = event => {
+      if (this._spaceLoading) return;
+      if (event.detail?.refresh) this._galleryCache = null;
+      this._spaceLoading = true;
+      document.dispatchEvent(new CustomEvent('market:gallery-status', { detail: { loading: true } }));
+      this._loadGalleryProducts(CONTRACTS.base).then(products => {
+        this._publishSpaceProducts(products);
+        document.dispatchEvent(new CustomEvent('market:gallery-status', { detail: { loading: false, error: this._galleryErrors?.length ? `${this._galleryErrors.length} reads failed. Refresh to retry.` : '' } }));
+      }).catch(error => {
+        console.error('[Market Base gallery]', error);
+        document.dispatchEvent(new CustomEvent('market:gallery-status', { detail: { loading: false, error: error.message } }));
+      }).finally(() => { this._spaceLoading = false; });
+    };
+    document.addEventListener('market:prepared-products', this._onPreparedProducts);
+    document.addEventListener('market:load-gallery', this._onLoadGallery);
 
     this.style.display = "flex";
     this.style.flexDirection = "column";
@@ -194,6 +210,18 @@ class RightToolbar extends HTMLElement {
 
   _clearModals() {
     document.querySelectorAll("[id^='modal-']").forEach((m) => m.remove());
+  }
+
+  disconnectedCallback() {
+    document.removeEventListener('market:prepared-products', this._onPreparedProducts);
+    document.removeEventListener('market:load-gallery', this._onLoadGallery);
+  }
+
+  _publishSpaceProducts(products) {
+    this._publicProducts = products;
+    const merged = new Map(products.map(product => [product.tokenId, product]));
+    for (const product of this._preparedProducts) merged.set(product.tokenId, { ...merged.get(product.tokenId), ...product });
+    document.dispatchEvent(new CustomEvent('gallery:products-loaded', { detail: { products: [...merged.values()].sort((a, b) => b.blockNumber - a.blockNumber), background: true } }));
   }
 
   // ── ⚙️ Settings panel ────────────────────────────────────────────────────
@@ -377,7 +405,7 @@ class RightToolbar extends HTMLElement {
         if (cfg) {
           if (chainNameEl) chainNameEl.textContent = cfg.chainName;
           chainStatusEl.textContent = `✓ Connected to ${cfg.chainName}`;
-          chainStatusEl.style.color = id === "0xa" ? "#ff0420" : "#8247e5";
+          chainStatusEl.style.color = "#388dff";
         } else {
           if (chainNameEl) chainNameEl.textContent = `Unknown chain ${parseInt(id, 16)}`;
           chainStatusEl.textContent = `⚠️ Unknown network (${parseInt(id, 16)})`;
@@ -435,7 +463,7 @@ class RightToolbar extends HTMLElement {
       });
       if (statusEl) {
         statusEl.textContent = `✓ Switched to ${cfg.chainName}`;
-        statusEl.style.color = hexId === "0xa" ? "#ff0420" : "#8247e5";
+        statusEl.style.color = "#388dff";
       }
     } catch (err) {
       if (err.code === 4902) {
@@ -452,7 +480,7 @@ class RightToolbar extends HTMLElement {
           });
           if (statusEl) {
             statusEl.textContent = `✓ Switched to ${cfg.chainName}`;
-            statusEl.style.color = hexId === "0xa" ? "#ff0420" : "#8247e5";
+            statusEl.style.color = "#388dff";
           }
         } catch {
           if (statusEl) {
@@ -523,13 +551,12 @@ class RightToolbar extends HTMLElement {
     });
 
     modal.innerHTML = this._buildMintModalHTML();
-    const prepared = document.createElement("a");
-    prepared.href = new URL("../../../supporter.html", import.meta.url).href;
-    prepared.textContent = "Supporter release? Open the prepared-release studio →";
-    prepared.style.cssText = "display:block;padding:16px;color:#7af0c6;border-bottom:1px solid #7af0c655;font:600 14px system-ui";
-    modal.prepend(prepared);
+    modal.classList.add('market-sidepanel', 'market-mint-panel');
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-label', 'Mint New DNFT');
     document.body.appendChild(modal);
     this._wireMintModal(modal);
+    mountMintLanes(modal);
   }
 
   _buildMintModalHTML() {
@@ -583,7 +610,7 @@ class RightToolbar extends HTMLElement {
             background:rgba(255,4,32,0.12);color:#ff0420;
             border:1px solid #ff042044;border-radius:4px;
             padding:2px 6px;font-size:0.62rem;font-weight:bold;
-          ">🔴 Optimism v0.2</span>
+          ">Base · ERC-1155</span>
         </div>
       </div>
 
@@ -833,7 +860,7 @@ class RightToolbar extends HTMLElement {
           color:#555;
         ">
           📄 Contract: <span style="color:#00e676;">${contractLabel}</span>
-          <span style="color:#888;"> — Optimism v0.2</span>
+          <span style="color:#888;"> — ${activeCfg?.chainName || 'Unsupported network'}</span>
         </div>
 
         <!-- Submit -->
@@ -1428,7 +1455,10 @@ class RightToolbar extends HTMLElement {
     this._galleryErrors = [];
     try {
       const { products, errors } = await loadGalleryProducts(contract, {
-        onProgress: products => this._renderGalleryCards(products),
+        onProgress: products => {
+          this._renderGalleryCards(products);
+          this._publishSpaceProducts(products);
+        },
       });
       for (const error of errors) console.warn('[Market gallery]', error);
       this._galleryErrors = errors;

@@ -1,7 +1,8 @@
 import { ethers, BASE, STEPS, SupporterMint, validateRelease, validateMetadata, newSession, nextStep, transactionFor, buildEvidence, releaseKey, ESCROW_ABI, NFT_ABI } from './supporter-mint.mjs';
-import '../vendor/decent-head/2.0.0/js/main.js';
+import './market-head.mjs';
 import { marketBrowserProvider } from './market-wallet.mjs';
-const $ = id => document.getElementById(id);
+export function mountSupporterStudio(root) {
+const $ = id => root.querySelector(`#${id}`);
 let manifest, studio, busy = false;
 const titles = { register: 'Register release', mint: 'Mint 1,000 editions to creator', transfer: 'Transfer 1,000 editions to escrow', list: 'List 1,000 editions at 10 USDC each' };
 function status(message, error = false) { $('status').textContent = message; $('status').dataset.error = String(error); }
@@ -18,7 +19,7 @@ async function jsonFile(id) {
 async function action(callback) {
   if (busy) return;
   busy = true;
-  const controls = [...document.querySelectorAll('button')];
+  const controls = [...root.querySelectorAll('button')];
   const disabled = controls.map(button => button.disabled);
   controls.forEach(button => { button.disabled = true; });
   try {
@@ -134,8 +135,13 @@ $('evidence').onclick = () => action(async () => {
   $('purchase').href = evidence.purchaseUrl; $('purchase').hidden = false;
   status('Current listing verified. Evidence downloaded for steward registration; notifier still checks 12 confirmations. No Discord message sent.');
 });
-window.addEventListener('decenthead:wallet', event => {
+const walletChanged = event => {
   if (!event.detail.connected) status('Wallet disconnected. Progress is preserved; reconnect before continuing.', true);
   render();
-});
+};
+window.addEventListener('decenthead:wallet', walletChanged);
 render();
+return () => window.removeEventListener('decenthead:wallet', walletChanged);
+}
+const standalone = document.querySelector('main[data-supporter-studio]');
+if (standalone) mountSupporterStudio(standalone);

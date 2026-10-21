@@ -22,6 +22,21 @@ class DecentCanvas extends HTMLElement {
     this._collectibleMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   }
 
+  _filterSpace() {
+    const products = this._spaceView === 'escrow' ? this._spaceEscrow || [] : this._spaceProducts || [];
+    this._filteredSpace = filterDnfts(products, this._spaceFilters || defaultFilters);
+    if (this._spaceView === 'escrow') this._placeEscrowDNFTs(this._filteredSpace);
+    else this._placeGalleryProducts(this._filteredSpace);
+    this._reportFilterCount();
+  }
+
+  _reportFilterCount() {
+    const products = this._spaceView === 'escrow' ? this._spaceEscrow || [] : this._spaceProducts || [];
+    document.dispatchEvent(new CustomEvent('market:filter-count', { detail: {
+      total: products.length, visible: this._filteredSpace?.length || 0, ...this._spaceStatus,
+    } }));
+  }
+
   connectedCallback() {
     document.body.style.overflow = 'hidden';
     document.documentElement.style.overflow = 'hidden';
@@ -201,8 +216,13 @@ class DecentCanvas extends HTMLElement {
 
     // ── Gallery: place Product DNFTs at depth positions on Z-axis ─────────────
     document.addEventListener('gallery:products-loaded', (e) => {
-      this._placeGalleryProducts(e.detail.products);
+      this._spaceProducts = e.detail.products;
+      if (e.detail.background && this._spaceView === 'escrow') return;
+      this._spaceView = 'gallery';
+      this._filterSpace();
     });
+    document.addEventListener('market:filters', event => { this._spaceFilters = event.detail; this._filterSpace(); });
+    document.addEventListener('market:gallery-status', event => { this._spaceStatus = event.detail; this._reportFilterCount(); });
 
     // ── Gallery: clear gallery sprites (e.g. when escrow panel opens) ─────────
     document.addEventListener('gallery:cleared', () => {
@@ -217,7 +237,9 @@ class DecentCanvas extends HTMLElement {
 
     // ── Escrow: show escrowed DNFTs with color-coded glows ────────────────────
     document.addEventListener('escrow:dnfts-loaded', (e) => {
-      this._placeEscrowDNFTs(e.detail.dnfts);
+      this._spaceEscrow = e.detail.dnfts;
+      this._spaceView = 'escrow';
+      this._filterSpace();
     });
 
     // ── Escrow: clear escrow sprites (e.g. when gallery panel re-opens) ───────
@@ -762,3 +784,4 @@ class DecentCanvas extends HTMLElement {
 customElements.define('decent-canvas', DecentCanvas);
 import { marketEthereum, marketBrowserProvider } from '../market-wallet.mjs';
 import { resolveMarketAsset } from '../market-gallery.mjs';
+import { defaultFilters, filterDnfts } from '../market-filters.mjs';

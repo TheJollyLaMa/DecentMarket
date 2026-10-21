@@ -132,6 +132,10 @@ unit suite and browser rehearsal. Browser fixtures intercept asset gateways;
 actual IPFS availability and real wallet signing are separate live gates.
 # Shared header and wallet
 
+Open the right **Mint New DNFT → Supporter DNFT** dropdown to use the Studio
+inside Market. The standalone page remains compatible for bookmarks/recovery;
+both use the same signing engine and progress storage.
+
 The Studio uses the released DecentHead v2 foundation and the same selected
 wallet session as its header. If several wallets are detected, choose using
 the fox first. Disconnect preserves the saved four-step progress but requires

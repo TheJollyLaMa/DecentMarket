@@ -15,6 +15,16 @@ const browser = await chromium.launch();
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = [], requests = [];
+  let musicRequest, uploads = 0;
+  await page.route('https://api.pinata.cloud/pinning/pinFileToIPFS', route => {
+    uploads++;
+    assert.equal(route.request().headers().authorization, 'Bearer synthetic-test-only');
+    return route.fulfill({ json: { IpfsHash: manifest.front.slice(7) } });
+  });
+  await page.route('https://decentbusking.onrender.com/api/media/submit', route => {
+    musicRequest = route.request().postDataJSON();
+    return route.fulfill({ json: { trackId: 'synthetic-music-1', status: 'pending' } });
+  });
   page.on('pageerror', error => errors.push(`${error.message} ${error.stack}`));
   page.on('request', request => requests.push(request.url()));
   await page.route('https://gateway.pinata.cloud/**', route => {
@@ -54,6 +64,7 @@ try {
         window.walletCalls.push({ name, method });
         if (method === 'eth_accounts' || method === 'eth_requestAccounts') return ['0x807061DF657A7697c04045dA7d16D941861cAABc'];
         if (method === 'eth_chainId') return '0x2105';
+        if (method === 'personal_sign') return '0x' + '1'.repeat(130);
         throw new Error(`Unexpected wallet request ${method}`);
       },
     });
@@ -62,11 +73,11 @@ try {
     window.addEventListener('eip6963:requestProvider', () => wallets.forEach(detail => window.dispatchEvent(new CustomEvent('eip6963:announceProvider', { detail }))));
   });
   await page.goto(base);
-  await page.getByRole('link', { name: 'Review / buy edition' }).waitFor();
-  assert.match(await page.locator('#supporter-listing-cards').textContent(), /10 USDC.*1000 available.*Token 70 \/ Listing 0/);
+  assert.equal(await page.locator('#supporter-listings').count(), 0);
+  assert.equal(await page.getByRole('link', { name: 'Open MetaMask', exact: true }).isVisible(), false);
   assert.deepEqual(await page.evaluate(() => window.walletCalls), []);
   assert.equal(requests.some(url => /w3s\.link|web3\.storage/.test(url)), false);
-  await page.waitForFunction(() => document.querySelector('decent-canvas')._productSprites['70']?.sprite?.userData?.twoSided);
+  await page.waitForFunction(() => document.querySelector('decent-canvas')._productSprites?.['70']?.sprite?.userData?.twoSided);
   const mesh = await page.evaluate(() => {
     const c = document.querySelector('decent-canvas'), sprite = c._productSprites['70'].sprite;
     return { mesh: sprite.isMesh, front: !!sprite.material[4].map, back: !!sprite.material[5].map,
@@ -78,16 +89,50 @@ try {
   await page.getByRole('link', { name: 'Review / buy this edition · 10 USDC on Base', exact: true }).waitFor();
   assert.match(await page.getByRole('link', { name: 'Review / buy this edition · 10 USDC on Base', exact: true }).getAttribute('href'), /listingId=0/);
   await page.locator('#nft-detail-close').click();
-  await page.getByRole('button', { name: 'View back', exact: true }).click();
-  await page.getByRole('img', { name: `${metadata.name} back`, exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Filter DNFTs in space', exact: true }).click();
+  await page.locator('#modal-space-filters select').selectOption('music');
+  await page.waitForFunction(() => Object.keys(document.querySelector('decent-canvas')._productSprites).length === 0);
+  await page.locator('#modal-space-filters select').selectOption('supporter');
+  await page.waitForFunction(() => document.querySelector('decent-canvas')._productSprites['70']?.sprite?.userData?.twoSided);
+  await page.locator('#modal-space-filters input[type=search]').fill('not-present');
+  await page.waitForFunction(() => Object.keys(document.querySelector('decent-canvas')._productSprites).length === 0);
+  await page.getByRole('button', { name: 'Reset filters', exact: true }).click();
+  await page.getByRole('button', { name: 'Close filters', exact: true }).click();
+  await page.getByRole('button', { name: '📜', exact: true }).click();
+  const mintPanel = page.getByRole('dialog', { name: 'Mint New DNFT', exact: true });
+  await mintPanel.locator('[data-lane=supporter] > summary').click();
+  await mintPanel.getByRole('button', { name: 'Load DecentHead v2.0.0', exact: true }).click();
+  await mintPanel.locator('#release-summary').filter({ hasText: manifest.creatorAddress }).waitFor();
+  assert.equal(await mintPanel.locator('.supporter-studio-embed iframe').count(), 0);
+  await mintPanel.locator('[data-lane=music] > summary').click();
+  await mintPanel.getByRole('button', { name: 'Submit music for owner approval', exact: true }).click();
+  assert.match(await mintPanel.locator('[data-music-status]').textContent(), /consent first/);
+  await page.keyboard.press('Escape');
   await page.locator('wallet-connect select').selectOption('1');
   await page.getByRole('button', { name: 'Connect wallet', exact: true }).click();
   await page.getByRole('button', { name: 'Disconnect wallet', exact: true }).waitFor();
   assert.equal(await page.evaluate(() => window.walletCalls.every(call => call.name === 'B')), true);
   assert.equal(await page.evaluate(async () => (await import('./js/market-wallet.mjs')).marketEthereum().selectedAddress), manifest.creatorAddress);
+  await page.getByRole('button', { name: '📜', exact: true }).click();
+  await page.locator('[data-lane=music] > summary').click();
+  const music = page.locator('.music-submission');
+  await music.locator('[name=title]').fill('Synthetic song');
+  await music.locator('[name=artist]').fill('Synthetic artist');
+  await music.locator('[name=recipient]').fill(manifest.creatorAddress);
+  await music.locator('[name=mediaFile]').setInputFiles({ name: 'synthetic.wav', mimeType: 'audio/wav', buffer: Buffer.from('RIFFxxxxWAVEtest') });
+  await music.locator('[name=consent]').check();
+  await page.evaluate(() => window.DecentHead.getIpfs().configure({ provider: 'pinata', jwt: 'synthetic-test-only' }));
+  await music.getByRole('button', { name: 'Submit music for owner approval', exact: true }).click();
+  await music.locator('[data-music-status]').filter({ hasText: 'synthetic-music-1' }).waitFor();
+  assert.equal(uploads, 1);
+  assert.equal(musicRequest.mediaType, 'audio/wav');
+  assert.equal(musicRequest.origin, new URL(base).origin);
+  assert.deepEqual(musicRequest.creatorSplits, [{ wallet: manifest.creatorAddress, shareBps: 10000 }]);
+  assert.equal(await music.getByRole('button', { name: 'Submitted · awaiting owner review', exact: true }).isDisabled(), true);
+  await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Disconnect wallet', exact: true }).click();
   assert.deepEqual(await page.evaluate(async () => (await import('./js/market-wallet.mjs')).marketEthereum().request({ method: 'eth_accounts' })), []);
-  assert.equal(await page.evaluate(() => window.walletCalls.some(call => /send|sign/i.test(call.method))), false);
+  assert.equal(await page.evaluate(() => window.walletCalls.some(call => /send/i.test(call.method))), false);
   await page.getByRole('button', { name: '🗿', exact: true }).click();
   await page.locator('#gallery-card-70').waitFor();
   assert.match(await page.locator('#gallery-card-70').textContent(), /DecentHead v2.0.0/);
@@ -107,5 +152,5 @@ try {
   await page.keyboard.press('Escape');
   if (process.env.SCREENSHOT_PATH) await page.screenshot({ path: process.env.SCREENSHOT_PATH });
   assert.deepEqual(errors, []);
-  console.log('PASS: migrated Market; public listing zero, verified terms, 3D front/back, gallery discovery, selected EIP6963 wallet B, disconnect, no auto prompts/uploads/signatures, responsive canvas and reduced motion.');
+  console.log('PASS: Market mint lanes, embedded Studio, Music consent, left space category/search/reset filters, no release shelf or wallet deep-link, verified 3D purchase, provider B, disconnect, mobile dialogs and reduced motion.');
 } finally { await browser.close(); }

@@ -1,5 +1,10 @@
 # DecentMarket: DecentHead v2 adoption
 
+Current UI: [mint lanes and space filters](./MINT-LANES.md) supersede the
+initial public release shelf described below. Prepared-release verification
+and purchase links remain on the 3D collectibles, while the Studio is embedded
+in the right mint panel. Optimism routing is now archived/disabled.
+
 ## Provenance and scope
 
 `vendor/decent-head/2.0.0/` is an unmodified distribution from

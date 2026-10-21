@@ -9,12 +9,17 @@ chain spark icons, themed About/IPFS dialogs and inert ankh menus.
 Pinata/local Kubo replace the active retired web3.storage upload path.
 See [adoption provenance, boundaries and validation](./docs/DECENTHEAD-ADOPTION.md).
 
-The public release shelf verifies listings without connecting a wallet.
+The first left sidepanel filters the DNFTs shown in 3D space. Prepared releases
+are verified without connecting a wallet; click their collectible to review/buy.
 **DecentHead v2.0.0: Base token 70, escrow listing 0, 10 USDC per edition.**
-Stock and sale status are checked live; use its purchase link to review current
+Stock and sale status are checked live; use the collectible's purchase link to review current
 terms before buying. Its mint/listing evidence is published on the
 [official Head release](https://github.com/TheJollyLaMa/DecentHead/releases/tag/v2.0.0).
 Market's own next version and Supporter edition remain separate upcoming work.
+
+The right **Mint New DNFT** panel has Regular, Supporter (embedded Release
+Studio) and Music (Busking owner-approval submission) dropdowns.
+See [mint lanes, filters and music protocol boundaries](./docs/MINT-LANES.md).
 
 ## Supported Networks
 
@@ -26,9 +31,9 @@ Market's own next version and Supporter edition remain separate upcoming work.
 
 Base is the current default deployment. DecentNFT and DecentEscrow are deployed,
 and the UI routes legacy contract controls using the selected shared wallet chain.
-The public Supporter shelf uses Base independently of wallet connection.
+Public prepared-release verification uses Base independently of wallet connection.
 Subscription plans and further product listings require their own configuration.
-Optimism remains available as a legacy deployment.
+Optimism is sunset/archived and is not available in active contract routing.
 
 ## Community Escrow Treasury
 
