@@ -1,7 +1,7 @@
 export function publicMarketProvider(ethers, rpcUrl) {
   const request = new ethers.FetchRequest(rpcUrl);
   request.timeout = 10000;
-  return new ethers.JsonRpcProvider(request);
+  return new ethers.JsonRpcProvider(request, undefined, { batchMaxCount: 10 });
 }
 
 export function resolveMarketAsset(uri) {

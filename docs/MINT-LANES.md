@@ -40,6 +40,9 @@ version or token ID. Reset restores all. Filters apply to loaded Market
 collection products and escrow views, not every arbitrary NFT on Base.
 Refresh reloads the Base collection. Registered products load newest-first,
 with visible partial-read status and no connection prompt.
+Entry loads only verified prepared releases; opening filters or the gallery
+loads the full collection on demand, avoiding an unsolicited scan on each visit.
+Public RPC batches are capped at ten calls.
 
 Prepared release verification still runs in the background and attaches the
 verified purchase route to its 3D collectible. A Supporter HTML animation is not
