@@ -1,5 +1,6 @@
 import './DecentCanvas/LeftToolbar.js';
 import './DecentCanvas/RightToolbar.js';
+import { collectibleFaces, createCollectibleDisplay, disposeCollectible } from '../supporter-display.mjs';
 
 class DecentCanvas extends HTMLElement {
   constructor() {
@@ -17,6 +18,8 @@ class DecentCanvas extends HTMLElement {
     this._productSprites = {}; // tokenId → { sprite, badge, x, z }
     this._escrowSprites  = {}; // tokenId → { sprite, badge, x, z } for escrow view
     this._flyTarget = null;    // { x, y, z } target for smooth camera animation
+    this._galleryGeneration = 0;
+    this._collectibleMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   }
 
   connectedCallback() {
@@ -202,9 +205,11 @@ class DecentCanvas extends HTMLElement {
 
     // ── Gallery: clear gallery sprites (e.g. when escrow panel opens) ─────────
     document.addEventListener('gallery:cleared', () => {
+      this._galleryGeneration++;
       for (const { sprite, badge } of Object.values(this._productSprites)) {
         this.scene.remove(sprite);
-        if (badge) this.scene.remove(badge);
+        disposeCollectible(sprite);
+        if (badge) { this.scene.remove(badge); disposeCollectible(badge); }
       }
       this._productSprites = {};
     });
@@ -238,8 +243,16 @@ class DecentCanvas extends HTMLElement {
     });
 
     // Animation loop
+    let lastFrame = performance.now();
     const animate = () => {
       requestAnimationFrame(animate);
+      const now = performance.now(), delta = Math.min((now - lastFrame) / 1000, .1);
+      lastFrame = now;
+      if (!this._collectibleMotion.matches) {
+        for (const { sprite } of Object.values(this._productSprites)) {
+          if (sprite.userData.twoSided) sprite.rotation.y += delta * .35;
+        }
+      }
       if (this.controls) this.controls.update();
 
       // Smooth fly-to: lerp controls.target toward _flyTarget
@@ -421,6 +434,22 @@ class DecentCanvas extends HTMLElement {
 
     document.body.appendChild(m);
     m.querySelector('#nft-detail-close').onclick = () => m.remove();
+    const back = collectibleFaces(metadata).back;
+    if (back) {
+      const flip = document.createElement('button');
+      flip.textContent = 'View back';
+      flip.style.cssText = 'padding:10px;border:1px solid #80edd2;border-radius:8px;background:#10202a;color:white;cursor:pointer';
+      let showingBack = false;
+      flip.onclick = () => {
+        showingBack = !showingBack;
+        m.querySelector('img').src = showingBack ? back : collectibleFaces(metadata).front;
+        flip.textContent = showingBack ? 'View front' : 'View back';
+        for (const { sprite } of Object.values(this._productSprites)) {
+          if (sprite.userData.metadata === metadata && sprite.userData.twoSided) sprite.rotation.y += Math.PI;
+        }
+      };
+      m.querySelector('img')?.after(flip);
+    }
 
     // Close on outside click
     setTimeout(() => {
@@ -510,11 +539,13 @@ class DecentCanvas extends HTMLElement {
   // oldest is deepest (most negative Z). Each product is spaced 8 units apart.
   _placeGalleryProducts(products) {
     if (!this.scene) return;
+    const generation = ++this._galleryGeneration;
 
     // Remove previously placed gallery sprites
     for (const { sprite, badge } of Object.values(this._productSprites)) {
       this.scene.remove(sprite);
-      if (badge) this.scene.remove(badge);
+      disposeCollectible(sprite);
+      if (badge) { this.scene.remove(badge); disposeCollectible(badge); }
     }
     this._productSprites = {};
 
@@ -527,16 +558,15 @@ class DecentCanvas extends HTMLElement {
       const z = -(idx + 1) * spacing; // newest → -8, next → -16, …
       const tokenId = product.tokenId;
 
-      const imageUri = product.metadata?.image || "";
-      const displayImg = this._resolveCanvasIpfsUrl(imageUri);
+      const faces = collectibleFaces(product.metadata);
+      const displayImg = faces.front;
       if (!displayImg) return;
 
       const textureLoader = new THREE.TextureLoader();
       textureLoader.load(displayImg, (texture) => {
-        const mat = new THREE.SpriteMaterial({ map: texture, transparent: true });
-        const sprite = new THREE.Sprite(mat);
+        if (generation !== this._galleryGeneration) { texture.dispose(); return; }
+        const sprite = createCollectibleDisplay(THREE, texture);
         sprite.position.set(x, 0.5, z);
-        sprite.scale.set(3, 3, 1);
         sprite.userData = { tokenId, x, z, metadata: product.metadata, isProduct: true };
 
         sprite.onClick = () => {
@@ -578,6 +608,21 @@ class DecentCanvas extends HTMLElement {
         this.scene.add(badge);
 
         this._productSprites[tokenId] = { sprite, badge, x, z };
+        if (faces.back) textureLoader.load(faces.back, back => {
+          if (generation !== this._galleryGeneration) { back.dispose(); return; }
+          const collectible = createCollectibleDisplay(THREE, texture, back);
+          collectible.position.copy(sprite.position);
+          collectible.userData = { ...sprite.userData, twoSided: true };
+          collectible.onClick = sprite.onClick;
+          this.scene.remove(sprite);
+          sprite.material.dispose();
+          this.scene.add(collectible);
+          this._productSprites[tokenId].sprite = collectible;
+          badge.position.set(x, 2.55, z);
+          badge.scale.set(.75, .75, 1);
+        }, undefined, error => {
+          console.warn(`Gallery: back image unavailable for token #${tokenId}; retaining front:`, error);
+        });
       }, undefined, (err) => {
         console.warn(`Gallery: failed to load image for token #${tokenId}:`, displayImg, err);
       });
@@ -618,11 +663,13 @@ class DecentCanvas extends HTMLElement {
   // increases so the user can fly through the spiral using OrbitControls.
   _placeEscrowDNFTs(dnfts) {
     if (!this.scene) return;
+    this._galleryGeneration++;
 
     // Clear regular gallery sprites — escrow view is mutually exclusive
     for (const { sprite, badge } of Object.values(this._productSprites)) {
       this.scene.remove(sprite);
-      if (badge) this.scene.remove(badge);
+      disposeCollectible(sprite);
+      if (badge) { this.scene.remove(badge); disposeCollectible(badge); }
     }
     this._productSprites = {};
 
