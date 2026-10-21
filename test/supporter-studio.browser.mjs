@@ -2,12 +2,19 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = process.env.BASE_URL || 'http://127.0.0.1:8792';
+const embedded = process.env.EMBEDDED_STUDIO === '1';
+const statusSelector = embedded ? '.supporter-studio-embed #status' : 'main #status';
 const browser = await chromium.launch();
 const errors = [];
 let page;
 try {
   page = await browser.newPage({ acceptDownloads: true });
   page.on('pageerror', error => errors.push(error.message));
+  if (embedded) await page.route('https://mainnet.base.org/**', route => {
+    const data = route.request().postDataJSON();
+    const reply = call => ({ jsonrpc: '2.0', id: call.id, result: call.method === 'eth_chainId' ? '0x2105' : '0x' + '0'.repeat(64) });
+    return route.fulfill({ json: Array.isArray(data) ? data.map(reply) : reply(data) });
+  });
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64');
   await page.route('https://gateway.pinata.cloud/**', route => route.fulfill({ contentType: 'image/png', body: png }));
   await page.addInitScript({ content: readFileSync(new URL('../js/vendor/ethers.umd.min.js', import.meta.url), 'utf8') });
@@ -90,13 +97,20 @@ try {
       },
     };
   });
-  await page.goto(`${base}/supporter.html`);
+  async function openStudio() {
+    if (embedded) {
+      await page.getByRole('button', { name: '📜', exact: true }).click();
+      await page.locator('[data-lane=supporter] > summary').click();
+    }
+  }
+  await page.goto(embedded ? base : `${base}/supporter.html`);
+  await openStudio();
   assert.deepEqual(await page.evaluate(() => window.rpcMethods), []);
   await page.getByRole('button', { name: 'Load DecentHead v2.0.0' }).click();
-  await page.locator('main #status').filter({ hasText: 'Prepared metadata preserved exactly.' }).waitFor();
+  await page.locator(statusSelector).filter({ hasText: 'Prepared metadata preserved exactly.' }).waitFor();
   assert.deepEqual(await page.evaluate(() => window.rpcMethods), []);
   await page.getByRole('button', { name: 'Connect creator wallet' }).click();
-  await page.locator('main #status').filter({ hasText: 'Review and confirm' }).waitFor();
+  await page.locator(statusSelector).filter({ hasText: 'Review and confirm' }).waitFor();
   await page.getByRole('checkbox').check();
   await page.getByRole('button', { name: 'Connect creator wallet' }).click();
   await page.getByText('NFT admin and escrow owner verified', { exact: false }).waitFor();
@@ -104,15 +118,16 @@ try {
   await page.evaluate(() => { window.rejectNextTx = true; });
   await page.getByRole('button', { name: 'Register release', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#status').dataset.error === 'true');
-  assert.match(await page.locator('main #status').textContent(), /reject|denied/i);
+  assert.match(await page.locator(statusSelector).textContent(), /reject|denied/i);
   assert.equal(await page.locator('#progress').getByText('Verified — Register release', { exact: false }).count(), 0);
   for (const label of ['Register release', 'Mint 1,000 editions to creator', 'Transfer 1,000 editions to escrow', 'List 1,000 editions at 10 USDC each']) {
     const downloading = page.waitForEvent('download');
     await page.getByRole('button', { name: label, exact: true }).click();
     await downloading;
-    await page.locator('main #status').filter({ hasText: 'Step confirmed and saved.' }).waitFor();
+    await page.locator(statusSelector).filter({ hasText: 'Step confirmed and saved.' }).waitFor();
     if (label === 'Register release') {
       await page.reload();
+      await openStudio();
       await page.getByRole('button', { name: 'Load DecentHead v2.0.0' }).click();
       await page.getByRole('checkbox').check();
       await page.getByRole('button', { name: 'Connect creator wallet' }).click();
@@ -130,9 +145,11 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   if (process.env.SCREENSHOT_PATH) await page.screenshot({ path: process.env.SCREENSHOT_PATH, fullPage: true });
-  console.log('PASS: real studio UI + ethers/EIP1193 fixture; consent, all four transactions, reload resume, evidence export, mobile layout; no page errors or real signing.');
+  console.log(`PASS: ${embedded ? 'embedded' : 'standalone'} studio UI + ethers/EIP1193 fixture; consent, all four transactions, reload resume, evidence export, mobile layout; no page errors or real signing.`);
 } catch (error) {
-  console.error('Studio status:', await page?.locator('main #status').textContent(), 'Page errors:', errors);
+  console.error('Failure:', error.message, 'Page errors:', errors);
+  console.error('Page:', page.url(), (await page.content()).slice(0, 600));
+  console.error('Studio status:', await page?.locator(statusSelector).count() ? await page.locator(statusSelector).textContent() : await page.locator('body').innerText());
   console.error('Layout:', await page.evaluate(() => {
     const items = [];
     function inspect(root) { for (const e of root.querySelectorAll('*')) { const r=e.getBoundingClientRect(); if (r.right > innerWidth) items.push({ tag:e.tagName, class:e.className?.baseVal ?? e.className, right:r.right, width:r.width }); if(e.shadowRoot) inspect(e.shadowRoot); } }
