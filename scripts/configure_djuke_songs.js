@@ -13,7 +13,7 @@ async function main() {
   if (!ethers.isAddress(address || "")) throw new Error("Set DJUKE_ADDRESS");
   const songs = JSON.parse(fs.readFileSync(process.env.DBUSK_SONGS, "utf8")).songs;
   if (!Array.isArray(songs) || !songs.length) throw new Error("No songs to configure");
-  const djuke = await ethers.getContractAt("DecentJukeBox_v0_1", address, admin);
+  const djuke = await ethers.getContractAt("contracts/DecentJukeBox_v0.1.sol:DecentJukeBox_v0_1", address, admin);
   if (!(await djuke.hasRole(await djuke.DEFAULT_ADMIN_ROLE(), admin.address))) throw new Error("Signer is not the DJuke admin");
 
   const pending = [];

@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
-describe("DecentJukeBox_v0_3 named playlist checkout", function () {
+describe("DecentJukeBox_v0_4 named playlist checkout", function () {
   const playbackId = ethers.id("dbusk-playback");
   const topTenId = ethers.id("dbusk-top10");
   const pinnerId = ethers.id("pinners");
@@ -19,7 +19,7 @@ describe("DecentJukeBox_v0_3 named playlist checkout", function () {
     token = await (await ethers.getContractFactory("MockDJukeToken")).deploy();
     router = await (await ethers.getContractFactory("MockDJukeRouter")).deploy();
     const module = await (await ethers.getContractFactory("DJukePlaylistModule")).deploy();
-    jukebox = await (await ethers.getContractFactory("DecentJukeBox_v0_3")).deploy(
+    jukebox = await (await ethers.getContractFactory("DecentJukeBox_v0_4")).deploy(
       token.target, router.target, repoId, pinnerId, admin.address, worker.address,
       ethers.parseEther("0.001"), module.target, playbackId, topTenId);
     await jukebox.grantRole(await jukebox.REGISTRAR_ROLE(), admin.address);
@@ -65,6 +65,23 @@ describe("DecentJukeBox_v0_3 named playlist checkout", function () {
     expect(before - await token.balanceOf(listener.address)).to.equal(500000n);
     expect(await jukebox.pendingCount()).to.equal(0);
     expect(await router.received(playbackId)).to.equal(0n);
+  });
+
+  it("keeps live v0.3 direct settlement on single-song requests", async function () {
+    await buySingle();
+    const request = await jukebox.getRequest(0);
+    await jukebox.connect(worker).fulfill(0, request.songId, request.revision, ethers.id("single-direct-payout"));
+    expect(await token.balanceOf(artist.address)).to.equal(225000n);
+    expect(await jukebox.artistLedger(artist.address)).to.deep.equal([225000n, 1n]);
+    expect(await jukebox.artistCredits(artist.address)).to.equal(0n);
+  });
+
+  it("settles private playlist artists directly and records cumulative payouts", async function () {
+    const before = await token.balanceOf(artist.address);
+    await jukebox.connect(listener).purchasePlaylistPrivate(songs.slice(0, 2), 500000);
+    expect(await token.balanceOf(artist.address) - before).to.equal(450000n);
+    expect(await jukebox.artistLedger(artist.address)).to.deep.equal([450000n, 2n]);
+    expect(await jukebox.artistCredits(artist.address)).to.equal(0n);
   });
 
   it("charges exactly 0.25 per radio song at queue depths 7, 8, and above", async function () {
@@ -126,7 +143,9 @@ describe("DecentJukeBox_v0_3 named playlist checkout", function () {
     expect(await router.received(topTenId)).to.equal(2250000n);
     expect(await router.received(pinnerId)).to.equal(600000n);
     expect(await router.received(repoId)).to.equal(150000n);
-    expect(await token.balanceOf(jukebox.target)).to.equal(2250000n);
+    expect(await token.balanceOf(jukebox.target)).to.equal(0n);
+    expect(await token.balanceOf(artist.address)).to.equal(2250000n);
+    expect(await jukebox.artistLedger(artist.address)).to.deep.equal([2250000n, 10n]);
   });
 
   it("rejects over-cap, duplicate, stale/undersized, and invalid batches without partial queue changes", async function () {

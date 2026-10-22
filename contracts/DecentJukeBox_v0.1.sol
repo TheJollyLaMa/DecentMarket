@@ -229,7 +229,7 @@ contract DecentJukeBox_v0_1 is AccessControl, ReentrancyGuard, Pausable, Multica
 
     function _listenPrice(bytes32) internal view virtual returns (uint256) { return LISTEN_PRICE; }
 
-    function _creditArtists(address[] storage recipients, uint16[] storage sharesBps, uint256 artistAmount) internal {
+    function _creditArtists(address[] storage recipients, uint16[] storage sharesBps, uint256 artistAmount) internal virtual {
         uint256 credited;
         for (uint256 index = 0; index < recipients.length; index++) {
             uint256 share = index + 1 == recipients.length

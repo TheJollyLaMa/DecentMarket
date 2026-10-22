@@ -17,7 +17,7 @@ describe("DecentJukeBox_v0_1", function () {
     [admin, listener, artist, collaborator] = await ethers.getSigners();
     token = await (await ethers.getContractFactory("MockDJukeToken")).deploy();
     router = await (await ethers.getContractFactory("MockDJukeRouter")).deploy();
-    jukebox = await (await ethers.getContractFactory("DecentJukeBox_v0_1"))
+    jukebox = await (await ethers.getContractFactory("contracts/DecentJukeBox_v0.1.sol:DecentJukeBox_v0_1"))
       .deploy(await token.getAddress(), await router.getAddress(), fundId, pinnerFundId, admin.address);
     await jukebox.configureSong(songId, "ipfs://recording", [artist.address], [10000]);
     await token.mint(listener.address, 1000000000);

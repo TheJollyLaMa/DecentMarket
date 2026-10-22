@@ -11,11 +11,23 @@ module.exports = {
       settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: "cancun" },
     }],
     overrides: {
+      "contracts/djuke/live/DecentJukeBox_v0.1.sol": { version: "0.8.26", settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: "cancun", viaIR: true } },
+      "contracts/djuke/live/DecentJukeBox_v0.2.sol": { version: "0.8.26", settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: "cancun", viaIR: true } },
+      "contracts/DecentJukeBox_v0.1.sol": {
+        version: "0.8.26",
+        settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: "cancun", viaIR: true },
+      },
       "contracts/DecentJukeBox_v0.2.sol": {
         version: "0.8.26",
         settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: "cancun", viaIR: true },
       },
-      "contracts/DecentJukeBox_v0.3.sol": {
+      "contracts/djuke/live/DecentJukeBox_v0.3.sol": {
+        version: "0.8.26",
+        settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: "cancun", viaIR: true },
+      },
+      "contracts/djuke/v04/DecentJukeBox_v0.1.sol": { version: "0.8.26", settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: "cancun", viaIR: true } },
+      "contracts/djuke/v04/DecentJukeBox_v0.2.sol": { version: "0.8.26", settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: "cancun", viaIR: true } },
+      "contracts/DecentJukeBox_v0.4.sol": {
         version: "0.8.26",
         settings: { optimizer: { enabled: true, runs: 1 }, evmVersion: "cancun", viaIR: true },
       },

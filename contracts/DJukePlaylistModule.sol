@@ -15,7 +15,6 @@ interface IDJukePlaylistHost {
     function maxGasContributionWei() external view returns (uint256);
     function getSong(bytes32 songId) external view returns (Song memory);
     function enqueuePlaylistSong(bytes32 songId, address payer) external returns (uint256);
-    function creditPlaylistArtists(address[] calldata recipients, uint16[] calldata shares, uint256 amount) external;
     function refundPlaylistRequest(uint256 requestId) external;
     function consumePlaylistNonce(address listener) external returns (uint256);
 }
@@ -35,6 +34,7 @@ contract DJukePlaylistModule {
     uint256 public constant PLAYLIST_BASE_RATE = 250_000;
     uint256 public constant RADIO_PLAYLIST_FEE = 5_000_000;
     bytes32 private constant MODULE_STORAGE_SLOT = keccak256("decentbusking.djuke.playlists.v1");
+    bytes32 private constant ARTIST_LEDGER_SLOT = keccak256("decentmarket.djuke.v0.4.artist-ledger.v1");
 
     struct Batch {
         address payer;
@@ -59,6 +59,7 @@ contract DJukePlaylistModule {
     event PlaylistBatchFeeRefunded(uint256 indexed batchId, address indexed payer, uint256 fee);
     event WorkerGasFunded(uint256 indexed requestId, address indexed listener, address indexed worker, uint256 amount);
     event PlaylistPrivatePurchased(uint256 indexed purchaseId, address indexed listener, bytes32[] songIds, uint256 amount);
+    event ArtistPaid(address indexed artist, uint256 amount, uint256 cumulativePaid);
 
     function state() private pure returns (State storage s) {
         bytes32 slot = MODULE_STORAGE_SLOT;
@@ -128,7 +129,7 @@ contract DJukePlaylistModule {
             IDJukePlaylistHost.Song memory song = host.getSong(songIds[i]);
             require(song.enabled && bytes(song.audioURI).length > 0, "Song unavailable");
             uint256 artistAmount = PLAYLIST_BASE_RATE * 9000 / 10000;
-            host.creditPlaylistArtists(song.recipients, song.sharesBps, artistAmount);
+            _creditArtists(song.recipients, song.sharesBps, artistAmount);
             uint256 repoShare = PLAYLIST_BASE_RATE * 200 / 10000;
             repoAmount += repoShare;
             pinnerAmount += PLAYLIST_BASE_RATE - artistAmount - repoShare;
@@ -137,6 +138,31 @@ contract DJukePlaylistModule {
         _fund(host, host.pinnerFundId(), pinnerAmount);
         purchaseId = state().nextPrivatePurchaseId++;
         emit PlaylistPrivatePurchased(purchaseId, msg.sender, songIds, total);
+    }
+
+    function creditArtists(address[] calldata recipients, uint16[] calldata shares, uint256 amount) external {
+        _creditArtists(recipients, shares, amount);
+    }
+
+    function _creditArtists(address[] memory recipients, uint16[] memory shares, uint256 amount) private {
+        require(recipients.length > 0 && recipients.length == shares.length, "Invalid artist split");
+        uint256 paid;
+        IDJukePlaylistHost host = IDJukePlaylistHost(address(this));
+        for (uint256 i; i < recipients.length; ++i) {
+            uint256 share = i + 1 == recipients.length ? amount - paid : amount * shares[i] / 10000;
+            paid += share;
+            if (share > 0) {
+                bytes32 slot = keccak256(abi.encode(recipients[i], ARTIST_LEDGER_SLOT));
+                uint256 cumulative;
+                assembly ("memory-safe") {
+                    cumulative := add(sload(slot), share)
+                    sstore(slot, cumulative)
+                    sstore(add(slot, 1), add(sload(add(slot, 1)), 1))
+                }
+                IERC20(host.paymentToken()).safeTransfer(recipients[i], share);
+                emit ArtistPaid(recipients[i], share, cumulative);
+            }
+        }
     }
 
     function refundUndeliveredPlaylist(uint256 batchId) external {

@@ -27,6 +27,17 @@ See [mint lanes, filters and music protocol boundaries](./docs/MINT-LANES.md).
 See [Base storefront, ENS portal and display moderation](./docs/MARKET-MAKEOVER.md)
 for the local makeover's release gates and read-only versus signing boundaries.
 
+## DJuke contracts
+
+DJuke v0.4 playlist checkout is an undeployed Base candidate. It preserves direct artist
+settlement (`safeTransfer`, `artistLedger`, and `ArtistPaid`) for single-song requests,
+radio batch requests, and private playlist purchases. Radio fee settlement is separate
+from song payouts. The worker signs `PlaylistGasQuote` using the inherited EIP-712
+`DecentJukeBox` domain version `0.2`; clients remain capability-gated until the v0.4
+address, enable flag, and worker readiness are all present. See
+[`docs/DJUKE-PLAYLISTS.md`](./docs/DJUKE-PLAYLISTS.md) for compiler, migration, and
+steward approval gates. No deployment is authorized by this repository change.
+
 ## Supported Networks
 
 | Network | Chain ID | Symbol | DecentNFT | DecentEscrow |

@@ -1,11 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import "./DecentJukeBox_v0.2.sol";
+import "./djuke/v04/DecentJukeBox_v0.2.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "./DJukePlaylistModule.sol";
 
 /// @notice DJuke candidate preserving v0.2 behavior with capability-gated named playlist checkout.
-contract DecentJukeBox_v0_3 is DecentJukeBox_v0_2 {
+contract DecentJukeBox_v0_4 is DecentJukeBox_v0_2_v04 {
+    using SafeERC20 for IERC20;
+    string public constant CONTRACT_VERSION = "0.4";
+
+    struct ArtistLedger { uint256 totalPaid; uint256 payoutCount; }
+    bytes32 private constant ARTIST_LEDGER_SLOT = keccak256("decentmarket.djuke.v0.4.artist-ledger.v1");
+    event ArtistPaid(address indexed artist, uint256 amount, uint256 cumulativePaid);
     uint256 private constant MAX_PLAYLIST_SONGS = 10;
     uint256 private constant PLAYLIST_BASE_RATE = 250_000;
     uint256 private constant RADIO_PLAYLIST_FEE = 5_000_000;
@@ -22,7 +29,7 @@ contract DecentJukeBox_v0_3 is DecentJukeBox_v0_2 {
 
     constructor(address token, address router, bytes32 repoId, bytes32 pinnerId, address admin,
         address payable worker, uint256 gasContributionCap, address module, bytes32 playbackFund, bytes32 topTenFund)
-        DecentJukeBox_v0_2(token, router, repoId, pinnerId, admin, worker, gasContributionCap) {
+        DecentJukeBox_v0_2_v04(token, router, repoId, pinnerId, admin, worker, gasContributionCap) {
         require(module.code.length > 0 && playbackFund != bytes32(0) && topTenFund != bytes32(0) && playbackFund != topTenFund,
             "Invalid playlist module or funds");
         playlistModule = module;
@@ -62,16 +69,6 @@ contract DecentJukeBox_v0_3 is DecentJukeBox_v0_2 {
         emit PlayRequested(requestId, songId, payer, PLAYLIST_BASE_RATE);
     }
 
-    function creditPlaylistArtists(address[] calldata recipients, uint16[] calldata shares, uint256 amount) external {
-        require(msg.sender == address(this) && recipients.length > 0 && recipients.length == shares.length, "Playlist module only");
-        uint256 credited;
-        for (uint256 i; i < recipients.length; ++i) {
-            uint256 share = i + 1 == recipients.length ? amount - credited : amount * shares[i] / 10000;
-            credited += share;
-            artistCredits[recipients[i]] += share;
-        }
-    }
-
     function refundPlaylistRequest(uint256 requestId) external {
         require(msg.sender == address(this), "Playlist module only");
         _refundRequestAtHead(requestId);
@@ -80,6 +77,17 @@ contract DecentJukeBox_v0_3 is DecentJukeBox_v0_2 {
     function consumePlaylistNonce(address listener) external returns (uint256 nonce) {
         require(msg.sender == address(this), "Playlist module only");
         nonce = gasQuoteNonces[listener]++;
+    }
+
+    function artistLedger(address artist) external view returns (uint256 totalPaid, uint256 payoutCount) {
+        bytes32 slot = keccak256(abi.encode(artist, ARTIST_LEDGER_SLOT));
+        assembly ("memory-safe") { totalPaid := sload(slot) payoutCount := sload(add(slot, 1)) }
+    }
+
+    function _creditArtists(address[] storage recipients, uint16[] storage sharesBps, uint256 artistAmount) internal override {
+        address[] memory payees = recipients;
+        uint16[] memory shares = sharesBps;
+        _delegate(abi.encodeCall(DJukePlaylistModule.creditArtists, (payees, shares, artistAmount)));
     }
 
     function _afterRequestResolved(uint256 requestId, Request storage, bool delivered) internal override {
