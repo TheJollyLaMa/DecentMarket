@@ -319,3 +319,11 @@ Validate with `npm run test:supporter`; browser rehearsal:
 
 Code: [Apache-2.0](LICENSE) · Art and docs: [CC BY 4.0](LICENSES/CC-BY-4.0.txt) · Please keep the [NOTICE](NOTICE) and give The Jolly LaMa / A Decent Agency a head nod when you reuse this work.
 Support the work with a [Supporter DNFT](https://thejollylama.github.io/DecentMarket/).
+
+## Live performance escrow (undeployed)
+
+`LivePerformanceEscrow` implements configurable USDC bookings, admin full/partial review, performer-only claims, automatic claim protection, cancellation fees and original-funder refunds. No deployment is authorized. See [lifecycle and safety notes](docs/LIVE_PERFORMANCE_ESCROW.md); tomorrow’s DecentBusking show uses the deployed router with earmarked, **not escrowed**, funds.
+
+## Live performance escrow (undeployed)
+
+`LivePerformanceEscrow` implements configurable USDC bookings, admin full/partial review, performer-only claims, automatic claim protection, cancellation fees and original-funder refunds. No deployment is authorized. See [lifecycle and safety notes](docs/LIVE_PERFORMANCE_ESCROW.md); Friday DecentBusking uses the deployed router with earmarked, **not escrowed**, funds.
