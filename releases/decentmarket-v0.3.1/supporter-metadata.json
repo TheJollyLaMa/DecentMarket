@@ -1,0 +1,38 @@
+{
+  "name": "DecentMarket v0.3.1 Supporter DNFT",
+  "description": "Support the Decent Market release. Clone the tagged source under its license. No product ownership or financial return promised.",
+  "image": "ipfs://QmU7GmcRdWvJTvzkUKzEB6hsVrqX2jkFKyNq5sBusUR1wx",
+  "animation_url": "ipfs://QmSmLKYLgW85UYxVSLGtj6LGwNDwW1RLktr6pFQrkXykmy",
+  "external_url": "https://github.com/TheJollyLaMa/DecentMarket/releases/tag/v0.3.1",
+  "attributes": [
+    {
+      "trait_type": "Kind",
+      "value": "Supporter"
+    },
+    {
+      "trait_type": "Version",
+      "value": "v0.3.1"
+    }
+  ],
+  "properties": {
+    "repo": "TheJollyLaMa/DecentMarket",
+    "version": "v0.3.1",
+    "commit": "a0123c00b0e615916935ac54c9ddf75a6a8e5932",
+    "code_archive_cid": "QmWJxsqnidQZ4hR2NtsvgnLe7jgE7wC9EmXNw7R6a7HqoG",
+    "creator": "thejollylama.eth",
+    "creator_address": "0x807061DF657A7697c04045dA7d16D941861cAABc",
+    "release_date": "2026-10-22T02:26:31.000Z",
+    "back_image": "ipfs://QmYNaWTt2sgYHC5vKTMf3BCd4ifJHLeym9DbmxMnTjRFQV",
+    "supply": 1000,
+    "price": "10 USDC",
+    "chain": "Base",
+    "royalty_bps": 1000,
+    "license": "Apache-2.0 + NOTICE",
+    "product": {
+      "version": "v0.3.1",
+      "repo_url": "https://github.com/TheJollyLaMa/DecentMarket",
+      "commit": "https://github.com/TheJollyLaMa/DecentMarket/commit/a0123c00b0e615916935ac54c9ddf75a6a8e5932",
+      "artifact_cid": "ipfs://QmWJxsqnidQZ4hR2NtsvgnLe7jgE7wC9EmXNw7R6a7HqoG"
+    }
+  }
+}

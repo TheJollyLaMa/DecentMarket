@@ -3,6 +3,7 @@
 [The preparation queue](../data/supporter-release-queue.json) is deliberately
 **not a mint manifest**. It records the three requested products, current scope,
 shared terms and outstanding gates without inventing versions, commits or CIDs.
+Market now points to its verified v0.3.1 prepared manifest, not a minted edition.
 Only Market integration is approved for this pass. No standalone Footer or Canvas
 repository has been upgraded, tagged or minted.
 
@@ -36,6 +37,17 @@ The creator signs four separate Base actions: register, mint 1,000, transfer
 existing transactions instead of starting again. Export evidence and independently
 verify the resulting listing, inventory and purchase route. A royalty signal is
 not guaranteed resale enforcement or financial return.
+
+Market v0.3.1 has a dedicated **Load DecentMarket v0.3.1** preset in both
+embedded and standalone Studio. Its JSON pair is copied byte-for-byte from the
+official frozen release; the subsequent preset commit does not change the tag.
+Loading is read-only. Use the creator wallet ending aABc on Base after reviewing
+the artwork and consent. Save progress after every transaction.
+
+Market's public `supporter/buy.html` route binds the Base chain, known escrow and
+exact listing ID (including zero), verifies funded 10-USDC stock and uses the
+same card and fresh purchase checks as the storefront. Merely opening its link
+never connects a wallet or signs. It is not proof that an edition was minted.
 
 ## Clone to customize
 
@@ -86,3 +98,9 @@ the release. It refuses to replace an existing prepared manifest.
 This workflow never signs transactions, posts to Discord or writes ENS records.
 The source archive is distinct from an ENS deployable website-directory pin.
 Download both prepared JSON release assets and import them into the Studio.
+
+Pinata's public gateway serves the images, source archive and JSON but blocks
+HTML presentations by policy. The v0.3.1 self-contained presentation was also
+verified byte-for-byte through `https://ipfs.filebase.io/ipfs/` using its animation
+CID. Keep the immutable `ipfs://` metadata URI; choose an HTML-capable gateway
+or download the official presentation file to review it.

@@ -29,11 +29,12 @@
     },
     {
       "repo": "TheJollyLaMa/DecentMarket",
-      "scope": "Local preview awaiting approval and release freeze",
-      "version": null,
-      "commit": null,
-      "codeArchiveCid": null,
-      "metadataURI": null,
+      "scope": "v0.3.1 published and prepared; individual creator signatures pending",
+      "version": "v0.3.1",
+      "commit": "a0123c00b0e615916935ac54c9ddf75a6a8e5932",
+      "codeArchiveCid": "QmWJxsqnidQZ4hR2NtsvgnLe7jgE7wC9EmXNw7R6a7HqoG",
+      "metadataURI": "ipfs://QmUR29d2NeRH94ceLDxHqDvDi4eNdSRTNM1wZ6UPDsvWqi",
+      "preparedManifest": "releases/decentmarket-v0.3.1/supporter-release.json",
       "features": ["Base verified sale-first marketplace", "ENS portals and steward display policy", "Embedded resumable Supporter mint studio"]
     }
   ],

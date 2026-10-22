@@ -15,6 +15,16 @@ const ERC20 = ['function decimals() view returns(uint8)', 'function symbol() vie
   'function balanceOf(address) view returns(uint256)', 'function allowance(address,address) view returns(uint256)',
   'function approve(address,uint256) returns(bool)'];
 const same = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
+export function parseMarketPurchase(search) {
+  const params = new URLSearchParams(search);
+  for (const key of ['chainId', 'escrow', 'listingId']) {
+    if (params.getAll(key).length !== 1) throw new Error(`Exactly one ${key} required`);
+  }
+  if (params.get('chainId') !== '8453' || !same(params.get('escrow'), BASE.ESCROW)
+    || !/^(0|[1-9]\d*)$/.test(params.get('listingId') || ''))
+    throw new Error('A valid Base Market escrow listing link is required');
+  return params.get('listingId');
+}
 export const assetKey = product => same(product.nftContract || BASE.DNFT, BASE.DNFT)
   ? String(product.tokenId) : `${product.nftContract.toLowerCase()}:${product.tokenId}`;
 export const listingTerms = listing => [listing.nftContract.toLowerCase(), String(listing.tokenId),
