@@ -1,0 +1,51 @@
+name: Announce verified Supporter DNFT
+on:
+  schedule:
+    - cron: '23,53 * * * *'
+  release:
+    types: [published, edited]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published prepared release tag (omit to scan registered releases)
+        required: false
+        type: string
+      mint_evidence:
+        description: Optional public Studio evidence JSON to register once
+        required: false
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: supporter-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  announce:
+    if: ${{ vars.SUPPORTER_DISCORD_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: TheJollyLaMa/DecentHead
+          ref: 8542720354a8eb1fb619ff7d57c23982b3b42d35
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Register supplied public evidence once (no Discord)
+        if: ${{ inputs.mint_evidence != '' }}
+        env:
+          TAG: ${{ inputs.tag }}
+          MINT_EVIDENCE: ${{ inputs.mint_evidence }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module -e 'import { writeFileSync } from "node:fs"; writeFileSync("supporter-evidence-input.json", JSON.stringify(JSON.parse(process.env.MINT_EVIDENCE)))'
+          node scripts/publish-supporter-assets.mjs --evidence supporter-evidence-input.json
+      - name: Verify registered mint and listing, then announce once
+        env:
+          TAG: ${{ inputs.tag || github.event.release.tag_name }}
+          SCAN_RELEASES: ${{ inputs.tag == '' && github.event.release.tag_name == '' && 'true' || 'false' }}
+          DISCORD_SUPPORTER_WEBHOOK: ${{ secrets.DISCORD_SUPPORTER_WEBHOOK }}
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/announce-supporter-release.mjs
