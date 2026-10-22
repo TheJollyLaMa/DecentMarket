@@ -1,6 +1,6 @@
 {
   "name": "decent-market-contracts",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Smart contracts for DecentMarket — ERC-1155 editionable NFT for products and users",
   "scripts": {
     "compile": "hardhat compile",
@@ -10,6 +10,7 @@
     "test:market-adoption:browser": "node test/market-adoption.browser.mjs",
     "test:supporter:browser": "node test/supporter-studio.browser.mjs",
     "test:supporter:embedded": "EMBEDDED_STUDIO=1 node test/supporter-studio.browser.mjs",
+    "test:supporter:artwork": "node test/supporter-artwork.browser.mjs",
     "deploy:local": "hardhat run scripts/deploy_DecentNFT_v02.js --network localhost",
     "deploy:amoy": "hardhat run scripts/deploy_DecentNFT_v02.js --network amoy",
     "deploy:polygon": "hardhat run scripts/deploy_DecentNFT_v02.js --network polygon",

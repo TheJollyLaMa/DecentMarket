@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { ethers, validateRelease, validateMetadata } from '../js/supporter-mint.mjs';
+import { renderSupporterArtwork } from './render-supporter-artwork.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const { TAG: tag, GITHUB_REPOSITORY: repo, PINATA_JWT: jwt } = process.env;
 if (!/^v\d+\.\d+\.\d+$/.test(tag || '') || repo !== 'TheJollyLaMa/DecentMarket' || !jwt)
@@ -24,30 +25,20 @@ const browser = await chromium.launch();
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
   const errors = []; page.on('pageerror', error => errors.push(error.message));
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto(process.env.BASE_URL || 'http://127.0.0.1:8793/');
   await page.evaluate(() => document.fonts.ready);
-  await page.waitForFunction(() => document.querySelector('decent-canvas')._productSprites?.['70'], {}, { timeout: 60000 });
-  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.waitForFunction(() => {
+    const artwork = document.querySelector('decent-canvas')._productSprites?.['70']?.sprite.userData.artwork;
+    if (!artwork) return false;
+    if (Object.values(artwork).some(state => state === 'error' || state === 'absent'))
+      throw new Error('Release screenshot requires both actual DNFT artwork faces, not a placeholder');
+    return Object.values(artwork).every(state => state === 'ready');
+  }, {}, { timeout: 60000 });
   await page.screenshot({ path: 'supporter-preview.png' });
   if (errors.length) throw new Error(`Release preview failed: ${errors.join('; ')}`);
-  const screenshot = readFileSync('supporter-preview.png').toString('base64');
-  await page.setViewportSize({ width: 1200, height: 1200 });
-  await page.setContent(`<!doctype html><html><meta charset="utf-8"><style>
-    body{margin:0;width:1200px;height:1200px;background:linear-gradient(150deg,#050b20,#143a34);color:#edfff8;font:26px system-ui}
-    main{padding:48px;display:flex;flex-direction:column;align-items:center;gap:26px;box-sizing:border-box;height:1200px;border:12px solid #7af0c6}
-    h1{font-size:66px;margin:0;color:#baffe2}p{margin:0;text-align:center;overflow-wrap:anywhere}img{width:1056px;border:2px solid #a78cff;border-radius:20px}
-    .back{display:none}body.back .front{display:none}body.back .back{display:block}small{font-size:21px}strong{color:#baffe2}</style>
-    <main><p>✦ A DECENT AGENCY · SUPPORTER DNFT ✦</p><h1>Decent Market ${tag}</h1>
-    <img class="front" alt="Actual release storefront" src="data:image/png;base64,${screenshot}">
-    <section class="back"><h2>Another Decent Frankenstein</h2><p>Base marketplace · two-sided DNFT stars · spiral flight · ENS portals · resumable Supporter studio</p>
-    <p>Exact source commit<br>${commit}</p><p>github.com/${repo}/releases/tag/${tag}</p>
-    <p>Apache-2.0 + NOTICE · original artwork/docs CC BY 4.0</p><p>Clone the tagged source to customize. Preserve attribution and review contract/identity configuration.</p>
-    <p>No product ownership or financial return promised. Royalties are not universally enforced.</p></section>
-    <p><strong>1,000 editions · $10 / 10 USDC each · Base</strong></p>
-    <p>thejollylama.eth<br><small>${creatorAddress}</small></p><p>Release ${releaseDate}</p></main></html>`);
-  await page.screenshot({ path: 'supporter-front.png' });
-  await page.locator('body').evaluate(body => body.classList.add('back'));
-  await page.screenshot({ path: 'supporter-back.png' });
+  const artworkPage = await browser.newPage();
+  await renderSupporterArtwork(artworkPage, { screenshotPath: 'supporter-preview.png', tag, commit, releaseDate, creatorAddress });
 } finally { await browser.close(); }
 const frontData = readFileSync('supporter-front.png').toString('base64'), backData = readFileSync('supporter-back.png').toString('base64');
 writeFileSync('supporter-presentation.html', `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Decent Market ${tag} Supporter</title>

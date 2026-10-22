@@ -94,6 +94,10 @@ try {
   assert.equal(collectionScans, 0, 'Entry loads prepared releases, not the entire collection');
   assert.equal(requests.some(url => url.includes('mandelblum.webm')), false, 'No Mandelblum video is loaded');
   assert.equal(await page.evaluate(() => document.querySelector('decent-canvas')._productSprites['70'].sprite.userData.star), true);
+  await page.waitForFunction(() => {
+    const artwork = document.querySelector('decent-canvas')._productSprites['70'].sprite.userData.artwork;
+    return artwork?.front === 'ready' && artwork?.back === 'ready';
+  });
   assert.deepEqual(await page.evaluate(() => {
     const geometry = document.querySelector('decent-canvas')._productSprites['70'].sprite.geometry;
     return [...new Set(geometry.groups.map(group => group.materialIndex))].sort();

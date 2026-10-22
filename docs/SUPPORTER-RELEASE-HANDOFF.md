@@ -39,7 +39,7 @@ not guaranteed resale enforcement or financial return.
 
 ## Clone to customize
 
-Until standalone extraction, clone the **approved Market v0.3.0 tag** and serve
+Until standalone extraction, clone the **approved Market v0.3.1 tag** and serve
 it over HTTP. Preserve the repository's license and attribution.
 
 1. Customize identity/theme/links in [the host configuration](../decent-head.config.js).
@@ -61,6 +61,20 @@ Market coupling, independent demos/tests, their own source freeze and accurate
 clone instructions before their Supporter editions can be called ready.
 
 ## Market release preparation workflow
+
+**Do not mint v0.3.0:** its published preparation produced a blank back image.
+Do not import or mint its prepared manifest. The storefront itself is published;
+its frozen Supporter assets are not approved for minting. The v0.3.1
+renderer uses a screenshot of the working storefront only after both DNFT
+artwork faces have loaded. Front/back PNG pixels and layout are now tested.
+The back follows the original Head Supporter palette, glow, stars and rounded
+frame; its identity and provenance are Market's own. The steward approved
+continuing with this corrected release. Minting still requires all four
+individual wallet confirmations after the frozen assets are verified.
+
+This template is used by Market's release-preparation workflow, not automatically
+by the Regular/Music minters or arbitrary imported Supporter metadata. Creators
+keep their own artwork; scene stars and card/purchase controls are shared.
 
 After publishing the approved tag, manually run **Prepare Market Supporter
 release** with that tag. It checks out the exact source, resolves the creator's

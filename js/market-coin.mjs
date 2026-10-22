@@ -100,9 +100,11 @@ export function createMarketCoin(THREE, product, { onError = console.warn } = {}
   coin.userData.coin = true;
   coin.userData.star = true;
   coin.userData.hovered = false;
+  coin.userData.artwork = { front: faces.front ? 'loading' : 'absent', back: faces.back ? 'loading' : 'absent' };
   coin.userData.dispose = () => { disposed = true; };
   for (const [index, url] of [faces.front, faces.back].entries()) {
     if (!url) continue;
+    const face = index === 0 ? 'front' : 'back';
     const image = new Image(); image.crossOrigin = 'anonymous'; image.referrerPolicy = 'no-referrer';
     image.onload = () => {
       if (disposed) return;
@@ -111,9 +113,17 @@ export function createMarketCoin(THREE, product, { onError = console.warn } = {}
         const next = draw(image, index === 1);
         materials[index + 1].map.dispose(); materials[index + 1].map = next;
         materials[index + 1].needsUpdate = true;
-      } catch (error) { onError(`Cannot render artwork for DNFT #${product.tokenId}: ${error.message}`); }
+        coin.userData.artwork[face] = 'ready';
+      } catch (error) {
+        coin.userData.artwork[face] = 'error';
+        onError(`Cannot render artwork for DNFT #${product.tokenId}: ${error.message}`);
+      }
     };
-    image.onerror = () => { if (!disposed) onError(`Artwork unavailable for DNFT #${product.tokenId}: ${url}`); };
+    image.onerror = () => {
+      if (disposed) return;
+      coin.userData.artwork[face] = 'error';
+      onError(`Artwork unavailable for DNFT #${product.tokenId}: ${url}`);
+    };
     image.src = url;
   }
   return coin;
