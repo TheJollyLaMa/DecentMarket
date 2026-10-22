@@ -59,7 +59,7 @@ describe("DJuke migration catalog", function () {
       await issuer.connect(await ethers.getSigner(master)).configureMinter(admin.address, 1000000);
       await issuer.connect(admin).mint(owner, 1000000);
     }
-    const jukebox = await (await ethers.getContractFactory("DecentJukeBox_v0_2")).deploy(usdcAddress, routerAddress,
+    const jukebox = await (await ethers.getContractFactory("contracts/DecentJukeBox_v0.2.sol:DecentJukeBox_v0_2")).deploy(usdcAddress, routerAddress,
       ethers.id("dbusk-repo-dev"), ethers.id("dbusk-pinners"), admin.address, worker.address, ethers.parseEther("0.001"));
     const songId = ethers.id("fork-gas-song");
     await jukebox.configureSong(songId, "ipfs://recording", [owner], [10000]);

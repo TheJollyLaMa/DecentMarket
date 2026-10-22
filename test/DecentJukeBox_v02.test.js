@@ -15,7 +15,7 @@ describe("DecentJukeBox_v0_2", function () {
     [admin, listener, artist, collaborator, worker] = await ethers.getSigners();
     token = await (await ethers.getContractFactory("MockDJukeToken")).deploy();
     const router = await (await ethers.getContractFactory("MockDJukeRouter")).deploy();
-    jukebox = await (await ethers.getContractFactory("DecentJukeBox_v0_2")).deploy(
+    jukebox = await (await ethers.getContractFactory("contracts/DecentJukeBox_v0.2.sol:DecentJukeBox_v0_2")).deploy(
       token.target, router.target, ethers.id("repo"), ethers.id("pinners"), admin.address, worker.address, ethers.parseEther("0.001"));
     domain = { name: "DecentJukeBox", version: "0.2", chainId: (await ethers.provider.getNetwork()).chainId, verifyingContract: jukebox.target };
     await jukebox.grantRole(await jukebox.REGISTRAR_ROLE(), admin.address);

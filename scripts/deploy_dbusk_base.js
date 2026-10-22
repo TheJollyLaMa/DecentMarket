@@ -48,7 +48,7 @@ async function main() {
     repoDevShareBps: 200, pinnerShareBps: 800 }, null, 2));
 
   const NFT = await ethers.getContractFactory("DecentNFT_v0_3");
-  const DJuke = await ethers.getContractFactory("DecentJukeBox_v0_1");
+  const DJuke = await ethers.getContractFactory("contracts/DecentJukeBox_v0.1.sol:DecentJukeBox_v0_1");
   const nftDeploy = await NFT.getDeployTransaction("", deployer.address, 500);
   const djukeDeploy = await DJuke.getDeployTransaction(BASE_USDC, SETTLEMENT_ROUTER, fundId, pinnerFundId, deployer.address);
   const gas = (await ethers.provider.estimateGas({ ...nftDeploy, from: deployer.address }))

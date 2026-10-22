@@ -50,7 +50,7 @@ async function main() {
   if (!checks.repoFundActive || !checks.pinnerFundActive || !checks.usdcApproved) throw new Error(`Router not ready: ${JSON.stringify(checks)}`);
 
   const nft = await (await ethers.getContractFactory("DecentNFT_v0_3")).deploy("", admin.address, 500);
-  const djuke = await (await ethers.getContractFactory("DecentJukeBox_v0_1"))
+  const djuke = await (await ethers.getContractFactory("contracts/DecentJukeBox_v0.1.sol:DecentJukeBox_v0_1"))
     .deploy(BASE_USDC, SETTLEMENT_ROUTER, fundId, pinnerFundId, admin.address);
   await djuke.grantRole(await djuke.FULFILLER_ROLE(), fulfiller.address);
   await djuke.grantRole(await djuke.REGISTRAR_ROLE(), fulfiller.address);
