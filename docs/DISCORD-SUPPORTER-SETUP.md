@@ -56,8 +56,34 @@ alone does not bypass those checks.
 
 ## Future products
 
-Market and subsequent products must install their reviewed release/announcement
-workflow and register per-release mint/listing evidence before they can announce.
+Market now installs the reviewed [announcement workflow](../.github/workflows/supporter-announce.yml).
+It uses the exact pinned Head notifier revision, not a second fork of the delivery
+logic. Although its checkout is Head, GitHub's repository context/token remain
+Market's: it reads and writes Market release assets, not Head assets.
+The steward authorized activation for both Head and Market on 2026-10-22 UTC.
+Activation is recorded through each repository's variable, not a webhook in code.
+
+Schedules scan registered pending releases twice hourly (best effort, not an
+instant chain watcher). Published/edited releases also trigger a check.
+After each version's four wallet steps, export the Studio evidence and attach
+it once to that version's official release as `supporter-evidence.json`, or pass
+its public JSON to the dispatch's registration input if no evidence exists.
+Both unchanged Studio exports and identity-bound envelopes are supported;
+on-chain verification must still succeed. Do not re-register an existing asset.
+The preparation manifest must identify that repository/version and its minted
+metadata URI. Unprepared releases, or prepared releases without evidence, are
+not announced. The obsolete Market v0.3.0 artwork has no evidence and is skipped.
+
+Announcements include the product/version, front artwork, $10 USDC Base price,
+creator, release date, release notes and exact purchase link. They describe a
+dated artifact supporting development, not ownership of the project or a promise
+of profit. Mention parsing is disabled.
+
+For **each subsequent repository**, copy this workflow, retain the reviewed
+notifier commit pin, save `DISCORD_SUPPORTER_WEBHOOK` privately, set
+`SUPPORTER_DISCORD_ENABLED=true` only after authorization, register its own
+prepared manifest/evidence and dispatch once. Never copy another product's
+metadata/token/listing IDs. New repositories are not opted in automatically.
 Adding a secret alone does **not** install a notifier or discover arbitrary mints.
 Configure each personal repository's secret privately when it is adopted;
 do not commit a shared webhook in a config file.
@@ -65,3 +91,13 @@ do not commit a shared webhook in a config file.
 Rotate a leaked URL by deleting/recreating the webhook in Discord, then
 updating every configured repository secret. A webhook requires no Discord bot
 token, wallet key or broad server-administrator permission.
+
+## Duplicate protection and uncertain delivery
+
+Delivery writes `supporter-discord-pending.json` to the release **before**
+contacting Discord. A successful acknowledgement saves
+`supporter-discord-sent.json` with the message ID. Reruns with a matching sent
+marker make no Discord request. Never delete these assets to force an automatic
+retry. A pending marker without a sent marker stops delivery: check the lobby
+first, then reconcile the acknowledgement/marker with the steward. This favors
+avoiding duplicate posts over blindly retrying an ambiguous network failure.
