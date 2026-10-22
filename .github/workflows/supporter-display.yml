@@ -1,9 +1,9 @@
 name: Supporter collectible display
 on:
   push:
-    paths: ['js/**', 'vendor/**', 'decent-head.config.js', 'index.html', 'css/**', 'test/supporter-*', 'test/market-*', 'supporter.html', 'releases/**', 'package*.json', '.github/workflows/supporter-display.yml']
+    paths: ['js/**', 'vendor/**', 'data/**', 'img/ens/**', 'decent-head.config.js', 'index.html', 'css/**', 'test/supporter-*', 'test/market-*', 'supporter.html', 'releases/**', 'package*.json', '.github/workflows/supporter-display.yml']
   pull_request:
-    paths: ['js/**', 'vendor/**', 'decent-head.config.js', 'index.html', 'css/**', 'test/supporter-*', 'test/market-*', 'supporter.html', 'releases/**', 'package*.json', '.github/workflows/supporter-display.yml']
+    paths: ['js/**', 'vendor/**', 'data/**', 'img/ens/**', 'decent-head.config.js', 'index.html', 'css/**', 'test/supporter-*', 'test/market-*', 'supporter.html', 'releases/**', 'package*.json', '.github/workflows/supporter-display.yml']
 permissions:
   contents: read
 jobs:
@@ -17,6 +17,7 @@ jobs:
       - run: npm run test:supporter
       - run: npm run test:market-adoption
       - run: node --check js/supporter-studio.mjs
+      - run: node --check scripts/prepare-supporter-release.mjs
   studio-browser:
     runs-on: ubuntu-latest
     timeout-minutes: 10

@@ -36,6 +36,7 @@ export function createCollectibleDisplay(THREE, front, back) {
 }
 
 export function disposeCollectible(display) {
+  display.userData?.dispose?.();
   display.geometry?.dispose();
   const materials = Array.isArray(display.material) ? display.material : [display.material];
   const textures = new Set();

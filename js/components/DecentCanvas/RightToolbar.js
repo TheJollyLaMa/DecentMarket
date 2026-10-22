@@ -2,6 +2,11 @@ import { CONTRACTS, getChainConfig, PAYPAL_CONFIG } from '../../config/contracts
 import { marketEthereum, marketBrowserProvider } from '../../market-wallet.mjs';
 import { loadGalleryProducts, publicMarketProvider, resolveMarketAsset } from '../../market-gallery.mjs';
 import { mountMintLanes } from '../../market-mint-panel.mjs';
+import { assetKey } from '../../market-listings.mjs';
+import { openMarketCatalog, openCollectibleCard } from '../../market-card.mjs';
+import { isMarketAdmin, visibleMarketProducts } from '../../market-moderation.mjs';
+import { element, externalLink } from '../../market-dialog.mjs';
+import { collectibleFaces } from '../../supporter-display.mjs';
 import {
   uploadFileToIPFS,
   uploadMetadataToIPFS,
@@ -12,7 +17,7 @@ import {
 // js/components/DecentCanvas/RightToolbar.js
 // Right-side toolbar with 4 main buttons:
 // Button 1: 📜 Mint New DNFT (primary action)
-// Button 2: ⚙️ Settings (power users / admin)
+// Advanced settings and treasury administration live in the left steward ankh.
 // Button 3: 🗿 Product Gallery
 // Button 4: 🏦 Escrow Panel (DNFT marketplace + treasury)
 
@@ -96,6 +101,22 @@ class RightToolbar extends HTMLElement {
     this._galleryCache = null;
     this._preparedProducts = [];
     this._publicProducts = [];
+    this._listedProducts = [];
+    this._onListedProducts = event => {
+      this._listedProducts = event.detail.products;
+      this._publishSpaceProducts(this._publicProducts);
+    };
+    this._onModeration = () => this._publishSpaceProducts(this._publicProducts);
+    document.addEventListener('market:listed-products', this._onListedProducts);
+    document.addEventListener('market:moderation', this._onModeration);
+    this._onAdminWalletChanged = () => {
+      if (!isMarketAdmin()) {
+        document.getElementById('modal-settings')?.remove();
+        const escrow = document.getElementById('modal-escrow');
+        if (escrow?.dataset.adminView === 'true') escrow.remove();
+      }
+    };
+    window.addEventListener('decenthead:wallet', this._onAdminWalletChanged);
     this._onPreparedProducts = event => {
       this._preparedProducts = event.detail.products;
       this._publishSpaceProducts(this._publicProducts);
@@ -143,23 +164,6 @@ class RightToolbar extends HTMLElement {
     mintBtn.addEventListener("click", () => this._openMintDNFTModal());
     this.appendChild(mintBtn);
 
-    // ── Button 2: ⚙️ Settings ────────────────────────────────────────────────
-    const settingsBtn = document.createElement("button");
-    settingsBtn.title = "Settings";
-    settingsBtn.innerHTML = "⚙️";
-    Object.assign(settingsBtn.style, {
-      width: "38px",
-      height: "38px",
-      borderRadius: "50%",
-      border: "1px solid cyan",
-      background: "#000",
-      boxShadow: "0 0 10px cyan",
-      cursor: "pointer",
-      fontSize: "1.2rem",
-    });
-    settingsBtn.addEventListener("click", () => this._openSettingsPanel());
-    this.appendChild(settingsBtn);
-
     // ── Button 3: 🗿 Product Gallery ─────────────────────────────────────────
     const galleryBtn = document.createElement("button");
     galleryBtn.title = "Product Gallery";
@@ -191,15 +195,15 @@ class RightToolbar extends HTMLElement {
       cursor: "pointer",
       fontSize: "1.2rem",
     });
-    escrowBtn.addEventListener("click", () => this._openEscrowPanel());
+    escrowBtn.addEventListener("click", () => openMarketCatalog(visibleMarketProducts(this._listedProducts)));
     this.appendChild(escrowBtn);
 
     // ── Listen for dnft:minted to live-refresh gallery ────────────────────────
     document.addEventListener("dnft:minted", (e) => {
       this._galleryCache = null;
-      if (document.getElementById("modal-gallery")) {
-        this._refreshGalleryWithMint(e.detail);
-      }
+      if (e.detail.chainId !== CONTRACTS.base.chainId) return;
+      document.dispatchEvent(new Event('market:refresh-listings'));
+      if (document.getElementById("modal-gallery")) this._onLoadGallery({ detail: { refresh: true } });
     });
 
     // ── Listen for gallery:highlight-card to sync canvas → panel ─────────────
@@ -213,19 +217,28 @@ class RightToolbar extends HTMLElement {
   }
 
   disconnectedCallback() {
+    window.removeEventListener('decenthead:wallet', this._onAdminWalletChanged);
+    document.removeEventListener('market:listed-products', this._onListedProducts);
+    document.removeEventListener('market:moderation', this._onModeration);
     document.removeEventListener('market:prepared-products', this._onPreparedProducts);
     document.removeEventListener('market:load-gallery', this._onLoadGallery);
   }
 
   _publishSpaceProducts(products) {
     this._publicProducts = products;
-    const merged = new Map(products.map(product => [product.tokenId, product]));
-    for (const product of this._preparedProducts) merged.set(product.tokenId, { ...merged.get(product.tokenId), ...product });
-    document.dispatchEvent(new CustomEvent('gallery:products-loaded', { detail: { products: [...merged.values()].sort((a, b) => b.blockNumber - a.blockNumber), background: true } }));
+    const merged = new Map(products.map(product => [assetKey(product), { ...product, listings: [] }]));
+    for (const product of [...this._preparedProducts, ...this._listedProducts]) {
+      const key = assetKey(product);
+      const previous = merged.get(key);
+      merged.set(key, { ...previous, ...product, blockNumber: previous?.blockNumber ?? product.blockNumber });
+    }
+    this.spaceProducts = [...merged.values()].sort((a, b) => b.blockNumber - a.blockNumber);
+    document.dispatchEvent(new CustomEvent('gallery:products-loaded', { detail: { products: visibleMarketProducts(this.spaceProducts), background: true } }));
   }
 
   // ── ⚙️ Settings panel ────────────────────────────────────────────────────
   async _openSettingsPanel() {
+    if (!isMarketAdmin()) throw new Error('Connect the Market admin wallet on Base');
     this._clearModals();
 
     const chainId = marketEthereum()?.chainId || null;
@@ -240,6 +253,7 @@ class RightToolbar extends HTMLElement {
 
     const panel = document.createElement("div");
     panel.id = "modal-settings";
+    panel.className = 'market-sidepanel market-mint-panel';
     Object.assign(panel.style, {
       position: "fixed",
       top: "110px",
@@ -417,6 +431,10 @@ class RightToolbar extends HTMLElement {
     };
     updateChainStatus();
     marketEthereum()?.on?.("chainChanged", updateChainStatus);
+    const lifecycle = new MutationObserver(() => {
+      if (!panel.isConnected) { removeChainListener(); lifecycle.disconnect(); }
+    });
+    lifecycle.observe(document.body, { childList: true });
 
     // Connect button (shown when not connected)
     const connectBtn = panel.querySelector("#settings-connect-btn");
@@ -1216,6 +1234,7 @@ class RightToolbar extends HTMLElement {
               artifactCid: finalArtifactCid,
               txHash: mintReceipt.hash,
               blockNumber: mintReceipt.blockNumber,
+              chainId: chainCfg.chainId,
             },
           })
         );
@@ -1373,6 +1392,7 @@ class RightToolbar extends HTMLElement {
 
     const panel = document.createElement("div");
     panel.id = "modal-gallery";
+    panel.className = 'market-sidepanel market-mint-panel';
     Object.assign(panel.style, {
       position: "fixed",
       top: "60px",
@@ -1418,14 +1438,14 @@ class RightToolbar extends HTMLElement {
     panel.querySelector("#gallery-close").onclick = () => panel.remove();
 
     try {
-      const products = await this._loadGalleryProducts();
+      const products = await this._loadGalleryProducts(CONTRACTS.base);
       this._renderGalleryCards(products);
       // Signal canvas to place products at depth positions
-      document.dispatchEvent(new CustomEvent("gallery:products-loaded", { detail: { products } }));
+      this._publishSpaceProducts(products);
     } catch (err) {
       const body = document.getElementById("gallery-body");
       if (body) {
-        body.innerHTML = `<div style="color:#f44;padding:16px;text-align:center;">⚠️ Failed to load: ${err.message}</div>`;
+        body.textContent = `Failed to load: ${err.message}`;
       }
     }
   }
@@ -1472,8 +1492,9 @@ class RightToolbar extends HTMLElement {
     const body = document.getElementById("gallery-body");
     if (!body) return;
 
+    products = visibleMarketProducts(products);
     if (products.length === 0) {
-      body.innerHTML = `<div style="text-align:center;padding:24px;color:#888;">No products minted yet</div>`;
+      body.innerHTML = `<div style="text-align:center;padding:24px;color:#888;">No visible products loaded</div>`;
       return;
     }
 
@@ -1494,8 +1515,7 @@ class RightToolbar extends HTMLElement {
     const { tokenId, maxSupply, totalMinted: tm, metadata } = product;
     const name = metadata?.name || `Token #${tokenId}`;
     const description = metadata?.description || "";
-    const imageUri = metadata?.image || "";
-    const displayImg = this._resolveIpfsUrl(imageUri);
+    const displayImg = collectibleFaces(metadata).front;
     const repoUrl = metadata?.properties?.product?.repo_url || "";
     const artifactCid = metadata?.properties?.product?.artifact_cid || "";
     const version = metadata?.properties?.product?.version || "";
@@ -1526,38 +1546,34 @@ class RightToolbar extends HTMLElement {
       }
     });
 
-    const safeRepo = repoUrl && this._isSafeGalleryUrl(repoUrl) ? repoUrl : "";
-    const safeArtifact = artifactCid ? this._resolveIpfsUrl(artifactCid) : "";
-
-    card.innerHTML = `
-      <div style="display:flex;gap:10px;align-items:flex-start;">
-        ${displayImg
-          ? `<img src="${displayImg}" alt="${name}" style="width:60px;height:60px;object-fit:contain;border-radius:6px;border:1px solid #ffd70044;flex-shrink:0;" loading="lazy">`
-          : `<div style="width:60px;height:60px;background:#111;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:1.6rem;flex-shrink:0;">🗿</div>`
-        }
-        <div style="flex:1;min-width:0;">
-          <div style="font-weight:bold;color:#ffd700;font-size:0.82rem;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${name}</div>
-          ${version ? `<div style="color:#a07800;font-size:0.65rem;margin-bottom:3px;">v${version}</div>` : ""}
-          ${description ? `<div style="color:#aaa;font-size:0.68rem;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${description}</div>` : ""}
-        </div>
-      </div>
-      <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-        <span style="color:#666;font-size:0.62rem;">Token #${tokenId}</span>
-        <span style="color:#444;font-size:0.62rem;">·</span>
-        <span style="color:#666;font-size:0.62rem;">${tm}/${maxSupply} minted</span>
-      </div>
-      <div style="margin-top:7px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        ${safeRepo ? `<a href="${safeRepo}" target="_blank" rel="noopener noreferrer" style="color:#00e5ff;font-size:0.65rem;text-decoration:none;">📦 Repo</a>` : ""}
-        ${safeArtifact ? `<a href="${safeArtifact}" target="_blank" rel="noopener noreferrer" style="color:#00e5ff;font-size:0.65rem;text-decoration:none;">⬇️ Artifact</a>` : ""}
-        <button data-fly-tokenid="${tokenId}" style="margin-left:auto;background:rgba(255,215,0,0.1);border:1px solid #ffd700;color:#ffd700;border-radius:4px;padding:2px 8px;font-size:0.65rem;cursor:pointer;font-family:monospace;">🚀 Fly to</button>
-      </div>
-    `;
+    if (displayImg) {
+      const image = element('img'); image.src = displayImg; image.alt = name; image.loading = 'lazy';
+      image.style.cssText = 'width:80px;height:80px;object-fit:contain;border-radius:8px';
+      image.onerror = () => image.replaceWith(element('span', 'Artwork unavailable'));
+      card.append(image);
+    }
+    card.append(element('h3', name));
+    if (version) card.append(element('p', version));
+    if (description) card.append(element('p', description));
+    card.append(element('p', `Token #${tokenId} · ${tm}/${maxSupply} minted`));
+    const repo = externalLink('Source repository ↗', repoUrl);
+    if (repo) card.append(repo);
+    if (artifactCid) {
+      const archive = externalLink('Source archive ↗', collectibleFaces({ image: artifactCid }).front);
+      if (archive) card.append(archive);
+    }
+    const fly = element('button', 'Fly to'); fly.dataset.flyTokenid = tokenId;
+    card.append(fly);
 
     card.querySelector(`[data-fly-tokenid="${tokenId}"]`).addEventListener("click", (e) => {
       e.stopPropagation();
       document.dispatchEvent(new CustomEvent("gallery:fly-to", { detail: { tokenId } }));
       this._highlightGalleryCard(tokenId);
     });
+    const detail = document.createElement('button');
+    detail.textContent = 'Explore / purchase';
+    detail.onclick = () => openCollectibleCard(this.spaceProducts?.find(item => assetKey(item) === assetKey(product)) || product);
+    card.append(detail);
 
     return card;
   }
@@ -1579,46 +1595,6 @@ class RightToolbar extends HTMLElement {
     }
   }
 
-  // ── Prepend newly minted product without reload ───────────────────────────
-  _refreshGalleryWithMint(detail) {
-    const { tokenId, tokenUri, name, description, imageUri, repoUrl, artifactCid, blockNumber } = detail;
-
-    const newProduct = {
-      tokenId: tokenId.toString(),
-      uri: tokenUri || "",
-      blockNumber: blockNumber || 0,
-      maxSupply: "0",
-      totalMinted: "1",
-      metadata: {
-        name: name || `Token #${tokenId}`,
-        description: description || "",
-        image: imageUri || "",
-        properties: {
-          product: {
-            repo_url: repoUrl || "",
-            artifact_cid: artifactCid || "",
-          },
-        },
-      },
-    };
-
-    const chainId = selectedChainConfig()?.chainId;
-    const products = this._galleryCache?.chainId === chainId ? this._galleryCache.products : [];
-    products.unshift(newProduct);
-    this._galleryCache = { chainId, products };
-
-    const body = document.getElementById("gallery-body");
-    if (body) {
-      // Replace "no products" placeholder if present
-      if (body.querySelector("[data-no-products]")) body.innerHTML = "";
-      body.insertBefore(this._buildGalleryCard(newProduct), body.firstChild);
-    }
-
-    document.dispatchEvent(new CustomEvent("gallery:products-loaded", {
-      detail: { products },
-    }));
-  }
-
   // ── Resolve ipfs:// URI to an HTTP gateway URL ────────────────────────────
   _resolveIpfsUrl(uri) {
     return resolveMarketAsset(uri);
@@ -1636,21 +1612,23 @@ class RightToolbar extends HTMLElement {
 
   // ── 🏦 Escrow Panel ───────────────────────────────────────────────────────
 
-  async _openEscrowPanel() {
+  async _openEscrowPanel({ admin = false } = {}) {
+    if (admin && !isMarketAdmin()) throw new Error('Connect the Market admin wallet on Base');
     // Toggle
     const existing = document.getElementById("modal-escrow");
     if (existing) { existing.remove(); return; }
     this._clearModals();
     // Signal canvas to clear gallery sprites — escrow view takes over the 3D space
-    document.dispatchEvent(new CustomEvent("gallery:cleared"));
+    if (admin) document.dispatchEvent(new CustomEvent("gallery:cleared"));
 
-    const chainId = marketEthereum()?.chainId || null;
-    const chainCfg = chainId ? getChainConfig(chainId) : null;
+    const chainCfg = CONTRACTS.base;
     const escrowAddress = chainCfg?.addresses?.ESCROW || "";
     const userAddress = marketEthereum()?.selectedAddress || null;
 
     const panel = document.createElement("div");
     panel.id = "modal-escrow";
+    panel.dataset.adminView = String(admin);
+    panel.className = 'market-sidepanel market-mint-panel';
     Object.assign(panel.style, {
       position: "fixed",
       top: "60px",
@@ -1857,6 +1835,10 @@ class RightToolbar extends HTMLElement {
     `;
 
     document.body.appendChild(panel);
+    panel.querySelector('#escrow-listings').parentElement.hidden = true;
+    const review = element('button', 'Review current marketplace offers');
+    review.onclick = () => openMarketCatalog(visibleMarketProducts(this._listedProducts));
+    panel.querySelector('#escrow-listings').parentElement.after(review);
 
     // ── Close helpers — all routes call closePanel() to ensure cleanup ─────────
     const closePanel = () => {
@@ -1869,7 +1851,7 @@ class RightToolbar extends HTMLElement {
     panel.querySelector("#escrow-close").onclick = closePanel;
 
     function _escKey(e) {
-      if (e.key === "Escape") closePanel();
+      if (e.key === "Escape" && !document.querySelector('dialog[open]')) closePanel();
     }
     document.addEventListener("keydown", _escKey);
 
@@ -1878,8 +1860,10 @@ class RightToolbar extends HTMLElement {
     }
 
     // Wire owner-action buttons once data is loaded (they may appear after async)
-    this._wireEscrowOwnerActions(panel, escrowAddress);
-    this._wireEscrowFnExplorer(panel, escrowAddress);
+    if (admin) {
+      this._wireEscrowOwnerActions(panel, escrowAddress);
+      this._wireEscrowFnExplorer(panel, escrowAddress);
+    }
 
     // ── Sync: when a 3D escrow sprite is clicked, highlight the matching listing
     // and open a compact detail modal. One modal at a time; closed by clicking
@@ -1900,6 +1884,10 @@ class RightToolbar extends HTMLElement {
     }
     const _self = this;
     document.addEventListener("escrow:sprite-selected", onSpriteSelected);
+    const lifecycle = new MutationObserver(() => {
+      if (!panel.isConnected) { closePanel(); lifecycle.disconnect(); }
+    });
+    lifecycle.observe(document.body, { childList: true });
   }
 
   async _loadEscrowData(panel, escrowAddress, userAddress) {
@@ -1916,7 +1904,7 @@ class RightToolbar extends HTMLElement {
         return;
       }
 
-      const chainCfg = selectedChainConfig();
+      const chainCfg = CONTRACTS.base;
       if (!chainCfg || chainCfg.addresses?.ESCROW?.toLowerCase() !== escrowAddress.toLowerCase()) {
         throw new Error("Escrow address does not match the selected network configuration.");
       }
@@ -1956,7 +1944,7 @@ class RightToolbar extends HTMLElement {
       `;
 
       // Show owner section if connected wallet is owner
-      if (resolvedUserAddress && ownerAddr.toLowerCase() === resolvedUserAddress.toLowerCase()) {
+      if (panel.dataset.adminView === 'true' && isMarketAdmin() && resolvedUserAddress && ownerAddr.toLowerCase() === resolvedUserAddress.toLowerCase()) {
         ownerSection.style.display = "block";
       }
 
@@ -1964,8 +1952,8 @@ class RightToolbar extends HTMLElement {
       const listingCount = await escrow.nextListingId();
       const listings = [];
 
-      // Fetch live ETH/USD rate for dynamic PayPal pricing (best-effort)
-      const ethUsdRate = await this._fetchEthUsdPrice();
+      // Legacy fiat widgets are hidden; verified on-chain prices need no FX feed.
+      const ethUsdRate = null;
       for (let i = 0; i < Number(listingCount); i++) {
         const raw = await escrow.getListing(i);
         // ethers.js v6 returns structs as Result (array-like); spread copies only
@@ -2055,10 +2043,10 @@ class RightToolbar extends HTMLElement {
         listingsEl.querySelectorAll("[data-buy-eth]").forEach(btn => {
           const id = parseInt(btn.dataset.buyEth);
           const l = listings.find(x => x.id === id);
-          btn.onclick = () => this._purchaseWithETH(escrowAddress, id, l, statusEl);
+          btn.onclick = () => this._reviewMarketListing(id, statusEl);
         });
         listingsEl.querySelectorAll("[data-buy-usdc]").forEach(btn => {
-          btn.onclick = () => this._purchaseWithToken(escrowAddress, parseInt(btn.dataset.buyUsdc), statusEl);
+          btn.onclick = () => this._reviewMarketListing(btn.dataset.buyUsdc, statusEl);
         });
         listingsEl.querySelectorAll("[data-buy-paypal]").forEach(btn => {
           const id = parseInt(btn.dataset.buyPaypal);
@@ -2142,7 +2130,7 @@ class RightToolbar extends HTMLElement {
 
       // ── Populate 3D canvas with escrowed DNFTs (non-blocking) ─────────────
       // Fire-and-forget so the panel doesn't stall waiting for extra RPC calls.
-      this._dispatchEscrowDNFTs(escrow, listings).catch(err =>
+      if (panel.dataset.adminView === 'true') this._dispatchEscrowDNFTs(escrow, listings).catch(err =>
         console.warn("EscrowPanel: failed to populate 3D escrow view:", err)
       );
 
@@ -2194,7 +2182,9 @@ class RightToolbar extends HTMLElement {
         ? this._resolveIpfsUrl(product.metadata.image)
         : "";
       const isListed = listedTokenIds.has(product.tokenId.toString());
-      escrowedDNFTs.push({ tokenId: product.tokenId, imageUrl, isListed, metadata: product.metadata });
+      const verified = this._listedProducts.find(item => assetKey(item) === assetKey(product));
+      escrowedDNFTs.push({ ...product, nftContract: dnftAddr, escrowStock: result.value.toString(),
+        listings: verified?.listings || [], imageUrl, isListed });
     });
 
     // Guard: only dispatch if the escrow panel is still open (user hasn't navigated away)
@@ -2292,113 +2282,10 @@ class RightToolbar extends HTMLElement {
     timer = setTimeout(close, 8000);
   }
 
-  async _purchaseWithETH(escrowAddress, listingId, listing, statusEl) {
-    try {
-      statusEl.style.color = "";
-      statusEl.textContent = "⏳ Sending purchase transaction…";
-      const ethers = window.ethers;
-      if (!ethers) { statusEl.textContent = "⚠ ethers.js not loaded"; return; }
-      const provider = await marketBrowserProvider();
-      const signer = await provider.getSigner();
-      const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, signer);
-
-      // Pre-flight: verify escrow holds NFT stock before sending ETH
-      const nftBal = await escrow.getNFTBalance(listing.nftContract, listing.tokenId);
-      if (nftBal === 0n) {
-        statusEl.style.color = "#ff8844";
-        statusEl.textContent = "⚠ Purchase aborted: NFT stock not yet loaded into escrow. Owner must deposit NFTs first.";
-        return;
-      }
-
-      const tx = await escrow.purchaseWithETH(listingId, 1, { value: listing.priceETH });
-      statusEl.textContent = `⏳ Waiting for confirmation…`;
-      await tx.wait();
-      statusEl.style.color = "#00ff88";
-      statusEl.textContent = `✅ DNFT purchased! Tx: ${tx.hash.slice(0,10)}…`;
-    } catch (err) {
-      statusEl.style.color = "#ff4444";
-      statusEl.textContent = `⚠ Purchase failed: ${err.reason || err.message?.slice(0, 60)}`;
-    }
-  }
-
-  async _purchaseWithToken(escrowAddress, listingId, statusEl) {
-    try {
-      const ethers = window.ethers;
-      if (!ethers) { statusEl.textContent = "⚠ ethers.js not loaded"; return; }
-
-      const provider = await marketBrowserProvider();
-      const signer = await provider.getSigner();
-
-      // Fetch listing to get priceToken, priceAmount, and NFT details
-      const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, signer);
-      const raw = await escrow.getListing(listingId);
-      const nftContract = raw[0]; // address nftContract
-      const tokenId     = raw[1]; // uint256 tokenId
-      const priceToken  = raw[3]; // address priceToken
-      const priceAmount = raw[4]; // uint256 priceAmount
-
-      // Pre-flight: verify escrow holds NFT stock before spending any USDC
-      statusEl.style.color = "";
-      statusEl.textContent = "⏳ Checking escrow NFT stock…";
-      const nftBal = await escrow.getNFTBalance(nftContract, tokenId);
-      if (nftBal === 0n) {
-        statusEl.style.color = "#ff8844";
-        statusEl.textContent = "⚠ Purchase aborted: NFT stock not yet loaded into escrow. Owner must deposit NFTs first.";
-        return;
-      }
-
-      // Step 1 — Approve
-      statusEl.textContent = "⏳ Step 1/2 — Approving token spend…";
-      const ERC20_ABI = [
-        "function approve(address spender, uint256 amount) returns (bool)",
-        "function allowance(address owner, address spender) view returns (uint256)",
-        "function balanceOf(address account) view returns (uint256)",
-      ];
-      const token = new ethers.Contract(priceToken, ERC20_ABI, signer);
-
-      // Pre-flight: verify buyer has enough of the required token
-      const buyerAddress = await signer.getAddress();
-      const buyerBal = await token.balanceOf(buyerAddress);
-      if (buyerBal < priceAmount) {
-        const tokenLabel = KNOWN_TOKENS[priceToken.toLowerCase()] || priceToken;
-        const needed  = (Number(priceAmount) / 1e6).toFixed(6);
-        const have    = (Number(buyerBal)    / 1e6).toFixed(6);
-        statusEl.style.color = "#ff8844";
-        statusEl.textContent =
-          `⚠ Insufficient token balance. Listing requires ${needed} ${tokenLabel}` +
-          ` (${priceToken.slice(0,6)}…${priceToken.slice(-4)}), you have ${have}.`;
-        return;
-      }
-
-      // Check existing allowance — skip approve if already sufficient
-      const allowance = await token.allowance(buyerAddress, escrowAddress);
-      if (allowance < priceAmount) {
-        const approveTx = await token.approve(escrowAddress, priceAmount);
-        statusEl.textContent = "⏳ Step 1/2 — Waiting for approval confirmation…";
-        await approveTx.wait();
-      }
-
-      // Step 2 — Purchase
-      statusEl.textContent = "⏳ Step 2/2 — Sending purchase transaction…";
-      const purchaseTx = await escrow.purchaseWithToken(listingId, 1);
-      statusEl.textContent = "⏳ Step 2/2 — Waiting for confirmation…";
-      await purchaseTx.wait();
-
-      statusEl.style.color = "#00ff88";
-      statusEl.textContent = `✅ DNFT purchased! Tx: ${purchaseTx.hash.slice(0, 10)}…`;
-
-      // Reload listings to reflect updated available count
-      this._loadEscrowData(
-        document.getElementById("modal-escrow"),
-        escrowAddress,
-        buyerAddress
-      );
-
-    } catch (err) {
-      console.error("purchaseWithToken:", err);
-      statusEl.style.color = "#ff4444";
-      statusEl.textContent = `⚠ Purchase failed: ${err.reason || err.message?.slice(0, 80)}`;
-    }
+  _reviewMarketListing(listingId, statusEl) {
+    const product = this._listedProducts.find(product => product.listings.some(listing => listing.id === String(listingId)));
+    if (product) openCollectibleCard(product);
+    else statusEl.textContent = 'This listing has not been verified for sale. Refresh Base listings in the marketplace before buying.';
   }
 
   // ── 💳 PayPal Purchase Helpers ────────────────────────────────────────────
@@ -2607,13 +2494,16 @@ class RightToolbar extends HTMLElement {
       const ethers = window.ethers;
       if (!ethers) { statusEl.textContent = "⚠ ethers.js not loaded"; return; }
       const provider = await marketBrowserProvider();
+      if ((await provider.getNetwork()).chainId !== 8453n || escrowAddress.toLowerCase() !== CONTRACTS.base.addresses.ESCROW.toLowerCase())
+        throw new Error('Switch to Base before using this treasury');
       const signer = await provider.getSigner();
       const escrow = new ethers.Contract(escrowAddress, ESCROW_ABI, signer);
       const tx = isEthPlan
-        ? await escrow.subscribe(planId, { value: price })
-        : await escrow.subscribe(planId);
+        ? await escrow.subscribe(planId, { value: price, chainId: 8453n })
+        : await escrow.subscribe(planId, { chainId: 8453n });
       statusEl.textContent = "⏳ Waiting for confirmation…";
-      await tx.wait();
+      const receipt = await tx.wait();
+      if (receipt?.status !== 1) throw new Error('Subscription did not confirm; check wallet activity before retrying');
       statusEl.style.color = "#00ff88";
       statusEl.textContent = `✅ Subscribed! Tx: ${tx.hash.slice(0,10)}…`;
     } catch (err) {

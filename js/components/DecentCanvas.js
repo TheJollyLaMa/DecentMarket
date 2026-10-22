@@ -1,11 +1,15 @@
 import './DecentCanvas/LeftToolbar.js';
 import './DecentCanvas/RightToolbar.js';
-import { collectibleFaces, createCollectibleDisplay, disposeCollectible } from '../supporter-display.mjs';
+import { disposeCollectible } from '../supporter-display.mjs';
+import { createMarketCoin } from '../market-coin.mjs';
+import { assetKey } from '../market-listings.mjs';
+import { openCollectibleCard } from '../market-card.mjs';
+import { visibleMarketProducts } from '../market-moderation.mjs';
+import { timelinePosition, viewingDistance, COIN_RADIUS, nearbyFlipKeys, advanceStarDepth } from '../market-flight.mjs';
 
 class DecentCanvas extends HTMLElement {
   constructor() {
     super();
-    this.speedValue = 0;
     this.scene = null;
     this.camera = null;
     this.renderer = null;
@@ -15,16 +19,17 @@ class DecentCanvas extends HTMLElement {
     this.showCows = false;
     this.uiLayer = null;
     this.cannonAngle = 0;
-    this._productSprites = {}; // tokenId → { sprite, badge, x, z }
+    this._productSprites = {}; // asset key → { sprite, flipButton, x, z }
     this._escrowSprites  = {}; // tokenId → { sprite, badge, x, z } for escrow view
     this._flyTarget = null;    // { x, y, z } target for smooth camera animation
     this._galleryGeneration = 0;
     this._collectibleMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    this._coinBacks = new Set();
   }
 
   _filterSpace() {
     const products = this._spaceView === 'escrow' ? this._spaceEscrow || [] : this._spaceProducts || [];
-    this._filteredSpace = filterDnfts(products, this._spaceFilters || defaultFilters);
+    this._filteredSpace = filterDnfts(visibleMarketProducts(products), this._spaceFilters || defaultFilters);
     if (this._spaceView === 'escrow') this._placeEscrowDNFTs(this._filteredSpace);
     else this._placeGalleryProducts(this._filteredSpace);
     this._reportFilterCount();
@@ -43,7 +48,7 @@ class DecentCanvas extends HTMLElement {
     // Scene setup
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x000000);
-    this.camera = new THREE.PerspectiveCamera(75, this.clientWidth / this.clientHeight, 0.1, 1000);
+    this.camera = new THREE.PerspectiveCamera(75, this.clientWidth / this.clientHeight, 0.1, 10000);
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setSize(this.clientWidth, this.clientHeight);
     // Attach renderer.domElement to this custom element
@@ -78,37 +83,13 @@ class DecentCanvas extends HTMLElement {
     this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.05;
-    this.controls.enablePan = false;    // disable panning
-    this.controls.enableZoom = false;   // disable zoom
-    this.controls.minDistance = this.controls.maxDistance = 15; // lock distance
+    this.controls.enablePan = true;
+    this.controls.enableZoom = true;
+    this.controls.minDistance = 8;
+    this.controls.maxDistance = 4000;
+    this.controls.addEventListener('start', () => { this._flyTarget = null; this._viewAdjusted = true; });
     this.controls.update();
 
-    // Video sphere
-    const geometry = new THREE.SphereGeometry(2, 64, 64);
-    const video = document.createElement('video');
-    video.src = 'img/mandelblum.webm';
-    video.loop = true;
-    video.muted = true;
-    video.play();
-    const videoTexture = new THREE.VideoTexture(video);
-    videoTexture.wrapS = THREE.ClampToEdgeWrapping;
-    videoTexture.wrapT = THREE.ClampToEdgeWrapping;
-    videoTexture.offset.set(0, 0);
-    videoTexture.center.set(0.5, 0.5);
-    videoTexture.rotation = Math.PI / 2;
-    const material = new THREE.MeshStandardMaterial({
-      map: videoTexture,
-      emissive: 0xffffff,
-      emissiveMap: videoTexture,
-      transparent: true,
-      alphaTest: 0.05,
-      side: THREE.DoubleSide
-    });
-    const mandelblumShip = new THREE.Mesh(geometry, material);
-    mandelblumShip.rotation.y = -Math.PI / 2;
-    mandelblumShip.position.set(-0.3, -5, 0);
-
-    this.scene.add(mandelblumShip);
     const light = new THREE.PointLight(0xffffff, 1, 100);
     light.position.set(10, 10, 10);
     this.scene.add(light);
@@ -122,21 +103,20 @@ class DecentCanvas extends HTMLElement {
     // No need to append renderer.domElement to uiLayer; already attached to this
     this.uiLayer = uiLayer;
 
-    // Mandelblum ship click handler
-    mandelblumShip.cursor = 'pointer';
-    mandelblumShip.onClick = () => {
-      if (typeof this.uiLayer.dispatchEvent === 'function') {
-        this.uiLayer.dispatchEvent(new CustomEvent('open-modal'));
-      }
-    };
+    this._mountFlightControls();
+    let pointerStart;
+    this.renderer.domElement.addEventListener('pointerdown', event => {
+      pointerStart = { x: event.clientX, y: event.clientY };
+    });
     this.renderer.domElement.addEventListener('click', (event) => {
+      if (pointerStart && Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 5) return;
       const mouse = new THREE.Vector2();
       const rect = this.renderer.domElement.getBoundingClientRect();
       mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
       const raycaster = new THREE.Raycaster();
       raycaster.setFromCamera(mouse, this.camera);
-      const intersects = raycaster.intersectObjects(this.scene.children);
+      const intersects = raycaster.intersectObjects(this.scene.children.filter(object => typeof object.onClick === 'function'));
       if (intersects.length > 0) {
         const target = intersects[0].object;
         if (typeof target.onClick === 'function') {
@@ -144,6 +124,15 @@ class DecentCanvas extends HTMLElement {
         }
       }
     });
+    this.renderer.domElement.addEventListener('pointermove', event => {
+      const rect = this.renderer.domElement.getBoundingClientRect(), mouse = new THREE.Vector2(
+        (event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1);
+      const ray = new THREE.Raycaster(); ray.setFromCamera(mouse, this.camera);
+      const entries = Object.values(this._productSprites);
+      const target = ray.intersectObjects(entries.map(entry => entry.sprite))[0]?.object;
+      this.renderer.domElement.style.cursor = target ? 'pointer' : '';
+    });
+    this.renderer.domElement.addEventListener('pointerleave', () => { this.renderer.domElement.style.cursor = ''; });
 
     // Plot NFT images
     // Event detail: { x, y, token, metadata }
@@ -211,7 +200,7 @@ class DecentCanvas extends HTMLElement {
 
     // NFT detail modal handler — shows ownership-gated UI for product DNFTs
     this.uiLayer.addEventListener('open-nft-modal', (e) => {
-      this._openNFTDetailModal(e.detail);
+      openCollectibleCard(e.detail.product || { metadata: { ...e.detail.metadata, image: e.detail.token || e.detail.metadata?.image }, tokenId: e.detail.metadata?.tokenId });
     });
 
     // ── Gallery: place Product DNFTs at depth positions on Z-axis ─────────────
@@ -223,20 +212,25 @@ class DecentCanvas extends HTMLElement {
     });
     document.addEventListener('market:filters', event => { this._spaceFilters = event.detail; this._filterSpace(); });
     document.addEventListener('market:gallery-status', event => { this._spaceStatus = event.detail; this._reportFilterCount(); });
+    document.addEventListener('market:moderation', () => this._filterSpace());
 
     // ── Gallery: clear gallery sprites (e.g. when escrow panel opens) ─────────
     document.addEventListener('gallery:cleared', () => {
       this._galleryGeneration++;
-      for (const { sprite, badge } of Object.values(this._productSprites)) {
+      for (const { sprite, badge, flipButton } of Object.values(this._productSprites)) {
         this.scene.remove(sprite);
         disposeCollectible(sprite);
+        flipButton?.remove();
         if (badge) { this.scene.remove(badge); disposeCollectible(badge); }
       }
       this._productSprites = {};
+      this._flightKeys = [];
+      this._visitEdition(0);
     });
 
     // ── Escrow: show escrowed DNFTs with color-coded glows ────────────────────
     document.addEventListener('escrow:dnfts-loaded', (e) => {
+      this._flightPanel.hidden = true;
       this._spaceEscrow = e.detail.dnfts;
       this._spaceView = 'escrow';
       this._filterSpace();
@@ -261,7 +255,7 @@ class DecentCanvas extends HTMLElement {
       const { tokenId } = e.detail;
       const entry = this._productSprites[tokenId];
       if (entry) {
-        this._flyTarget = { x: entry.x, y: 0, z: entry.z };
+        this._visitEdition(this._flightKeys.indexOf(String(tokenId)));
       }
     });
 
@@ -271,36 +265,37 @@ class DecentCanvas extends HTMLElement {
       requestAnimationFrame(animate);
       const now = performance.now(), delta = Math.min((now - lastFrame) / 1000, .1);
       lastFrame = now;
-      if (!this._collectibleMotion.matches) {
-        for (const { sprite } of Object.values(this._productSprites)) {
-          if (sprite.userData.twoSided) sprite.rotation.y += delta * .35;
-        }
+      for (const { sprite } of Object.values(this._productSprites)) {
+        const target = sprite.userData.showBack ? Math.PI : 0;
+        sprite.rotation.y = this._collectibleMotion.matches ? target
+          : sprite.rotation.y + (target - sprite.rotation.y) * Math.min(delta * 9, 1);
       }
       if (this.controls) this.controls.update();
 
       // Smooth fly-to: lerp controls.target toward _flyTarget
       if (this._flyTarget && this.controls) {
-        const t = 0.06;
-        this.controls.target.x += (this._flyTarget.x - this.controls.target.x) * t;
-        this.controls.target.y += (this._flyTarget.y - this.controls.target.y) * t;
-        this.controls.target.z += (this._flyTarget.z - this.controls.target.z) * t;
+        const t = this._collectibleMotion.matches ? 1 : 1 - Math.exp(-7 * delta);
+        const shift = new THREE.Vector3(this._flyTarget.x, this._flyTarget.y, this._flyTarget.z).sub(this.controls.target).multiplyScalar(t);
+        this.controls.target.add(shift);
+        this.camera.position.add(shift);
         const dx = this._flyTarget.x - this.controls.target.x;
         const dy = this._flyTarget.y - this.controls.target.y;
         const dz = this._flyTarget.z - this.controls.target.z;
         if (Math.sqrt(dx * dx + dy * dy + dz * dz) < 0.05) {
+          this.camera.position.add(new THREE.Vector3(dx, dy, dz));
           this.controls.target.set(this._flyTarget.x, this._flyTarget.y, this._flyTarget.z);
           this._flyTarget = null;
         }
+        this.controls.update();
       }
 
       for (const sprite of this.starSprites) {
         const mat = sprite.material;
         mat.opacity = 0.5 + 0.5 * Math.sin(Date.now() * 0.002 + sprite.position.x);
         if (sprite.userData.isBackground) {
-          sprite.position.z += (this.speedValue / 100) * 0.5;
-          if (sprite.position.z > 25) {
-            sprite.position.z = -25;
-          }
+          const position = sprite.userData.starPosition;
+          if (!this._collectibleMotion.matches) position.z = advanceStarDepth(position.z, delta);
+          sprite.position.copy(position).applyQuaternion(this.camera.quaternion).add(this.camera.position);
         }
         if (sprite.userData.isProjectile) {
           sprite.position.x += sprite.userData.vx;
@@ -311,6 +306,16 @@ class DecentCanvas extends HTMLElement {
         }
       }
       this.renderer.render(this.scene, this.camera);
+      const nearby = new Set(nearbyFlipKeys(Object.entries(this._productSprites), this.camera.position, this._selectedEdition));
+      for (const [key, { sprite, flipButton }] of Object.entries(this._productSprites)) {
+        const point = sprite.position.clone();
+        point.y -= COIN_RADIUS * .83;
+        point.z += .25;
+        point.project(this.camera);
+        flipButton.hidden = !nearby.has(key) || Math.abs(point.x) > 1 || Math.abs(point.y) > 1 || Math.abs(point.z) > 1;
+        flipButton.style.left = `${(point.x + 1) * this.clientWidth / 2}px`;
+        flipButton.style.top = `${(1 - point.y) * this.clientHeight / 2}px`;
+      }
     };
     animate();
     // Handle resizing to keep camera and renderer in sync with window size
@@ -318,7 +323,100 @@ class DecentCanvas extends HTMLElement {
       this.camera.aspect = this.clientWidth / this.clientHeight;
       this.camera.updateProjectionMatrix();
       this.renderer.setSize(this.clientWidth, this.clientHeight);
+      if (!this._viewAdjusted) {
+        if (this._overview) this._overviewFlight(); else this._resetFlightView();
+      }
     });
+  }
+
+  _mountFlightControls() {
+    const panel = document.createElement('section');
+    panel.className = 'market-flight';
+    panel.setAttribute('aria-label', 'Spaceship timeline controls');
+    panel.innerHTML = `
+      <div class="market-flight-row"><button type="button" data-newer aria-label="Newer edition">←</button>
+      <input type="range" min="0" max="0" value="0" step="1" aria-label="Edition timeline">
+      <button type="button" data-older aria-label="Older edition">→</button></div>
+      <p data-position role="status">No editions in this view</p>
+      <div class="market-flight-row">      <button type="button" data-in aria-label="Zoom in" title="Zoom in">⊕</button>
+      <button type="button" data-out aria-label="Back up" title="Back up">⊖</button>
+      <button type="button" data-reset aria-label="Reset view" title="Focus selected DNFT">◎</button>
+      <button type="button" data-overview aria-label="Spiral overview" title="Spiral overview">⌂</button>
+      <button type="button" data-inspect aria-label="Inspect" title="Inspect selected DNFT">🔎</button></div>`;
+    this.append(panel);
+    this._flightPanel = panel;
+    panel.querySelector('[data-newer]').onclick = () => this._visitEdition(this._flightIndex - 1);
+    panel.querySelector('[data-older]').onclick = () => this._visitEdition(this._flightIndex + 1);
+    panel.querySelector('input').oninput = event => this._visitEdition(Number(event.target.value));
+    panel.querySelector('[data-in]').onclick = () => this._zoomFlight(.8);
+    panel.querySelector('[data-out]').onclick = () => this._zoomFlight(1.25);
+    panel.querySelector('[data-reset]').onclick = () => this._resetFlightView();
+    panel.querySelector('[data-overview]').onclick = () => this._overviewFlight();
+    panel.querySelector('[data-inspect]').onclick = () => {
+      const entry = this._productSprites[this._selectedEdition];
+      if (entry) openCollectibleCard(entry.product);
+    };
+  }
+
+  _visitEdition(index, reset = false) {
+    const keys = this._flightKeys || [];
+    this._flightIndex = Math.max(0, Math.min(keys.length - 1, index));
+    this._selectedEdition = keys[this._flightIndex];
+    const entry = this._productSprites[this._selectedEdition];
+    const panel = this._flightPanel;
+    panel.querySelector('input').max = String(Math.max(0, keys.length - 1));
+    panel.querySelector('input').value = String(this._flightIndex);
+    panel.querySelector('input').disabled = keys.length < 2;
+    panel.querySelector('[data-newer]').disabled = !entry || this._flightIndex === 0;
+    panel.querySelector('[data-older]').disabled = !entry || this._flightIndex === keys.length - 1;
+    panel.querySelector('[data-inspect]').disabled = !entry;
+    panel.querySelector('[data-position]').textContent = entry
+      ? `${this._flightIndex + 1} / ${keys.length} · ${entry.product.metadata?.name || `DNFT #${entry.product.tokenId}`}`
+      : 'No editions in this view';
+    if (!entry) { this._flyTarget = null; return; }
+    this._flyTarget = { x: entry.x, y: entry.y, z: entry.z };
+    if (reset) {
+      if (this._overview !== false) this._overviewFlight(); else this._resetFlightView();
+    } else if (this._overview) {
+      this._resetFlightView();
+    }
+  }
+
+  _overviewFlight() {
+    const entries = Object.values(this._productSprites);
+    if (entries.length < 2) { this._resetFlightView(); this._overview = true; return; }
+    const bounds = new THREE.Box3();
+    for (const { sprite } of entries) bounds.expandByPoint(sprite.position);
+    bounds.expandByScalar(COIN_RADIUS * 1.5);
+    const center = bounds.getCenter(new THREE.Vector3()), size = bounds.getSize(new THREE.Vector3());
+    const tangent = Math.tan(this.camera.fov * Math.PI / 360);
+    const distance = Math.max(size.y / 2 / tangent, size.x / 2 / tangent / this.camera.aspect) * 1.35 + size.z / 2;
+    this._flyTarget = null;
+    this.controls.maxDistance = Math.max(4000, distance * 2);
+    this.controls.target.copy(center);
+    this.camera.position.copy(center).add(new THREE.Vector3(0, 0, distance));
+    this.controls.update();
+    this._overview = true;
+    this._viewAdjusted = false;
+  }
+
+  _resetFlightView() {
+    const entry = this._productSprites[this._selectedEdition];
+    const target = new THREE.Vector3(entry?.x || 0, entry?.y ?? .5, entry?.z ?? -4);
+    this._flyTarget = null;
+    this.controls.target.copy(target);
+    this.camera.position.copy(target).add(new THREE.Vector3(0, 0, viewingDistance(this.camera.aspect)));
+    this.controls.update();
+    this._viewAdjusted = false;
+    this._overview = false;
+  }
+
+  _zoomFlight(factor) {
+    const offset = this.camera.position.clone().sub(this.controls.target);
+    offset.setLength(Math.max(this.controls.minDistance, Math.min(this.controls.maxDistance, offset.length() * factor)));
+    this.camera.position.copy(this.controls.target).add(offset);
+    this.controls.update();
+    this._viewAdjusted = true;
   }
 
   // Utility: create emoji texture
@@ -346,233 +444,37 @@ class DecentCanvas extends HTMLElement {
       const texture = this.createEmojiTexture(emoji);
       const material = new THREE.SpriteMaterial({ map: texture, transparent: true, opacity: 0.08 });
       const sprite = new THREE.Sprite(material);
-      const size = Math.random() * 0.3 + 0.1;
+      const size = Math.random() * .7 + .4;
       sprite.scale.set(size, size, 1);
-      sprite.position.set(
-        (Math.random() - 0.5) * 50,
-        Math.random() * 10 + 2,
-        (Math.random() - 0.5) * 50
-      );
       sprite.userData.isBackground = true;
+      sprite.userData.starPosition = new THREE.Vector3((Math.random() - .5) * 100, (Math.random() - .5) * 80, -2 - Math.random() * 118);
+      sprite.position.copy(sprite.userData.starPosition).applyQuaternion(this.camera.quaternion).add(this.camera.position);
       sprite.userData.speed = 0.05;
       this.starSprites.push(sprite);
       this.scene && this.scene.add(sprite);
     }
   }
 
-  // NFT detail modal — shows product metadata and ownership-gated CTAs
-  // Called when an NFT sprite is clicked in the 3D canvas.
-
-  // Returns true only for safe https:// or http:// URLs — prevents XSS via javascript: etc.
-  _isSafeUrl(url) {
-    try {
-      const u = new URL(url);
-      return u.protocol === 'https:' || u.protocol === 'http:';
-    } catch {
-      return false;
+  setRiverEmojis(emojis) {
+    this.starEmojis = emojis;
+    for (const sprite of this.starSprites) {
+      if (!sprite.userData.isBackground) continue;
+      sprite.material.map = this.createEmojiTexture(emojis[Math.floor(Math.random() * emojis.length)]);
+      sprite.material.needsUpdate = true;
     }
   }
 
-  _openNFTDetailModal({ token, metadata, isProduct, purchaseUrl }) {
-    // Remove any existing NFT detail modals
-    const existing = document.getElementById('nft-detail-modal');
-    if (existing) existing.remove();
-
-    const m = document.createElement('div');
-    m.id = 'nft-detail-modal';
-    Object.assign(m.style, {
-      position: 'fixed',
-      top: '50%',
-      left: '50%',
-      transform: 'translate(-50%, -50%)',
-      padding: '0',
-      background: 'rgba(0, 10, 20, 0.97)',
-      border: `2px solid ${isProduct ? '#ffd700' : '#00e5ff'}`,
-      borderRadius: '14px',
-      boxShadow: `0 0 30px ${isProduct ? '#ffd700' : '#00e5ff'}`,
-      zIndex: '2000',
-      color: '#fff',
-      fontFamily: 'monospace',
-      minWidth: '300px',
-      maxWidth: '420px',
-      width: '90vw',
-      maxHeight: '85vh',
-      overflowY: 'auto',
-    });
-
-    const name = metadata?.name || 'Unknown NFT';
-    const description = metadata?.description || '';
-    const product = metadata?.properties?.product || null;
-    const version = product?.version || '';
-    const repo_url = product?.repo_url || '';
-    const commit = product?.commit || '';
-    const artifact_cid = product?.artifact_cid || '';
-    const opensea_url = product?.opensea_url || '';
-
-    // Gateway-resolve ipfs:// image for display
-    const displayImg = resolveMarketAsset(token);
-
-    // Check ownership (ERC-1155 balanceOf) — async, filled in after render
-    const productBadge = isProduct
-      ? `<span style="
-          display:inline-block;background:#ffd700;color:#000;
-          border-radius:4px;padding:1px 8px;font-size:0.65rem;
-          font-weight:bold;letter-spacing:0.05em;margin-left:6px;
-        ">⭐ PRODUCT</span>`
-      : '';
-
-    const productFields = product ? `
-      <div style="margin-top:8px;padding:8px 10px;background:rgba(255,215,0,0.06);border:1px solid #ffd70033;border-radius:6px;font-size:0.68rem;">
-        ${version ? `<div><span style="color:#888;">Version:</span> <span style="color:#ffd700;">${version}</span></div>` : ''}
-        ${repo_url && this._isSafeUrl(repo_url) ? `<div style="margin-top:3px;"><span style="color:#888;">Repo:</span> <a href="${repo_url}" target="_blank" rel="noopener noreferrer" style="color:#00e5ff;text-decoration:none;">${repo_url}</a></div>` : ''}
-        ${commit && this._isSafeUrl(commit) ? `<div style="margin-top:3px;"><span style="color:#888;">Commit:</span> <a href="${commit}" target="_blank" rel="noopener noreferrer" style="color:#00e5ff;text-decoration:none;word-break:break-all;">${commit.length > 50 ? commit.slice(0, 47) + '…' : commit}</a></div>` : ''}
-        ${artifact_cid ? `<div style="margin-top:3px;"><span style="color:#888;">Artifact:</span> <span style="color:#aaa;word-break:break-all;">${artifact_cid.length > 40 ? artifact_cid.slice(0, 37) + '…' : artifact_cid}</span></div>` : ''}
-      </div>` : '';
-
-    m.innerHTML = `
-      <div style="
-        background:linear-gradient(90deg,${isProduct ? '#1a1400,#2a2000' : '#001a20,#002030'});
-        padding:12px 16px;display:flex;align-items:center;justify-content:space-between;
-        border-bottom:1px solid ${isProduct ? '#ffd700' : '#00e5ff'};
-        border-radius:12px 12px 0 0;
-      ">
-        <div style="font-size:0.95rem;font-weight:bold;color:${isProduct ? '#ffd700' : '#00e5ff'};">
-          ${name}${productBadge}
-        </div>
-        <button id="nft-detail-close" style="background:none;border:none;color:#aaa;font-size:1.1rem;cursor:pointer;line-height:1;padding:0;">✕</button>
-      </div>
-      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
-        ${displayImg ? `<img src="${displayImg}" alt="${name}" style="max-width:100%;max-height:150px;border-radius:8px;border:1px solid ${isProduct ? '#ffd700' : '#00e5ff'};object-fit:contain;"/>` : ''}
-        ${description ? `<div style="font-size:0.75rem;color:#ccc;line-height:1.4;">${description}</div>` : ''}
-        ${productFields}
-        <div id="nft-detail-cta" style="margin-top:4px;">
-          <div style="font-size:0.65rem;color:#555;text-align:center;">Checking ownership…</div>
-        </div>
-      </div>
-    `;
-
-    document.body.appendChild(m);
-    m.querySelector('#nft-detail-close').onclick = () => m.remove();
-    const back = collectibleFaces(metadata).back;
-    if (back) {
-      const flip = document.createElement('button');
-      flip.textContent = 'View back';
-      flip.style.cssText = 'padding:10px;border:1px solid #80edd2;border-radius:8px;background:#10202a;color:white;cursor:pointer';
-      let showingBack = false;
-      flip.onclick = () => {
-        showingBack = !showingBack;
-        m.querySelector('img').src = showingBack ? back : collectibleFaces(metadata).front;
-        flip.textContent = showingBack ? 'View front' : 'View back';
-        for (const { sprite } of Object.values(this._productSprites)) {
-          if (sprite.userData.metadata === metadata && sprite.userData.twoSided) sprite.rotation.y += Math.PI;
-        }
-      };
-      m.querySelector('img')?.after(flip);
-    }
-
-    // Close on outside click
-    setTimeout(() => {
-      const outside = (e) => {
-        if (!m.contains(e.target)) { m.remove(); document.removeEventListener('click', outside); }
-      };
-      document.addEventListener('click', outside);
-    }, 0);
-
-    // Async ownership check
-    if (purchaseUrl && this._isSafeUrl(purchaseUrl)) {
-      const link = document.createElement('a');
-      link.href = purchaseUrl;
-      link.textContent = 'Review / buy this edition · 10 USDC on Base';
-      link.target = '_blank'; link.rel = 'noopener noreferrer';
-      const cta = m.querySelector('#nft-detail-cta');
-      cta.replaceChildren(link);
-      return;
-    }
-    this._checkNFTOwnership({ metadata, opensea_url }).then(ctaHTML => {
-      const ctaEl = m.querySelector('#nft-detail-cta');
-      if (ctaEl) ctaEl.innerHTML = ctaHTML;
-    });
-  }
-
-  // Checks balanceOf for product NFTs and returns appropriate CTA HTML
-  async _checkNFTOwnership({ metadata, opensea_url }) {
-    const btnBase = `
-      display:inline-block;padding:7px 14px;border-radius:6px;
-      font-family:monospace;font-size:0.75rem;cursor:pointer;
-      text-decoration:none;font-weight:bold;`;
-
-    // Without a tokenId we can't query the chain — show generic links
-    const tokenId = metadata?.tokenId ?? null;
-    const contractAddr = localStorage.getItem('decentNFT_address') || '';
-
-    if (!marketEthereum().selectedAddress || !contractAddr || tokenId === null) {
-      return this._buildPurchaseCTA(opensea_url, btnBase);
-    }
-
-    try {
-      const ethers = window.ethers;
-      const provider = await marketBrowserProvider();
-      const accounts = await marketEthereum().request({ method: 'eth_accounts' });
-      if (!accounts || accounts.length === 0) return this._buildPurchaseCTA(opensea_url, btnBase);
-
-      const account = accounts[0];
-      const abi = ['function balanceOf(address account, uint256 id) view returns (uint256)'];
-      const contract = new ethers.Contract(contractAddr, abi, provider);
-      const balance = await contract.balanceOf(account, BigInt(tokenId));
-
-      if (balance > 0n) {
-        // Owner: show full-access indicator
-        const safeOsUrl = opensea_url && this._isSafeUrl(opensea_url) ? opensea_url : null;
-        return `
-          <div style="text-align:center;">
-            <span style="color:#00e676;font-size:0.8rem;">✅ You own this NFT</span>
-            <div style="margin-top:6px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
-              ${safeOsUrl ? `<a href="${safeOsUrl}" target="_blank" rel="noopener noreferrer" style="${btnBase}background:#000;color:#2081e2;border:1px solid #2081e2;box-shadow:0 0 6px #2081e2;">🔵 View on OpenSea</a>` : ''}
-            </div>
-          </div>`;
-      } else {
-        return this._buildPurchaseCTA(opensea_url, btnBase);
-      }
-    } catch {
-      return this._buildPurchaseCTA(opensea_url, btnBase);
-    }
-  }
-
-  _buildPurchaseCTA(opensea_url, btnBase) {
-    const safeOsUrl = opensea_url && this._isSafeUrl(opensea_url) ? opensea_url : null;
-    const osLink = safeOsUrl
-      ? `<a href="${safeOsUrl}" target="_blank" rel="noopener noreferrer"
-           style="${btnBase}background:#000;color:#2081e2;border:1px solid #2081e2;box-shadow:0 0 6px #2081e2;">
-           🛒 Purchase on OpenSea
-         </a>`
-      : `<span style="color:#555;font-size:0.68rem;">OpenSea link coming soon</span>`;
-
-    return `
-      <div style="text-align:center;">
-        <div style="color:#f80;font-size:0.72rem;margin-bottom:8px;">
-          🔒 You don't own this NFT yet
-        </div>
-        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
-          ${osLink}
-          <a href="https://opensea.io/collection/decenthead" target="_blank" rel="noopener"
-             style="${btnBase}background:#000;color:#00e5ff;border:1px solid #00e5ff;box-shadow:0 0 6px #00e5ff;">
-             👁 View Access
-          </a>
-        </div>
-      </div>`;
-  }
-
-  // ── Place Product DNFTs in the 3D scene at depth positions ─────────────────
-  // Products are sorted newest-first; newest appears closest to the camera (Z near 0),
-  // oldest is deepest (most negative Z). Each product is spaced 8 units apart.
+  // Registration/listing order is a browsing sequence, not a verified mint date.
   _placeGalleryProducts(products) {
     if (!this.scene) return;
-    const generation = ++this._galleryGeneration;
+    this._flightPanel.hidden = false;
+    ++this._galleryGeneration;
 
     // Remove previously placed gallery sprites
-    for (const { sprite, badge } of Object.values(this._productSprites)) {
+    for (const { sprite, badge, flipButton } of Object.values(this._productSprites)) {
       this.scene.remove(sprite);
       disposeCollectible(sprite);
+      flipButton?.remove();
       if (badge) { this.scene.remove(badge); disposeCollectible(badge); }
     }
     this._productSprites = {};
@@ -580,81 +482,45 @@ class DecentCanvas extends HTMLElement {
     // Clear escrow sprites so the gallery has a clean 3D view
     this._clearEscrowSprites();
 
-    const spacing = 8;
+    const selectedKey = this._selectedEdition;
     products.forEach((product, idx) => {
-      const x = 0;
-      const z = -(idx + 1) * spacing; // newest → -8, next → -16, …
-      const tokenId = product.tokenId;
+      const { x, y, z } = timelinePosition(idx);
+      const tokenId = product.tokenId, key = assetKey(product);
+      const sprite = createMarketCoin(THREE, product, { onError: message => {
+        console.error('[Market artwork]', message);
+        document.dispatchEvent(new CustomEvent('market:gallery-status', { detail: { error: message } }));
+      } });
+      sprite.position.set(x, y, z);
+      Object.assign(sprite.userData, { tokenId, x, z, metadata: product.metadata, isProduct: true });
+      sprite.userData.showBack = this._coinBacks.has(key);
+      sprite.rotation.y = sprite.userData.showBack ? Math.PI : 0;
+      sprite.onClick = () => {
+        document.dispatchEvent(new CustomEvent("gallery:highlight-card", { detail: { tokenId } }));
+        this.uiLayer.dispatchEvent(new CustomEvent('open-nft-modal', { detail: { product } }));
+      };
+      this.scene.add(sprite);
 
-      const faces = collectibleFaces(product.metadata);
-      const displayImg = faces.front;
-      if (!displayImg) return;
-
-      const textureLoader = new THREE.TextureLoader();
-      textureLoader.load(displayImg, (texture) => {
-        if (generation !== this._galleryGeneration) { texture.dispose(); return; }
-        const sprite = createCollectibleDisplay(THREE, texture);
-        sprite.position.set(x, 0.5, z);
-        sprite.userData = { tokenId, x, z, metadata: product.metadata, isProduct: true };
-
-        sprite.onClick = () => {
-          // Highlight the corresponding gallery card (canvas → panel sync)
-          document.dispatchEvent(new CustomEvent("gallery:highlight-card", { detail: { tokenId } }));
-          // Open NFT detail modal
-          if (typeof this.uiLayer.dispatchEvent === 'function') {
-            this.uiLayer.dispatchEvent(new CustomEvent('open-nft-modal', {
-              detail: { x, y: z, token: displayImg, metadata: product.metadata, isProduct: true, purchaseUrl: product.purchaseUrl },
-            }));
-          }
-        };
-
-        this.scene.add(sprite);
-
-        // Gold glow ring + label badge
-        const badgeCanvas = document.createElement('canvas');
-        badgeCanvas.width = 256;
-        badgeCanvas.height = 256;
-        const ctx = badgeCanvas.getContext('2d');
-        ctx.shadowColor = '#ffd700';
-        ctx.shadowBlur = 30;
-        ctx.strokeStyle = '#ffd700';
-        ctx.lineWidth = 10;
-        ctx.beginPath();
-        ctx.arc(128, 128, 110, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.shadowBlur = 8;
-        ctx.fillStyle = '#ffd700';
-        ctx.font = 'bold 24px monospace';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('🗿 DNFT', 128, 200);
-        const badgeTexture = new THREE.CanvasTexture(badgeCanvas);
-        const badgeMat = new THREE.SpriteMaterial({ map: badgeTexture, transparent: true, opacity: 0.85 });
-        const badge = new THREE.Sprite(badgeMat);
-        badge.position.set(x, 2.1, z);
-        badge.scale.set(3.2, 3.2, 1);
-        this.scene.add(badge);
-
-        this._productSprites[tokenId] = { sprite, badge, x, z };
-        if (faces.back) textureLoader.load(faces.back, back => {
-          if (generation !== this._galleryGeneration) { back.dispose(); return; }
-          const collectible = createCollectibleDisplay(THREE, texture, back);
-          collectible.position.copy(sprite.position);
-          collectible.userData = { ...sprite.userData, twoSided: true };
-          collectible.onClick = sprite.onClick;
-          this.scene.remove(sprite);
-          sprite.material.dispose();
-          this.scene.add(collectible);
-          this._productSprites[tokenId].sprite = collectible;
-          badge.position.set(x, 2.55, z);
-          badge.scale.set(.75, .75, 1);
-        }, undefined, error => {
-          console.warn(`Gallery: back image unavailable for token #${tokenId}; retaining front:`, error);
-        });
-      }, undefined, (err) => {
-        console.warn(`Gallery: failed to load image for token #${tokenId}:`, displayImg, err);
-      });
+      const flipButton = document.createElement('button');
+      flipButton.hidden = true;
+      flipButton.type = 'button';
+      flipButton.className = 'market-coin-flip';
+      flipButton.textContent = '↻';
+      flipButton.setAttribute('aria-label', `Flip ${product.metadata?.name || `DNFT #${tokenId}`} coin`);
+      flipButton.setAttribute('aria-pressed', String(sprite.userData.showBack));
+      flipButton.title = 'Flip coin';
+      flipButton.onclick = () => {
+        sprite.userData.showBack = !sprite.userData.showBack;
+        if (sprite.userData.showBack) this._coinBacks.add(key); else this._coinBacks.delete(key);
+        flipButton.setAttribute('aria-pressed', String(sprite.userData.showBack));
+      };
+      this.append(flipButton);
+      this._productSprites[key] = { sprite, flipButton, product, x, y, z };
     });
+    this._flightKeys = products.map(assetKey);
+    const index = this._flightKeys.indexOf(selectedKey);
+    const wasOverview = this._overview !== false;
+    this._visitEdition(Math.max(0, index), !selectedKey || index < 0);
+    if (wasOverview) this._overviewFlight();
   }
 
   // ── Resolve ipfs:// URI to an HTTP gateway URL (canvas helper) ──────────────
@@ -683,9 +549,10 @@ class DecentCanvas extends HTMLElement {
     this._galleryGeneration++;
 
     // Clear regular gallery sprites — escrow view is mutually exclusive
-    for (const { sprite, badge } of Object.values(this._productSprites)) {
+    for (const { sprite, badge, flipButton } of Object.values(this._productSprites)) {
       this.scene.remove(sprite);
       disposeCollectible(sprite);
+      flipButton?.remove();
       if (badge) { this.scene.remove(badge); disposeCollectible(badge); }
     }
     this._productSprites = {};
@@ -776,12 +643,8 @@ class DecentCanvas extends HTMLElement {
     this.createStarSprites();
   }
 
-  setSpeed(val) {
-    this.speedValue = val;
-  }
 }
 
 customElements.define('decent-canvas', DecentCanvas);
-import { marketEthereum, marketBrowserProvider } from '../market-wallet.mjs';
 import { resolveMarketAsset } from '../market-gallery.mjs';
 import { defaultFilters, filterDnfts } from '../market-filters.mjs';

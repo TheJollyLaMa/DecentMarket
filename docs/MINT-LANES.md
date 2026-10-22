@@ -36,12 +36,17 @@ browser tests mock it and never send real submissions or signatures.
 
 **Filter DNFTs in space** replaces the public Supporter release dropdown.
 Choose All, Regular, Supporter or Music/video and search title, artist, repo,
-version or token ID. Reset restores all. Filters apply to loaded Market
+version or token ID. Availability defaults to verified **Listed for sale**;
+**All minted editions** includes minted, unlisted products but excludes unminted
+registrations. Reset restores the sale-first view. Listing-check status and
+Browse / purchase live inside this panel. Filters apply to loaded Market
 collection products and escrow views, not every arbitrary NFT on Base.
-Refresh reloads the Base collection. Registered products load newest-first,
+Refresh rechecks listings and, in all-minted mode, reloads the Base collection.
+Registered products load newest-first,
 with visible partial-read status and no connection prompt.
-Entry loads only verified prepared releases; opening filters or the gallery
-loads the full collection on demand, avoiding an unsolicited scan on each visit.
+Entry loads verified prepared releases and discovers active Base escrow listings;
+choosing all minted editions or opening the gallery loads the full collection
+on demand. Opening sale filters alone does not start a collection scan.
 Public RPC batches are capped at ten calls.
 
 Prepared release verification still runs in the background and attaches the
@@ -59,8 +64,10 @@ documentation and vendor chain-icon support remain historical records, not
 active contract routing. Base is the operational default.
 
 The Market host hides the shared Header's **Open MetaMask** deep-link in both
-page contexts without editing the frozen Head distribution. The fox and the
-explicit no-injected-wallet message remain.
+page contexts without editing the frozen Head distribution. The fox remains;
+the redundant no-injected-wallet message and IPFS provider caption are hidden.
+Wallet connection errors are not hidden. The title is "Decent Market" with
+word-boundary-only wrapping and subtitle "(Another Decent Frankenstein)".
 
 ## Tests
 

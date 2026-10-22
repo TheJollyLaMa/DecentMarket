@@ -10,7 +10,6 @@ class DecentFoot extends HTMLElement {
     const camera = canvasEl?.camera;
     const starSprites = canvasEl?.starSprites;
     const createEmojiTexture = (emoji) => canvasEl?.createEmojiTexture(emoji);
-    const setSpeed = (val) => canvasEl?.setSpeed(val);
 
     let cannonAngle = 0;
     // --- Cannon shooting system ---
@@ -67,6 +66,7 @@ class DecentFoot extends HTMLElement {
 
     // Build dial + controls
     const toggleWrapper = document.createElement('div');
+    toggleWrapper.className = 'market-footer-console';
     toggleWrapper.style.position = 'absolute';
     toggleWrapper.style.bottom = '10px';
     toggleWrapper.style.left = '50%';
@@ -117,7 +117,10 @@ class DecentFoot extends HTMLElement {
     dialWrapper.style.justifyContent = 'center';
     dialWrapper.style.background = '#111';
 
-    const centerDot = document.createElement('div');
+    const centerDot = document.createElement('button');
+    centerDot.type = 'button';
+    centerDot.setAttribute('aria-label', 'Inspect');
+    centerDot.title = 'Inspect selected DNFT';
     centerDot.style.width = '20px';
     centerDot.style.height = '20px';
     centerDot.style.background = '#fff';
@@ -152,7 +155,7 @@ class DecentFoot extends HTMLElement {
       dialWrapper.appendChild(btn);
     });
 
-    // Speed dial
+    // Flight and cannon dial
     const speedDial = document.createElement('div');
     speedDial.style.position = 'relative';
     speedDial.style.width = '100px';
@@ -166,72 +169,10 @@ class DecentFoot extends HTMLElement {
     speedDial.style.marginLeft = '30px';
     speedDial.style.color = '#fff';
 
-    for (let tickAngle = 210; tickAngle <= 330; tickAngle += 10) {
-      const tick = document.createElement('div');
-      tick.style.position = 'absolute';
-      tick.style.width = '2px';
-      tick.style.height = '8px';
-      tick.style.background = '#888';
-      const radius = 48;
-      const rad = tickAngle * (Math.PI / 180);
-      tick.style.left = `${50 + Math.cos(rad) * radius}%`;
-      tick.style.top = `${50 + Math.sin(rad) * radius}%`;
-      tick.style.transform = 'translate(-50%, -50%)';
-      speedDial.appendChild(tick);
-    }
-
-    const knob = document.createElement('div');
-    knob.style.position = 'absolute';
-    knob.style.width = '20px';
-    knob.style.height = '20px';
-    knob.style.background = '#0ff';
-    knob.style.border = '2px solid #fff';
-    knob.style.borderRadius = '50%';
-    knob.style.top = '50%';
-    knob.style.left = '50%';
-    knob.style.transform = 'translate(-50%, -50%)';
-    knob.style.cursor = 'pointer';
-    speedDial.appendChild(knob);
-
-    let isDragging = false;
-    let speedValue = 0;
-
-    function updateKnob(angle) {
-      if (angle < 210) angle = 210;
-      if (angle > 330) angle = 330;
-      const radius = 45;
-      const rad = angle * (Math.PI / 180);
-      knob.style.left = `${50 + Math.cos(rad) * radius}%`;
-      knob.style.top = `${50 + Math.sin(rad) * radius}%`;
-      const scaled = Math.round(((angle - 210) / 120) * 100);
-      speedValue = scaled;
-      setSpeed(scaled);
-    }
-
-    function handleDrag(x, y) {
-      const rect = speedDial.getBoundingClientRect();
-      const dx = x - (rect.left + rect.width / 2);
-      const dy = y - (rect.top + rect.height / 2);
-      let angle = Math.atan2(dy, dx) * (180 / Math.PI);
-      if (angle < 0) angle += 360;
-      updateKnob(angle);
-    }
-
-    speedDial.addEventListener('mousedown', e => {
-      isDragging = true;
-      handleDrag(e.clientX, e.clientY);
-    });
-    document.addEventListener('mousemove', e => {
-      if (isDragging) handleDrag(e.clientX, e.clientY);
-    });
-    document.addEventListener('mouseup', () => isDragging = false);
-
-    updateKnob(210);
-
     // Shooting mode toggle on the dial
     const shootSwitch = document.createElement('div');
     shootSwitch.style.position = 'absolute';
-    shootSwitch.style.bottom = '18px';
+    shootSwitch.style.bottom = '2px';
     shootSwitch.style.right = '28px';
     shootSwitch.style.width = '36px';
     shootSwitch.style.height = '18px';
@@ -282,8 +223,10 @@ class DecentFoot extends HTMLElement {
 
     // Discord
     const discordLink = document.createElement('a');
-    discordLink.href = 'https://discord.gg/tkBfwT3YMN';
+    discordLink.href = 'https://discord.gg/DvYjKwVgsF';
     discordLink.target = '_blank';
+    discordLink.rel = 'noopener noreferrer';
+    discordLink.setAttribute('aria-label', 'DecentAgency Discord');
     const discordIcon = document.createElement('img');
     discordIcon.src = 'img/discord.png';
     discordIcon.style.width = '30px';
@@ -314,23 +257,27 @@ class DecentFoot extends HTMLElement {
     toggleWrapper.appendChild(mailLink);
 
     this.appendChild(toggleWrapper);
+    const fitFooter = () => {
+      toggleWrapper.style.setProperty('--footer-scale', String(Math.min(1, (innerWidth - 16) / toggleWrapper.offsetWidth)));
+    };
+    this._footerResize = new ResizeObserver(fitFooter);
+    this._footerResize.observe(document.documentElement);
+    fitFooter();
+    const flight = canvasEl?._flightPanel;
+    if (flight) {
+      speedDial.append(flight);
+      flight.querySelector('[data-inspect]').hidden = true;
+      centerDot.onclick = () => flight.querySelector('[data-inspect]').click();
+      const syncInspect = () => { centerDot.disabled = flight.querySelector('[data-inspect]').disabled; };
+      new MutationObserver(syncInspect).observe(flight.querySelector('[data-inspect]'), { attributes:true, attributeFilter:['disabled'] });
+      syncInspect();
+      flight.addEventListener('pointerdown', event => event.stopPropagation());
+      flight.addEventListener('mousedown', event => event.stopPropagation());
+    }
 
     // Allow emoji picker to set background
     function setBackgroundEmojis(emojis) {
-      if (!scene || !starSprites || !createEmojiTexture) return;
-      for (const sprite of starSprites) scene.remove(sprite);
-      starSprites.length = 0;
-      for (let i = 0; i < 200; i++) {
-        const emoji = emojis[Math.floor(Math.random() * emojis.length)];
-        const texture = createEmojiTexture(emoji);
-        const material = new THREE.SpriteMaterial({ map: texture, transparent: true, opacity: 0.08 });
-        const sprite = new THREE.Sprite(material);
-        sprite.scale.set(Math.random() * 0.3 + 0.1, Math.random() * 0.3 + 0.1, 1);
-        sprite.position.set((Math.random() - 0.5) * 50, Math.random() * 10 + 2, (Math.random() - 0.5) * 50);
-        sprite.userData.isBackground = true;
-        starSprites.push(sprite);
-        scene.add(sprite);
-      }
+      canvasEl?.setRiverEmojis(emojis);
     }
   }
 }

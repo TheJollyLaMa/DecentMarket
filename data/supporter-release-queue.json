@@ -1,0 +1,51 @@
+{
+  "schema": "decent-market-release-preparation-1",
+  "status": "draft-not-mintable",
+  "terms": {
+    "chainId": 8453,
+    "quantity": "1000",
+    "priceUSDC": "10000000",
+    "royaltyBps": 1000,
+    "creatorAddress": "0x807061DF657A7697c04045dA7d16D941861cAABc"
+  },
+  "products": [
+    {
+      "repo": "TheJollyLaMa/DecentFooter",
+      "scope": "Market integration only; standalone extraction and validation pending",
+      "version": null,
+      "commit": null,
+      "codeArchiveCid": null,
+      "metadataURI": null,
+      "features": ["Integrated timeline arrows and zoom icons", "Current DecentAgency Discord invite", "Original-width emoji and flight dials without star-speed control"]
+    },
+    {
+      "repo": "TheJollyLaMa/DecentCanvas",
+      "scope": "Market integration only; standalone extraction and validation pending",
+      "version": null,
+      "commit": null,
+      "codeArchiveCid": null,
+      "metadataURI": null,
+      "features": ["Wide central-flight spiral and landing overview", "Double-sided five-point DNFT stars", "Gentle straight-on automatic background starfield", "At most two nearby flip controls", "Orbit, pan, zoom and edition navigation"]
+    },
+    {
+      "repo": "TheJollyLaMa/DecentMarket",
+      "scope": "Local preview awaiting approval and release freeze",
+      "version": null,
+      "commit": null,
+      "codeArchiveCid": null,
+      "metadataURI": null,
+      "features": ["Base verified sale-first marketplace", "ENS portals and steward display policy", "Embedded resumable Supporter mint studio"]
+    }
+  ],
+  "gates": [
+    "Approve UI and choose versions",
+    "Extract and test standalone Footer/Canvas before claiming their releases",
+    "Review repository license and attribution before packaging clones",
+    "Freeze exact source commits and pin source archives plus deployable website separately",
+    "Create dated versioned front/back art and animation; pin and validate metadata",
+    "Import schema-1 prepared manifests and matching metadata into Supporter Studio",
+    "Creator signs registration, mint, escrow transfer and listing; export progress after each step",
+    "Verify actual Base listing price and stock before advertising purchase",
+    "Keep Discord announcement activation separate"
+  ]
+}

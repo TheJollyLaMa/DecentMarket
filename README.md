@@ -5,21 +5,27 @@ A Decent Market With a Decent Head, a Decent Canvas, and a Decent Foot in a Web3
 
 Market and its Supporter Release Studio now adopt the unmodified released
 **DecentHead v2.0.0** foundation: shared selected-wallet session, ENS orbit,
-chain spark icons, themed About/IPFS dialogs and inert ankh menus.
+chain spark icons and themed About/IPFS dialogs. Host-only ankh actions open
+the ENS profile portal and Base steward controls without changing frozen vendor files.
 Pinata/local Kubo replace the active retired web3.storage upload path.
 See [adoption provenance, boundaries and validation](./docs/DECENTHEAD-ADOPTION.md).
 
-The first left sidepanel filters the DNFTs shown in 3D space. Prepared releases
+The first left sidepanel filters the DNFTs shown in 3D space, features verified
+for-sale editions by default, and can include all minted editions (not unminted
+registrations). Listing-check status and Browse / purchase live in this panel.
+Prepared releases
 are verified without connecting a wallet; click their collectible to review/buy.
 **DecentHead v2.0.0: Base token 70, escrow listing 0, 10 USDC per edition.**
-Stock and sale status are checked live; use the collectible's purchase link to review current
-terms before buying. Its mint/listing evidence is published on the
+Stock and sale status are checked live; use the collectible's card to review current
+terms and purchase one edition in Market. Its mint/listing evidence is published on the
 [official Head release](https://github.com/TheJollyLaMa/DecentHead/releases/tag/v2.0.0).
 Market's own next version and Supporter edition remain separate upcoming work.
 
 The right **Mint New DNFT** panel has Regular, Supporter (embedded Release
 Studio) and Music (Busking owner-approval submission) dropdowns.
 See [mint lanes, filters and music protocol boundaries](./docs/MINT-LANES.md).
+See [Base storefront, ENS portal and display moderation](./docs/MARKET-MAKEOVER.md)
+for the local makeover's release gates and read-only versus signing boundaries.
 
 ## Supported Networks
 
@@ -49,7 +55,11 @@ The current Base escrow accepts ETH, Base USDC, and Base BNUT deposits:
 | USD Coin | USDC | [`0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`](https://basescan.org/token/0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913) |
 | BigNuten Token | **$BNUT** | [`0x25ACb773159Af5a5c672DEfe31C7Fff6a9A93736`](https://basescan.org/token/0x25ACb773159Af5a5c672DEfe31C7Fff6a9A93736) |
 
-$BNUT is the BigNuten governance and rewards token. The Base token and escrow contracts are configured in the app; the escrow panel reads the selected network and any wallet can deposit BNUT after approving the escrow.
+$BNUT is the BigNuten governance and rewards token. The Base token and escrow
+contracts are configured in the app. Browse retains public Base treasury reads
+and subscription controls; owner tools are under the left steward ankh.
+The contract accepts BNUT deposits from any wallet after approval; the existing
+advanced deposit form is in the steward panel.
 
 See [`docs/ESCROW.md`](./docs/ESCROW.md) for:
 - Contract address and Etherscan link
@@ -63,13 +73,26 @@ See [`docs/ESCROW.md`](./docs/ESCROW.md) for:
 
 ### Two-sided Supporter editions
 
-The existing product gallery reads `image` for the front and
-`properties.back_image` for the back (HTTP(S) or `ipfs://`). Editions with both
-are displayed as thin rotating 3D collectibles, not flat sprites. The detail
-panel's **View back / View front** button also works with reduced motion enabled;
-automatic collectible rotation stops under that preference. Existing single-image
-tokens keep their sprite display. A failed back-image request is logged and keeps
-the front usable; changing galleries discards stale texture requests.
+The gallery reads `image` for the front and `properties.back_image` for the back
+(HTTP(S) or `ipfs://`). The makeover renders two-sided five-point stars with the
+edition name, live sale price/status and token identity on the coin itself.
+Single-image tokens get a generated information back. The small bottom flip
+button toggles each coin; hover does not turn or resize it.
+Larger coins follow a wide spiral browsing sequence, initially framed in overview.
+The existing footer has always-visible icon controls for
+newer/older travel, a timeline slider, Inspect, Zoom in, Back up and Reset view.
+The home icon restores the overview. Only two nearby coins can show flip controls.
+Scroll/pinch zoom and drag orbit/pan are enabled. This sequence is not a
+verified mint-date history. The Mandelblum video sphere is removed.
+Background stars gently fly straight toward the viewer continuously, independent
+of the DNFT spiral. There is no star-speed control; reduced motion stops travel.
+
+[Footer, Canvas and Market release preparation / clone handoff](./docs/SUPPORTER-RELEASE-HANDOFF.md)
+tracks the remaining source-freeze, packaging, artwork, mint and purchase gates.
+Click/tap opens a large, keyboard-accessible card with artwork,
+description, provenance and verified purchase controls. Reduced motion disables
+the flip transition, and the card's explicit **View back / View front** button
+still works. Missing artwork is reported and leaves the information coin usable.
 
 Version, release date, creator identity and the original $10 USDC price belong
 on the artwork and immutable metadata. They are historical release stamps, not

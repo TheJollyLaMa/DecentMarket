@@ -1,0 +1,56 @@
+name: Prepare Market Supporter release
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published Market release tag to freeze (never replaces existing manifest)
+        required: true
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: market-supporter-preparation
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install --with-deps chromium
+      - name: Render, pin and publish prepared assets (no wallet signing)
+        env:
+          TAG: ${{ inputs.tag }}
+          PINATA_JWT: ${{ secrets.PINATA_JWT }}
+          GH_TOKEN: ${{ github.token }}
+          BASE_URL: http://127.0.0.1:8793
+        run: |
+          python3 -m http.server 8793 --bind 127.0.0.1 > /tmp/market-render.log 2>&1 &
+          server=$!
+          trap 'kill "$server"' EXIT
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent --output /dev/null "$BASE_URL"; then break; fi
+            sleep 1
+          done
+          node scripts/prepare-supporter-release.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: market-supporter-preparation
+          path: |
+            supporter-preview.png
+            supporter-front.png
+            supporter-back.png
+            supporter-release.json
+            supporter-metadata.json
+            supporter-presentation.html
+            supporter-source.tar.gz
