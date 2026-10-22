@@ -82,6 +82,8 @@ async function main() {
   const artifact = await ethers.getContractFactory("contracts/DecentJukeBox_v0.4.sol:DecentJukeBox_v0_4", owner);
   const artifactJson = require("../artifacts/contracts/DecentJukeBox_v0.4.sol/DecentJukeBox_v0_4.json");
   const size = (artifactJson.deployedBytecode.length - 2) / 2;
+  const moduleArtifact = require("../artifacts/contracts/DJukePlaylistModule.sol/DJukePlaylistModule.json");
+  const moduleSize = (moduleArtifact.deployedBytecode.length - 2) / 2;
   const jukebox = await artifact.deploy(USDC, ROUTER, REPO, PINNERS, OWNER, WORKER_FORK, ethers.parseEther("0.001"), module.target, PLAYBACK, TOP_TEN);
   await jukebox.waitForDeployment();
   await confirmed(await jukebox.grantRole(await jukebox.REGISTRAR_ROLE(), OWNER), "Grant fork registrar role");
@@ -137,7 +139,7 @@ async function main() {
   }
 
   const radioIds = songs.slice(3, 5).map(song => song.songId);
-  const maxTotal = 5_500_000n, fulfillmentCostWei = 1_000_000n;
+  const maxTotal = 3_500_000n, fulfillmentCostWei = 1_000_000n;
   const radioNonce = await jukebox.gasQuoteNonces(listenerAddress);
   const radioDeadline = (await ethers.provider.getBlock("latest")).timestamp + 180;
   const songIdsHash = ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(["bytes32[]"], [radioIds]));
@@ -149,14 +151,15 @@ async function main() {
   const batchId = radioReceipt.logs.map(log => { try { return jukebox.interface.parseLog(log); } catch { return null; } })
     .find(event => event?.name === "PlaylistBatchRequested").args.batchId;
   for (let index = 0; index < radioIds.length; index++) {
-    const request = await jukebox.getRequest(BigInt(index + 1));
-    await confirmed(await workerContract.fulfill(BigInt(index + 1), radioIds[index], request.revision,
+    const laneId = BigInt(index);
+    const item = await jukebox.getPlaylistItem(laneId);
+    await confirmed(await workerContract.fulfillPlaylistSong(laneId, item.songId, 0,
       ethers.id(`fork-radio-${index}`)), `Radio item ${index + 1} fulfillment`);
   }
   const fundAfter = await Promise.all([PLAYBACK, TOP_TEN, PINNERS, REPO].map(id => router.fundBalances(id, USDC)));
-  // $5 fee: 45/45/8/2 → 2.25 / 2.25 / 0.40 / 0.10. Each 0.25 song adds 8% pinners (0.02) and 2% repo (0.005).
+  // $3 fee: 25/25/25/25 → 0.75 / 0.75 / 0.75 / 0.75. Songs settle separately at 90/8/2.
   const songs2 = BigInt(radioIds.length);
-  const expectedDeltas = [2_250_000n, 2_250_000n, 400_000n + 20_000n * songs2, 100_000n + 5_000n * songs2];
+  const expectedDeltas = [750_000n, 750_000n, 750_000n + 20_000n * songs2, 750_000n + 5_000n * songs2];
   const actualDeltas = fundAfter.map((value, index) => value - fundBefore[index]);
   if (actualDeltas.some((value, index) => value !== expectedDeltas[index]))
     throw new Error(`Four-fund radio fee/song split mismatch: actual ${actualDeltas.join("/")} expected ${expectedDeltas.join("/")}`);
@@ -172,20 +175,19 @@ async function main() {
     refundSignature, { value: fulfillmentCostWei * 4n }), "Refund-test playlist checkout");
   const refundedBatch = refundReceipt.logs.map(log => { try { return jukebox.interface.parseLog(log); } catch { return null; } })
     .find(event => event?.name === "PlaylistBatchRequested").args.batchId;
-  const firstRefundTestRequestId = await jukebox.headRequestId();
-  const firstRefundTest = await jukebox.getRequest(firstRefundTestRequestId);
-  await confirmed(await workerContract.fulfill(firstRefundTestRequestId, refundIds[0], firstRefundTest.revision,
+  const firstRefundLaneId = await jukebox.playlistHeadId();
+  await confirmed(await workerContract.fulfillPlaylistSong(firstRefundLaneId, refundIds[0], 0,
     ethers.id("fork-refund-prefix-proof")), "Refund-test delivered prefix");
   const payerBefore = await token.balanceOf(listenerAddress);
   await confirmed(await workerContract.refundUndeliveredPlaylist(refundedBatch), "Undelivered suffix + fee refund");
-  if (await token.balanceOf(listenerAddress) - payerBefore !== 5_250_000n) throw new Error("Refund did not cover only suffix song plus the reserved fee");
-  if (await jukebox.artistCredits(singleArtist) !== 0n || size > 24576) throw new Error("Direct settlement or EIP-170 check failed");
+  if (await token.balanceOf(listenerAddress) - payerBefore !== 3_250_000n) throw new Error("Refund did not cover only suffix song plus the reserved fee");
+  if (await jukebox.artistCredits(singleArtist) !== 0n || size > 24576 || moduleSize > 24576) throw new Error("Direct settlement or EIP-170 check failed");
 
   console.log(JSON.stringify({ mode: "in-process Base fork only", oldSourcePausedOnFork: await old.paused(),
     sourceBlock: blockTag, catalogSongs: songs.length, catalogHash, module: module.target, v0_4: jukebox.target,
-    runtimeBytes: size, headroom: 24576 - size, worker: WORKER_FORK, productionWorker: WORKER, singleSongDirectArtistPaid: true,
+    runtimeBytes: size, moduleRuntimeBytes: moduleSize, headroom: 24576 - size, moduleHeadroom: 24576 - moduleSize, worker: WORKER_FORK, productionWorker: WORKER, singleSongDirectArtistPaid: true,
     privatePlaylistDirectArtistPaid: true, radioBatchId: String(batchId), feeAndSongFundDeltas: fundAfter.map((v, i) => String(v - fundBefore[i])),
-    refundBatchId: String(refundedBatch), undeliveredSuffixAndFeeRefund: "5,250,000 USDC units",
+    refundBatchId: String(refundedBatch), undeliveredSuffixAndFeeRefund: "3,250,000 USDC units",
     routerAuthorizedBySuccessfulSettlement: true, realBaseTransactions: 0 }, null, 2));
   for (const address of [OWNER, WORKER, ROUTER]) await network.provider.request({ method: "hardhat_stopImpersonatingAccount", params: [address] });
 }
