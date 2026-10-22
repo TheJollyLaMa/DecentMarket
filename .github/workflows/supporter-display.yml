@@ -1,9 +1,9 @@
 name: Supporter collectible display
 on:
   push:
-    paths: ['js/**', 'vendor/**', 'data/**', 'img/ens/**', 'decent-head.config.js', 'index.html', 'css/**', 'test/supporter-*', 'test/market-*', 'supporter.html', 'releases/**', 'package*.json', '.github/workflows/supporter-display.yml']
+    paths: ['js/**', 'vendor/**', 'data/**', 'img/ens/**', 'scripts/*supporter*.mjs', 'decent-head.config.js', 'index.html', 'css/**', 'test/supporter-*', 'test/market-*', 'supporter.html', 'releases/**', 'package*.json', '.github/workflows/supporter-display.yml', '.github/workflows/supporter-release.yml']
   pull_request:
-    paths: ['js/**', 'vendor/**', 'data/**', 'img/ens/**', 'decent-head.config.js', 'index.html', 'css/**', 'test/supporter-*', 'test/market-*', 'supporter.html', 'releases/**', 'package*.json', '.github/workflows/supporter-display.yml']
+    paths: ['js/**', 'vendor/**', 'data/**', 'img/ens/**', 'scripts/*supporter*.mjs', 'decent-head.config.js', 'index.html', 'css/**', 'test/supporter-*', 'test/market-*', 'supporter.html', 'releases/**', 'package*.json', '.github/workflows/supporter-display.yml', '.github/workflows/supporter-release.yml']
 permissions:
   contents: read
 jobs:
@@ -44,3 +44,4 @@ jobs:
           npm run test:supporter:browser
           npm run test:supporter:embedded
           npm run test:market-adoption:browser
+          npm run test:supporter:artwork
