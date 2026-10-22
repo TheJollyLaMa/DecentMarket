@@ -77,7 +77,7 @@ contract DecentJukeBox_v0_1_v04 is AccessControl, ReentrancyGuard, Pausable, Mul
         return nextRequestId - headRequestId;
     }
 
-    function quote() public view returns (uint256) {
+    function quote() public view virtual returns (uint256) {
         uint256 tier = pendingCount() / TIER_SIZE;
         require(tier <= 238);
         return BASE_PRICE * (uint256(1) << tier);

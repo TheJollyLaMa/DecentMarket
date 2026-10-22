@@ -2,26 +2,24 @@
 pragma solidity ^0.8.26;
 
 import "./djuke/v04/DecentJukeBox_v0.2.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "./DJukePlaylistModule.sol";
 
-/// @notice DJuke candidate preserving v0.2 behavior with capability-gated named playlist checkout.
+/// @notice DJuke candidate preserving v0.2 behavior with a separately scheduled playlist lane.
 contract DecentJukeBox_v0_4 is DecentJukeBox_v0_2_v04 {
-    using SafeERC20 for IERC20;
     string public constant CONTRACT_VERSION = "0.4";
 
     struct ArtistLedger { uint256 totalPaid; uint256 payoutCount; }
     bytes32 private constant ARTIST_LEDGER_SLOT = keccak256("decentmarket.djuke.v0.4.artist-ledger.v1");
     event ArtistPaid(address indexed artist, uint256 amount, uint256 cumulativePaid);
-    uint256 private constant MAX_PLAYLIST_SONGS = 10;
-    uint256 private constant PLAYLIST_BASE_RATE = 250_000;
-    uint256 private constant RADIO_PLAYLIST_FEE = 5_000_000;
     address public immutable playlistModule;
     bytes32 public immutable playbackFundId;
     bytes32 public immutable topTenFundId;
 
     event PlaylistBatchRequested(uint256 indexed batchId, address indexed payer, bytes32[] songIds,
-        uint256 baseSubtotal, uint256 radioFee, uint256 firstRequestId);
+        uint256 subtotal, uint256 fee, uint256 firstLaneId);
+    event PlaylistSongDelivered(uint256 indexed laneId, uint256 indexed batchId, bytes32 indexed songId,
+        uint256 amount, bytes32 playbackProof);
+    event PlaylistSongRefunded(uint256 indexed laneId, uint256 indexed batchId, uint256 amount);
     event PlaylistBatchFeeSettled(uint256 indexed batchId, uint256 fee, uint256 playback, uint256 topTen,
         uint256 pinners, uint256 repoDev);
     event PlaylistBatchFeeRefunded(uint256 indexed batchId, address indexed payer, uint256 fee);
@@ -37,8 +35,36 @@ contract DecentJukeBox_v0_4 is DecentJukeBox_v0_2_v04 {
         topTenFundId = topTenFund;
     }
 
-    function quotePlaylist(bytes32[] calldata songIds, bool radio) external view returns (uint256, uint256, uint256) {
-        return DJukePlaylistModule(playlistModule).quotePlaylist(songIds, radio);
+    function quote() public view override returns (uint256) {
+        uint256 tier = (pendingCount() + playlistPendingCount()) / TIER_SIZE;
+        require(tier <= 238);
+        return BASE_PRICE * (uint256(1) << tier);
+    }
+
+    function playlistPendingCount() public view returns (uint256) {
+        return PlaylistLaneStorage.state().playlistPendingCount;
+    }
+
+    function totalPendingCount() external view returns (uint256) {
+        return pendingCount() + playlistPendingCount();
+    }
+
+    function playlistHeadId() external view returns (uint256) {
+        return PlaylistLaneStorage.state().playlistHeadId;
+    }
+
+    function playlistNextId() external view returns (uint256) {
+        return PlaylistLaneStorage.state().playlistNextId;
+    }
+
+    function getPlaylistItem(uint256 laneId) external view returns (uint256 batchId, bytes32 songId, address payer, uint256 amount, uint8 status) {
+        require(laneId < PlaylistLaneStorage.state().playlistNextId, "Unknown playlist item");
+        PlaylistLaneStorage.Item storage item = PlaylistLaneStorage.state().items[laneId];
+        return (item.batchId, item.songId, item.payer, item.amount, item.status);
+    }
+
+    function quotePlaylist(bytes32[] calldata songIds, bool radio) external view returns (uint256 subtotal, uint256 fee, uint256 total) {
+        return DJukePlaylistModule(playlistModule).quotePlaylist(address(this), songIds, radio);
     }
 
     function purchasePlaylistPrivate(bytes32[] calldata songIds, uint256 maxTotal) external whenNotPaused nonReentrant returns (uint256) {
@@ -51,32 +77,35 @@ contract DecentJukeBox_v0_4 is DecentJukeBox_v0_2_v04 {
             (songIds, maxTotal, fulfillmentCostWei, deadline, signature))), (uint256));
     }
 
-    function refundUndeliveredPlaylist(uint256 batchId) external onlyRole(FULFILLER_ROLE) {
+    function fulfillPlaylistSong(uint256 laneId, bytes32 expectedSongId, uint256 expectedRevision, bytes32 playbackProof)
+        external onlyRole(FULFILLER_ROLE) nonReentrant {
+        _delegate(abi.encodeCall(DJukePlaylistModule.fulfillPlaylistSong,
+            (laneId, expectedSongId, expectedRevision, playbackProof)));
+    }
+
+    function refundUndeliveredPlaylist(uint256 batchId) external onlyRole(FULFILLER_ROLE) nonReentrant {
         _delegate(abi.encodeCall(DJukePlaylistModule.refundUndeliveredPlaylist, (batchId)));
-    }
-
-    function enqueuePlaylistSong(bytes32 songId, address payer) external returns (uint256 requestId) {
-        require(msg.sender == address(this) && payer != address(0), "Playlist module only");
-        Song storage song = _songs[songId];
-        require(song.enabled, "Song unavailable");
-        requestId = nextRequestId++;
-        Request storage request = _requests[requestId];
-        request.songId = songId;
-        request.payer = payer;
-        request.amount = PLAYLIST_BASE_RATE;
-        request.recipients = song.recipients;
-        request.sharesBps = song.sharesBps;
-        emit PlayRequested(requestId, songId, payer, PLAYLIST_BASE_RATE);
-    }
-
-    function refundPlaylistRequest(uint256 requestId) external {
-        require(msg.sender == address(this), "Playlist module only");
-        _refundRequestAtHead(requestId);
     }
 
     function consumePlaylistNonce(address listener) external returns (uint256 nonce) {
         require(msg.sender == address(this), "Playlist module only");
         nonce = gasQuoteNonces[listener]++;
+    }
+
+    function playlistListenPrice(bytes32 songId) external view returns (uint256) {
+        return _listenPrice(songId);
+    }
+
+    function settlePlaylistSong(address[] calldata recipients, uint16[] calldata sharesBps, uint256 amount, bytes32 proof) external {
+        require(msg.sender == address(this), "Playlist module only");
+        require(proof != bytes32(0) && !usedPlaybackProofs[proof], "Invalid playback proof");
+        usedPlaybackProofs[proof] = true;
+        uint256 artistAmount = amount * 9000 / 10000;
+        uint256 repoAmount = amount * REPO_DEV_SHARE_BPS / 10000;
+        address[] memory payees = recipients;
+        uint16[] memory shares = sharesBps;
+        _delegate(abi.encodeCall(DJukePlaylistModule.creditArtists, (payees, shares, artistAmount)));
+        _depositRepoFund(repoAmount, amount - artistAmount - repoAmount, proof);
     }
 
     function artistLedger(address artist) external view returns (uint256 totalPaid, uint256 payoutCount) {
@@ -88,11 +117,6 @@ contract DecentJukeBox_v0_4 is DecentJukeBox_v0_2_v04 {
         address[] memory payees = recipients;
         uint16[] memory shares = sharesBps;
         _delegate(abi.encodeCall(DJukePlaylistModule.creditArtists, (payees, shares, artistAmount)));
-    }
-
-    function _afterRequestResolved(uint256 requestId, Request storage, bool delivered) internal override {
-        _delegate(abi.encodeCall(DJukePlaylistModule.afterRequestResolved,
-            (requestId, delivered, playbackFundId, topTenFundId)));
     }
 
     function _delegate(bytes memory data) private returns (bytes memory result) {
