@@ -42,8 +42,12 @@ async function main() {
   if (!process.env.BASE_FORK_RPC || Number((await ethers.provider.getNetwork()).chainId) !== 8453) {
     throw new Error("Set BASE_FORK_RPC=https://mainnet.base.org; this rehearsal mutates only the in-process fork");
   }
+  // Hardhat cannot execute calls at the fork block itself on Base (no hardfork history); read from local blocks.
+  await ethers.provider.send("hardhat_mine", ["0x3"]);
   const owner = await impersonate(OWNER);
-  const worker = await impersonate(WORKER);
+  // Impersonated accounts cannot sign EIP-712 quotes; the fork deploy uses a local key as the worker stand-in.
+  const [worker] = await ethers.getSigners();
+  const WORKER_FORK = worker.address;
   const router = new ethers.Contract(ROUTER, ROUTER_ABI, ethers.provider);
   const token = new ethers.Contract(USDC, USDC_ABI, ethers.provider);
   const old = new ethers.Contract(LIVE, OLD_ABI, owner);
@@ -59,7 +63,7 @@ async function main() {
   const response = await fetch("https://decentbusking.onrender.com/api/djuke", { signal: AbortSignal.timeout(30000) });
   if (!response.ok) throw new Error(`DJuke snapshot failed (${response.status})`);
   const snapshot = await response.json();
-  if (snapshot.contractAddress?.toLowerCase() !== LIVE.toLowerCase() || snapshot.paymentsEnabled !== false ||
+  if (snapshot.contractAddress?.toLowerCase() !== LIVE.toLowerCase() || (snapshot.paymentsEnabled !== false && process.env.REHEARSE_WITH_PAYMENTS_ENABLED !== "1") ||
       snapshot.requests?.length || snapshot.catalogReadErrors || !snapshot.tracks?.length) throw new Error("Source snapshot is not complete and read-only");
   const blockTag = await ethers.provider.getBlockNumber() - 2;
   const block = await ethers.provider.getBlock(blockTag);
@@ -78,10 +82,10 @@ async function main() {
   const artifact = await ethers.getContractFactory("contracts/DecentJukeBox_v0.4.sol:DecentJukeBox_v0_4", owner);
   const artifactJson = require("../artifacts/contracts/DecentJukeBox_v0.4.sol/DecentJukeBox_v0_4.json");
   const size = (artifactJson.deployedBytecode.length - 2) / 2;
-  const jukebox = await artifact.deploy(USDC, ROUTER, REPO, PINNERS, OWNER, WORKER, ethers.parseEther("0.001"), module.target, PLAYBACK, TOP_TEN);
+  const jukebox = await artifact.deploy(USDC, ROUTER, REPO, PINNERS, OWNER, WORKER_FORK, ethers.parseEther("0.001"), module.target, PLAYBACK, TOP_TEN);
   await jukebox.waitForDeployment();
   await confirmed(await jukebox.grantRole(await jukebox.REGISTRAR_ROLE(), OWNER), "Grant fork registrar role");
-  await confirmed(await jukebox.grantRole(await jukebox.FULFILLER_ROLE(), WORKER), "Grant fork worker role");
+  await confirmed(await jukebox.grantRole(await jukebox.FULFILLER_ROLE(), WORKER_FORK), "Grant fork worker role");
   for (let start = 0; start < songs.length; start += 20) {
     const batch = songs.slice(start, start + 20);
     const calls = batch.map(song => jukebox.interface.encodeFunctionData("registerSong", [song.songId, song.audioURI, song.recipients, song.sharesBps]));
@@ -89,8 +93,9 @@ async function main() {
   }
   if (await jukebox.CONTRACT_VERSION() !== "0.4") throw new Error("Wrong v0.4 artifact deployed to fork");
   const workerContract = jukebox.connect(worker);
-  const listener = owner;
-  const listenerAddress = OWNER;
+  // A separate listener keeps payment and artist balance deltas independent (the owner is also a catalog artist).
+  const [, listener] = await ethers.getSigners();
+  const listenerAddress = listener.address;
   const topUp = 20_000_000n;
   const routerSigner = await impersonate(ROUTER);
   await confirmed(await new ethers.Contract(USDC, USDC_ABI, routerSigner).transfer(listenerAddress, topUp), "Fork-only listener USDC seed");
@@ -112,10 +117,24 @@ async function main() {
   if (await token.balanceOf(singleArtist) - singleArtistBefore !== 225_000n) throw new Error("Single-song artist was not paid directly");
 
   const privateIds = songs.slice(1, 3).map(song => song.songId);
-  const privateArtist = (await jukebox.getSong(privateIds[0])).recipients[0];
-  const privateBefore = await token.balanceOf(privateArtist);
+  // Expected direct payout per recipient: 90% of 0.25 USDC per song, split by that song's shares (last share takes rounding).
+  const expected = new Map();
+  for (const songId of privateIds) {
+    const song = await jukebox.getSong(songId);
+    let paid = 0n;
+    song.recipients.forEach((recipient, i) => {
+      const share = i + 1 === song.recipients.length ? 225_000n - paid : 225_000n * BigInt(song.sharesBps[i]) / 10000n;
+      paid += share;
+      expected.set(recipient, (expected.get(recipient) || 0n) + share);
+    });
+  }
+  const privateBefore = new Map();
+  for (const recipient of expected.keys()) privateBefore.set(recipient, await token.balanceOf(recipient));
   await confirmed(await jukebox.connect(listener).purchasePlaylistPrivate(privateIds, 500_000), "Private playlist purchase");
-  if (await token.balanceOf(privateArtist) - privateBefore !== 450_000n) throw new Error("Private playlist artists were not paid directly");
+  for (const [recipient, amount] of expected) {
+    const delta = await token.balanceOf(recipient) - privateBefore.get(recipient);
+    if (delta !== amount) throw new Error(`Private playlist artist ${recipient} received ${delta}, expected ${amount}`);
+  }
 
   const radioIds = songs.slice(3, 5).map(song => song.songId);
   const maxTotal = 5_500_000n, fulfillmentCostWei = 1_000_000n;
@@ -135,8 +154,12 @@ async function main() {
       ethers.id(`fork-radio-${index}`)), `Radio item ${index + 1} fulfillment`);
   }
   const fundAfter = await Promise.all([PLAYBACK, TOP_TEN, PINNERS, REPO].map(id => router.fundBalances(id, USDC)));
-  const expectedDeltas = [2_250_000n, 2_250_000n, 600_000n, 150_000n];
-  if (fundAfter.some((value, index) => value - fundBefore[index] !== expectedDeltas[index])) throw new Error("Four-fund radio fee/song split mismatch");
+  // $5 fee: 45/45/8/2 → 2.25 / 2.25 / 0.40 / 0.10. Each 0.25 song adds 8% pinners (0.02) and 2% repo (0.005).
+  const songs2 = BigInt(radioIds.length);
+  const expectedDeltas = [2_250_000n, 2_250_000n, 400_000n + 20_000n * songs2, 100_000n + 5_000n * songs2];
+  const actualDeltas = fundAfter.map((value, index) => value - fundBefore[index]);
+  if (actualDeltas.some((value, index) => value !== expectedDeltas[index]))
+    throw new Error(`Four-fund radio fee/song split mismatch: actual ${actualDeltas.join("/")} expected ${expectedDeltas.join("/")}`);
 
   const refundIds = songs.slice(5, 7).map(song => song.songId);
   const refundNonce = await jukebox.gasQuoteNonces(listenerAddress);
@@ -160,7 +183,7 @@ async function main() {
 
   console.log(JSON.stringify({ mode: "in-process Base fork only", oldSourcePausedOnFork: await old.paused(),
     sourceBlock: blockTag, catalogSongs: songs.length, catalogHash, module: module.target, v0_4: jukebox.target,
-    runtimeBytes: size, headroom: 24576 - size, worker: WORKER, singleSongDirectArtistPaid: true,
+    runtimeBytes: size, headroom: 24576 - size, worker: WORKER_FORK, productionWorker: WORKER, singleSongDirectArtistPaid: true,
     privatePlaylistDirectArtistPaid: true, radioBatchId: String(batchId), feeAndSongFundDeltas: fundAfter.map((v, i) => String(v - fundBefore[i])),
     refundBatchId: String(refundedBatch), undeliveredSuffixAndFeeRefund: "5,250,000 USDC units",
     routerAuthorizedBySuccessfulSettlement: true, realBaseTransactions: 0 }, null, 2));
