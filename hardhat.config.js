@@ -15,6 +15,14 @@ module.exports = {
         version: "0.8.26",
         settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: "cancun", viaIR: true },
       },
+      "contracts/DecentJukeBox_v0.3.sol": {
+        version: "0.8.26",
+        settings: { optimizer: { enabled: true, runs: 1 }, evmVersion: "cancun", viaIR: true },
+      },
+      "contracts/DJukePlaylistModule.sol": {
+        version: "0.8.26",
+        settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: "cancun", viaIR: true },
+      },
     },
   },
   networks: {

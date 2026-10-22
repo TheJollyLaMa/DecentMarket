@@ -58,6 +58,7 @@ contract DecentJukeBox_v0_1 is AccessControl, ReentrancyGuard, Pausable, Multica
     event PlayRequested(uint256 indexed requestId, bytes32 indexed songId, address indexed payer, uint256 amount);
     event RequestReplaced(uint256 indexed requestId, bytes32 indexed previousSongId, bytes32 indexed songId, uint256 revision);
     event PlayFulfilled(uint256 indexed requestId, bytes32 indexed songId, bytes32 playbackProof, uint256 fundAmount);
+    event RequestRefunded(uint256 indexed requestId, bytes32 indexed songId, address indexed payer, uint256 amount);
     event ArtistWithdrawal(address indexed artist, uint256 amount);
     event ListensPurchased(uint256 indexed purchaseId, address indexed listener, bytes32[] songIds, uint256 amount);
     event PinnerFundContribution(bytes32 indexed source, uint256 amount);
@@ -128,17 +129,25 @@ contract DecentJukeBox_v0_1 is AccessControl, ReentrancyGuard, Pausable, Multica
     }
 
     function _requestPlay(bytes32 songId, uint256 maxPrice) internal returns (uint256 requestId) {
-        Song storage song = _songs[songId];
-        require(song.enabled, "Song unavailable");
         uint256 amount = quote();
         require(amount <= maxPrice, "Price exceeds approval");
+        return _requestPlayAtPrice(songId, amount);
+    }
+
+    function _requestPlayAtPrice(bytes32 songId, uint256 amount) internal returns (uint256 requestId) {
         uint256 balanceBefore = paymentToken.balanceOf(address(this));
         paymentToken.safeTransferFrom(msg.sender, address(this), amount);
         require(paymentToken.balanceOf(address(this)) - balanceBefore == amount, "Exact payment required");
+        return _enqueuePaidRequest(songId, amount, msg.sender);
+    }
+
+    function _enqueuePaidRequest(bytes32 songId, uint256 amount, address payer) internal returns (uint256 requestId) {
+        Song storage song = _songs[songId];
+        require(song.enabled, "Song unavailable");
         requestId = nextRequestId++;
         Request storage request = _requests[requestId];
         request.songId = songId;
-        request.payer = msg.sender;
+        request.payer = payer;
         request.amount = amount;
         request.recipients = song.recipients;
         request.sharesBps = song.sharesBps;
@@ -171,7 +180,21 @@ contract DecentJukeBox_v0_1 is AccessControl, ReentrancyGuard, Pausable, Multica
         uint256 repoDevAmount = request.amount * REPO_DEV_SHARE_BPS / 10000;
         _creditArtists(request.recipients, request.sharesBps, artistAmount);
         _depositRepoFund(repoDevAmount, request.amount * PINNER_SHARE_BPS / 10000, playbackProof);
+        _afterRequestResolved(requestId, request, true);
         emit PlayFulfilled(requestId, request.songId, playbackProof, repoDevAmount);
+    }
+
+    function _afterRequestResolved(uint256, Request storage, bool) internal virtual {}
+
+    function _refundRequestAtHead(uint256 requestId) internal {
+        require(requestId == headRequestId && requestId < nextRequestId, "Refund FIFO head only");
+        Request storage request = _requests[requestId];
+        require(!request.fulfilled, "Request already resolved");
+        request.fulfilled = true;
+        headRequestId++;
+        paymentToken.safeTransfer(request.payer, request.amount);
+        _afterRequestResolved(requestId, request, false);
+        emit RequestRefunded(requestId, request.songId, request.payer, request.amount);
     }
 
     /// @notice On-demand personal listens; never touches the radio queue.
