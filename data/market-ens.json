@@ -1,0 +1,15 @@
+{
+  "name": "decentmarket.decentagency.eth",
+  "parent": "decentagency.eth",
+  "status": "prepared-not-published",
+  "textRecords": {
+    "url": "https://thejollylama.github.io/DecentMarket/",
+    "avatar": "https://thejollylama.github.io/DecentMarket/img/ens/market-avatar.png",
+    "header": "https://thejollylama.github.io/DecentMarket/img/ens/market-header.png",
+    "description": "Decent Market (Another Decent Frankenstein). A Base marketplace for creative work and versioned Supporter editions.",
+    "com.github": "TheJollyLaMa/DecentMarket"
+  },
+  "contenthash": null,
+  "address": null,
+  "releaseGate": "Approve and freeze the version, pin the deployable website directory, verify its root CID, then set contenthash through the ENS manager with the authorized parent/subname wallet. A source ZIP is not a website contenthash."
+}

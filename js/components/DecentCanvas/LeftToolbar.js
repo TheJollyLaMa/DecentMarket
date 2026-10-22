@@ -1,7 +1,15 @@
 import { defaultFilters } from '../../market-filters.mjs';
+import { openMarketCatalog } from '../../market-card.mjs';
 
 class LeftToolbar extends HTMLElement {
   connectedCallback() {
+    this._listingStatus = 'Reading Base listings...';
+    this._onListingStatus = event => {
+      this._listingStatus = event.detail.text;
+      const status = this.filterPanel?.querySelector('[data-listings]');
+      if (status) status.textContent = this._listingStatus;
+    };
+    document.addEventListener('market:listing-status', this._onListingStatus);
     this.style.display = 'flex';
     this.style.flexDirection = 'column';
     this.style.alignItems = 'center';
@@ -30,6 +38,11 @@ class LeftToolbar extends HTMLElement {
       });
       this.appendChild(btn);
     }
+  }
+
+  disconnectedCallback() {
+    document.removeEventListener('market:listing-status', this._onListingStatus);
+    this.filterPanel?.remove();
   }
 
   showModal(id) {
@@ -67,29 +80,46 @@ class LeftToolbar extends HTMLElement {
     const existing = document.getElementById('modal-space-filters');
     if (existing) { existing.remove(); return; }
     const panel = document.createElement('section');
+    this.filterPanel = panel;
     panel.id = 'modal-space-filters';
     panel.className = 'market-sidepanel market-filter-panel';
     panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'Filter DNFTs in space');
     const filters = this.filters ||= { ...defaultFilters };
     panel.innerHTML = `<header><h2>DNFTs in space</h2><button type="button" data-close aria-label="Close filters">×</button></header>
+      <label>Availability<select name="availability"><option value="sale">Listed for sale</option><option value="minted">All minted editions</option></select></label>
       <label>Show<select name="category"><option value="all">All DNFTs</option><option value="regular">Regular DNFTs</option><option value="supporter">Supporter DNFTs</option><option value="music">Music / video DNFTs</option></select></label>
       <label>Search<input name="search" type="search" placeholder="Title, artist, repository or token ID"></label>
-      <p>Base editions only. Filters affect the 3D space, including escrow view. They do not change ownership or sale status.</p>
+      <p>Minted Market products and funded Base escrow editions, not every NFT on Base. For-sale view shows only offers verified ready to purchase. Unminted registrations are excluded.</p>
+      <p role="status" data-listings></p>
+      <button type="button" data-browse>Browse / purchase</button>
       <button type="button" data-reset>Reset filters</button><button type="button" data-reload>Refresh Base editions</button>
       <p role="status" data-count>Loading editions…</p>`;
     panel.querySelector('[name="category"]').value = filters.category;
+    panel.querySelector('[name="availability"]').value = filters.availability;
+    panel.querySelector('[data-listings]').textContent = this._listingStatus;
     panel.querySelector('[name="search"]').value = filters.search;
     const emit = () => {
       filters.category = panel.querySelector('[name="category"]').value;
+      filters.availability = panel.querySelector('[name="availability"]').value;
       filters.search = panel.querySelector('[name="search"]').value;
       document.dispatchEvent(new CustomEvent('market:filters', { detail: { ...filters } }));
+      if (filters.availability === 'minted') document.dispatchEvent(new Event('market:load-gallery'));
     };
-    panel.querySelector('select').onchange = emit;
+    panel.querySelectorAll('select').forEach(select => { select.onchange = emit; });
     panel.querySelector('input').oninput = emit;
     panel.querySelector('[data-reset]').onclick = () => {
-      panel.querySelector('select').value = 'all'; panel.querySelector('input').value = ''; emit();
+      panel.querySelector('[name="category"]').value = defaultFilters.category;
+      panel.querySelector('[name="availability"]').value = defaultFilters.availability;
+      panel.querySelector('input').value = ''; emit();
     };
-    panel.querySelector('[data-reload]').onclick = () => document.dispatchEvent(new CustomEvent('market:load-gallery', { detail: { refresh: true } }));
+    panel.querySelector('[data-reload]').onclick = () => {
+      document.dispatchEvent(new Event('market:refresh-listings'));
+      if (filters.availability === 'minted') document.dispatchEvent(new CustomEvent('market:load-gallery', { detail: { refresh: true } }));
+    };
+    panel.querySelector('[data-browse]').onclick = () => {
+      panel.remove();
+      openMarketCatalog(document.querySelector('decent-right-toolbar')._listedProducts);
+    };
     const count = event => { panel.querySelector('[data-count]').textContent = `${event.detail.visible} shown / ${event.detail.total} loaded${event.detail.loading ? ' · loading…' : ''}${event.detail.error ? ` · ${event.detail.error}` : ''}`; };
     const close = () => panel.remove();
     const key = event => { if (event.key === 'Escape') close(); };
@@ -101,7 +131,6 @@ class LeftToolbar extends HTMLElement {
     });
     document.body.append(panel); observer.observe(document.body, { childList: true });
     emit();
-    document.dispatchEvent(new Event('market:load-gallery'));
     panel.querySelector('select').focus();
   }
 }

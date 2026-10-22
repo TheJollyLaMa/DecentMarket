@@ -16,6 +16,26 @@ decent-header {
   z-index: 1100;
 }
 
+.market-coin-flip { position:absolute; z-index:20; transform:translate(-50%,-50%); width:36px; height:36px;
+  border:1px solid #7af0c688; border-radius:50%; color:#baffe2; background:#09192ef2; font:24px/1 system-ui,sans-serif; cursor:pointer; }
+.market-coin-flip:focus-visible { outline:2px solid #a99aff; outline-offset:3px; }
+.market-flight { position:absolute; inset:0; pointer-events:none; color:#effff9; font:12px/1.4 system-ui,sans-serif; }
+.market-flight[hidden] { display:none !important; }
+.market-flight [data-position] { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+.market-flight-row { display:contents; }
+.market-flight input { position:absolute; left:20px; top:39px; width:60px; height:12px; margin:0; accent-color:#7af0c6; pointer-events:auto; }
+.market-flight button { position:absolute; width:22px; height:22px; padding:0; border:1px solid #7af0c677; border-radius:50%; color:#effff9; background:#123b38; cursor:pointer; pointer-events:auto; }
+.market-flight [data-newer] { left:2px; top:18px; }
+.market-flight [data-older] { right:2px; top:18px; }
+.market-flight [data-reset] { left:39px; top:15px; }
+.market-flight [data-in] { left:4px; top:53px; }
+.market-flight [data-out] { right:4px; top:53px; }
+.market-flight [data-overview] { left:39px; top:52px; }
+.market-flight [hidden] { display:none !important; }
+.market-flight button:disabled { opacity:.4; cursor:default; }
+.market-flight :focus-visible { outline:2px solid #a99aff; outline-offset:2px; }
+.market-footer-console { z-index:1001 !important; width:max-content; transform:translateX(-50%) scale(var(--footer-scale,1)) !important; transform-origin:bottom center; }
+
 decent-canvas {
   display: block;
   width: 100%;

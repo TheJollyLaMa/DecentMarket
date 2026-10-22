@@ -13,11 +13,16 @@ test('Head Supporter HTML animation is not misclassified as music', () => {
   assert.equal(dnftCategory({ name: 'Regular art' }), 'regular');
 });
 test('space filters cover category, text, artist, token ID, reset and empty results', () => {
-  const products = [{ tokenId: '70', metadata }, { tokenId: '71', metadata: { name: 'A song', artist, audioUrl: 'ipfs://music' } }, { tokenId: '72', metadata: { name: 'Art' } }];
-  assert.equal(filterDnfts(products, defaultFilters).length, 3);
-  assert.deepEqual(filterDnfts(products, { category: 'music', search: artist }).map(p => p.tokenId), ['71']);
+  const products = [{ tokenId: '70', metadata, escrowStock: '1000', listings: [{ purchasable: true }] },
+    { tokenId: '71', totalMinted: '1', metadata: { name: 'A song', artist, audioUrl: 'ipfs://music' } },
+    { tokenId: '72', totalMinted: '2', metadata: { name: 'Art' } },
+    { tokenId: '73', totalMinted: '0', metadata: { name: 'Not minted' } },
+    { tokenId: '74', escrowStock: '1', listings: [{ purchasable: false }], metadata: { name: 'Paused listing' } }];
+  assert.deepEqual(filterDnfts(products, defaultFilters).map(p => p.tokenId), ['70']);
+  assert.equal(filterDnfts(products, { ...defaultFilters, availability: 'minted' }).length, 4);
+  assert.deepEqual(filterDnfts(products, { category: 'music', search: artist, availability: 'minted' }).map(p => p.tokenId), ['71']);
   assert.deepEqual(filterDnfts(products, { category: 'supporter', search: 'decenthead' }).map(p => p.tokenId), ['70']);
-  assert.deepEqual(filterDnfts(products, { category: 'all', search: '72' }).map(p => p.tokenId), ['72']);
+  assert.deepEqual(filterDnfts(products, { category: 'all', search: '72', availability: 'minted' }).map(p => p.tokenId), ['72']);
   assert.equal(filterDnfts(products, { category: 'all', search: 'missing' }).length, 0);
 });
 test('Optimism is sunset, not selectable or routable by active configuration', () => {

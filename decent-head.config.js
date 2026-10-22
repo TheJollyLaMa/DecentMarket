@@ -1,7 +1,7 @@
 window.DECENT_CONFIG = {
-  appName: 'DecentMarket',
+  appName: 'Decent Market',
   musicSubmissionOwner: '0x807061DF657A7697c04045dA7d16D941861cAABc',
-  subtitle: 'Release your work. Support its next chapter.',
+  subtitle: '(Another Decent Frankenstein)',
   theme: { 'bg-1': '#050b20', 'bg-2': '#182140', 'bg-3': '#10352d', accent: '#7af0c6', 'accent-2': '#a78cff', title: '#edfff8' },
   chain: { chainId: 8453, chainName: 'Base', rpcUrls: ['https://mainnet.base.org'],
     nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, blockExplorerUrls: ['https://basescan.org'] },

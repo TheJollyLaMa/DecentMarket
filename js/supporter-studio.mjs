@@ -99,11 +99,14 @@ $('next').onclick = () => action(async () => {
   await exclusive(() => studio.execute());
   status('Step confirmed and saved. Download progress before continuing.');
   download('supporter-progress.json', { manifest, session: studio.session });
-  if (!nextStep(studio.session)) document.dispatchEvent(new CustomEvent('dnft:minted', { detail: { tokenId: studio.session.completed.register.tokenId } }));
+  if (!nextStep(studio.session)) document.dispatchEvent(new CustomEvent('dnft:minted', { detail: {
+    tokenId: studio.session.completed.register.tokenId, chainId: '0x2105',
+  } }));
 });
 $('recover').onclick = () => action(async () => {
   await exclusive(async () => { await studio.verifyProgress(); await studio.reconcile($('recovery-hash').value.trim()); });
   status('Receipt reconciled and progress saved. No new transaction sent.');
+  if (!nextStep(studio.session)) document.dispatchEvent(new Event('market:refresh-listings'));
 });
 $('backup').onclick = () => action(async () => download('supporter-progress.json', { manifest, session: studio.session }));
 $('restore').onclick = () => action(async () => {
