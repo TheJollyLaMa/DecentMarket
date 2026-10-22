@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "repo": "TheJollyLaMa/DecentMarket",
+  "version": "v0.3.1",
+  "commit": "a0123c00b0e615916935ac54c9ddf75a6a8e5932",
+  "releaseDate": "2026-10-22T02:26:31.000Z",
+  "creator": "thejollylama.eth",
+  "creatorAddress": "0x807061DF657A7697c04045dA7d16D941861cAABc",
+  "ensChainId": 1,
+  "ensObservedBlock": 26245183,
+  "chainId": 8453,
+  "quantity": "1000",
+  "priceUSDC": "10000000",
+  "codeArchiveCid": "QmWJxsqnidQZ4hR2NtsvgnLe7jgE7wC9EmXNw7R6a7HqoG",
+  "front": "ipfs://QmU7GmcRdWvJTvzkUKzEB6hsVrqX2jkFKyNq5sBusUR1wx",
+  "back": "ipfs://QmYNaWTt2sgYHC5vKTMf3BCd4ifJHLeym9DbmxMnTjRFQV",
+  "animation": "ipfs://QmSmLKYLgW85UYxVSLGtj6LGwNDwW1RLktr6pFQrkXykmy",
+  "metadataURI": "ipfs://QmUR29d2NeRH94ceLDxHqDvDi4eNdSRTNM1wZ6UPDsvWqi"
+}

@@ -370,5 +370,16 @@ try {
   });
   await page.getByRole('button', { name: 'Older edition', exact: true }).click();
   assert.equal(await page.evaluate(() => document.querySelector('decent-canvas')._selectedEdition), '201');
+  const purchaseURL = `${base.replace(/\/$/, '')}/supporter/buy.html?chainId=8453&escrow=${BASE.ESCROW}&listingId=0`;
+  await page.goto(purchaseURL);
+  await page.getByRole('button', { name: 'Review this release · 10 USDC', exact: true }).waitFor();
+  assert.match(await page.locator('#purchase-status').innerText(), /listing #0/);
+  await page.getByRole('button', { name: 'Review this release · 10 USDC', exact: true }).click();
+  assert.equal(await page.getByRole('button', { name: 'Buy one · 10 USDC', exact: true }).isEnabled(), true);
+  assert.deepEqual(await page.evaluate(() => window.walletCalls), [], 'Opening a purchase link never connects or signs');
+  await page.goto(purchaseURL.replace('listingId=0', 'listingId=99'));
+  await page.getByRole('alert').filter({ hasText: 'Purchase unavailable' }).waitFor();
+  assert.equal(await page.locator('#review-purchase').isVisible(), false);
+  assert.deepEqual(errors, []);
   console.log('PASS: Explicit coin flip, sale-first/minted-only filters, live Base offers, large cards, ENS setup, steward preview, mint/music lanes, gallery price preservation, 320-1440px Header and reduced motion; no real signing.');
 } finally { await browser.close(); }

@@ -2,11 +2,19 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { BASE, ethers, validateRelease } from '../js/supporter-mint.mjs';
-import { assetKey, listingPrices, listingTerms, readFundedListings, executeMarketPurchase, MARKET_ESCROW_ABI } from '../js/market-listings.mjs';
+import { assetKey, listingPrices, listingTerms, readFundedListings, executeMarketPurchase, MARKET_ESCROW_ABI, parseMarketPurchase } from '../js/market-listings.mjs';
 import { validateModeration, moderationKey, isMarketAdmin, ADMIN } from '../js/market-moderation.mjs';
 import { coinCaption, starPoints } from '../js/market-coin.mjs';
 import { COIN_RADIUS, SPIRAL_RADIUS, timelinePosition, viewingDistance, nearbyFlipKeys, advanceStarDepth } from '../js/market-flight.mjs';
 
+test('Supporter purchase links bind exact Base escrow and accept listing zero, rejecting duplicates and invalid IDs', () => {
+  const base = `?chainId=8453&escrow=${BASE.ESCROW}&listingId=`;
+  assert.equal(parseMarketPurchase(`${base}0`), '0');
+  assert.equal(parseMarketPurchase(`${base}123`), '123');
+  for (const search of ['', `${base}-1`, `${base}01`, `${base}1&listingId=2`, `${base}1&chainId=8453`,
+    `${base}1`.replace('8453', '10'), `${base}1`.replace(BASE.ESCROW, BASE.DNFT)])
+    assert.throws(() => parseMarketPurchase(search));
+});
 test('starfield gently approaches the viewer and wraps behind at a frame-rate independent speed', () => {
   assert.equal(advanceStarDepth(-50, 1), -47.5);
   assert.equal(advanceStarDepth(-3, 1), -118.5);
@@ -46,8 +54,13 @@ test('three-product preparation cannot be mistaken for a mint-ready release', ()
     'TheJollyLaMa/DecentFooter', 'TheJollyLaMa/DecentCanvas', 'TheJollyLaMa/DecentMarket',
   ]);
   for (const product of queue.products) {
-    assert.equal(product.commit, null);
-    assert.equal(product.metadataURI, null);
+    if (product.repo === 'TheJollyLaMa/DecentMarket') {
+      const manifest = validateRelease(JSON.parse(readFileSync(new URL(`../${product.preparedManifest}`, import.meta.url))));
+      for (const key of ['version', 'commit', 'metadataURI', 'codeArchiveCid']) assert.equal(product[key], manifest[key]);
+    } else {
+      assert.equal(product.commit, null);
+      assert.equal(product.metadataURI, null);
+    }
     assert.throws(() => validateRelease(product), /prepared repository/);
   }
 });

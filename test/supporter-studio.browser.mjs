@@ -106,6 +106,11 @@ try {
   await page.goto(embedded ? base : `${base}/supporter.html`);
   await openStudio();
   assert.deepEqual(await page.evaluate(() => window.rpcMethods), []);
+  await page.getByRole('button', { name: 'Load DecentMarket v0.3.1', exact: true }).click();
+  await page.locator(statusSelector).filter({ hasText: 'Prepared metadata preserved exactly.' }).waitFor();
+  assert.match(await page.locator('#release-summary').innerText(), /TheJollyLaMa\/DecentMarket v0\.3\.1/);
+  assert.equal(await page.locator('#purchase-base').inputValue(), 'https://thejollylama.github.io/DecentMarket/supporter/buy.html');
+  assert.deepEqual(await page.evaluate(() => window.rpcMethods), [], 'Loading Market never connects or signs');
   await page.getByRole('button', { name: 'Load DecentHead v2.0.0' }).click();
   await page.locator(statusSelector).filter({ hasText: 'Prepared metadata preserved exactly.' }).waitFor();
   assert.deepEqual(await page.evaluate(() => window.rpcMethods), []);

@@ -61,17 +61,20 @@ async function load(m, metadata) {
   $('source').href = `https://github.com/${m.repo}/releases/tag/${encodeURIComponent(m.version)}`;
   $('metadata-link').href = asset(m.metadataURI);
   $('wallet-status').textContent = 'No wallet connection requested.';
-  $('purchase-base').value = m.repo === 'TheJollyLaMa/DecentHead' ? 'https://thejollylama.github.io/DecentHead/supporter/buy.html' : '';
+  $('purchase-base').value = m.repo === 'TheJollyLaMa/DecentHead' ? 'https://thejollylama.github.io/DecentHead/supporter/buy.html'
+    : m.repo === 'TheJollyLaMa/DecentMarket' ? 'https://thejollylama.github.io/DecentMarket/supporter/buy.html' : '';
   status('Prepared metadata preserved exactly. Review the source and terms, then connect.');
 }
-$('load-head').onclick = () => action(async () => {
+function preparedRelease(directory) { return action(async () => {
   const files = await Promise.all(['supporter-release.json', 'supporter-metadata.json'].map(async name => {
-    const response = await fetch(`releases/decenthead-v2.0.0/${name}`, { cache: 'no-store' });
+    const response = await fetch(new URL(`../releases/${directory}/${name}`, import.meta.url), { cache: 'no-store' });
     if (!response.ok) throw new Error(`Release file unavailable: ${name} (HTTP ${response.status})`);
     return response.json();
   }));
   await load(...files);
-});
+}); }
+$('load-head').onclick = () => preparedRelease('decenthead-v2.0.0');
+$('load-market').onclick = () => preparedRelease('decentmarket-v0.3.1');
 $('load-files').onclick = () => action(async () => load(await jsonFile('manifest-file'), await jsonFile('metadata-file')));
 $('connect').onclick = () => action(async () => {
   if (!$('consent').checked) throw new Error('Review and confirm the official release before connecting');
