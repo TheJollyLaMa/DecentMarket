@@ -11,6 +11,14 @@ module.exports = {
       settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: "cancun" },
     }],
     overrides: {
+      "contracts/DecentJukeBox_v0.5.sol": {
+        version: "0.8.26",
+        settings: { optimizer: { enabled: true, runs: 1 }, evmVersion: "cancun", viaIR: true },
+      },
+      "contracts/DJukeSponsoredPlaylistModule.sol": {
+        version: "0.8.26",
+        settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: "cancun", viaIR: true },
+      },
       "contracts/djuke/live/DecentJukeBox_v0.1.sol": { version: "0.8.26", settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: "cancun", viaIR: true } },
       "contracts/djuke/live/DecentJukeBox_v0.2.sol": { version: "0.8.26", settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: "cancun", viaIR: true } },
       "contracts/DecentJukeBox_v0.1.sol": {
