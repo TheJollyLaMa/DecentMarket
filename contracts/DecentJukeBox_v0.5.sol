@@ -16,7 +16,7 @@ contract DecentJukeBox_v0_5 is DecentJukeBox_v0_4 {
 
     function requestPlayWithGas(bytes32 songId, uint256 maxPrice, uint256 fulfillmentCostWei,
         uint256 deadline, bytes calldata signature) external payable override whenNotPaused nonReentrant returns (uint256 requestId) {
-        require(fulfillmentCostWei == 0 && msg.value == 0, "Worker gas is platform funded");
+        require(fulfillmentCostWei == 0 && msg.value == 0, "USDC payment only");
         require(deadline >= block.timestamp && deadline <= block.timestamp + 5 minutes, "Expired quote");
         uint256 nonce = gasQuoteNonces[msg.sender]++;
         bytes32 digest = gasQuoteDigest(msg.sender, songId, maxPrice, 0, nonce, deadline);

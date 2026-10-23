@@ -8,7 +8,7 @@ contract DJukeSponsoredPlaylistModule is DJukePlaylistModule {
     event PlaylistBatchFeeProgress(uint256 indexed batchId, uint256 released, uint256 totalReleased);
 
     function _validateContribution(IDJukePlaylistHost, uint256 cost, uint256) internal view override {
-        require(cost == 0 && msg.value == 0, "Worker gas is platform funded");
+        require(cost == 0 && msg.value == 0, "USDC payment only");
     }
 
     function _settleFee(PlaylistLaneStorage.State storage s, uint256 batchId) internal override {

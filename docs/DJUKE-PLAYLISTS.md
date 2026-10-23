@@ -13,9 +13,14 @@ Interruptions refund undelivered song prices and only the unreleased fee.
 Progress emits `PlaylistBatchFeeProgress`; the existing terminal fee-settled
 event remains completion-only so worker reconciliation cannot end a batch early.
 
-Reserve provisioning and all treasury transfers are deferred. Production
-activation must wait for the explicitly approved dedicated ETH reserve and a
-funded worker; no deployment or live configuration change is performed here.
+Launch funding uses manual top-ups with admin low-balance alerts in DecentBusking.
+Keep `WORKER_RESERVE_ENABLED` false/unset; no reserve key or automatic refill is
+required. Before activation, verify the funded worker and durable journals.
+No deployment, treasury transfer or live configuration change is authorized here.
+Listener-facing v0.5 transactions show only USDC and standard Base network gas,
+with no worker funding wording or native-value transfer. Contracts reject any
+nonzero native payment with `USDC payment only`, and checkout does not emit
+`WorkerGasFunded` or increase the worker balance.
 Never use the old v0.4 migration script blindly for a successor: drain both paid
 lanes and preserve creator/listen pricing, roles and complete album metadata.
 
@@ -29,7 +34,33 @@ BUSKING_WORKTREE=/absolute/path/to/DecentBusking DJUKE_REHEARSAL_VERSION=0.5 \
 
 The cross-repository rehearsal uses only local contracts and a mock token/router,
 not production money. It verifies HTTP zero-ETH quotes, all 12 ordered songs,
-four-song fee milestones, artist routing, restarts, main cut-ins and refunds.
+four-song fee milestones, artist routing, restarts, main cut-ins and refunds,
+including three durable media retries before refunding a fourth failure.
+
+For a v0.5 fork rehearsal against the current v0.4 source:
+
+```sh
+BASE_FORK_RPC=https://mainnet.base.org DJUKE_REHEARSAL_VERSION=0.5 \
+REHEARSE_WITH_PAYMENTS_ENABLED=1 BUSKING_WORKTREE=/absolute/path/to/DecentBusking \
+  npx hardhat run scripts/rehearse_djuke_v04_fork.js
+```
+
+This command refuses non-Hardhat networks and requires both source paid lanes
+to be empty. It never sends a real Base transaction. The song-only migration
+fixture refuses source album metadata/custom listen prices rather than silently
+resetting them. Such a source needs a separately reviewed metadata-preserving
+migration. The old v0.4 deployment script is not a v0.5 deployment command.
+
+After the fork passes, `scripts/deploy_djuke_v05.js` runs read-only by default.
+Set `DBUSK_ENV_FILE` to the ignored owner environment file. The explicit
+`CONFIRM_DEPLOY=v0.5-base` gate authorizes its transactions: pause the drained
+source, deploy the module/host, grant owner/worker registration and worker
+fulfillment roles, copy and verify every catalog entry. Transaction hashes are
+persisted before confirmation in `deployments/djuke-v05-base.json` for resumable
+execution. The script refuses albums/custom listen prices rather than resetting
+them. It does not transfer worker funding or change hosting configuration.
+Retain the manifest's verified legacy receipts as
+`DJUKE_LEGACY_PLAYLIST_RECEIPTS` during worker cutover; they belong to v0.4.
 
 Issue #241 adds a non-upgradeable v0.4 candidate in `DecentJukeBox_v0.4.sol`. It preserves live v0.3 direct artist settlement and v0.2 EIP-712 domain behavior. Playlist checkout logic is delegate-called through `DJukePlaylistModule` and radio playlists use a separate cut-in lane. This remains review material only: no deployment, migration, allowance, or fund movement is approved or performed. The v0.2 contract and live config remain unchanged.
 

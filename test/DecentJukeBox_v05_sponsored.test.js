@@ -39,10 +39,10 @@ describe("DJuke v0.5 platform-funded playlist", function () {
   }
   it("accepts zero worker ETH, rejects any surcharge, and releases exactly $1 at 4/8/12", async function () {
     const args = await quote(songs.slice(0, 12));
-    await expect(box.connect(listener).requestPlaylistWithGas(...args, { value: 1 })).to.be.revertedWith("Worker gas is platform funded");
-    await expect(box.connect(listener).requestPlaylistWithGas(...await quote(songs.slice(0, 12), 1))).to.be.revertedWith("Worker gas is platform funded");
+    await expect(box.connect(listener).requestPlaylistWithGas(...args, { value: 1 })).to.be.revertedWith("USDC payment only");
+    await expect(box.connect(listener).requestPlaylistWithGas(...await quote(songs.slice(0, 12), 1))).to.be.revertedWith("USDC payment only");
     const workerBefore = await ethers.provider.getBalance(worker.address);
-    await box.connect(listener).requestPlaylistWithGas(...args);
+    await expect(box.connect(listener).requestPlaylistWithGas(...args)).not.to.emit(box, "WorkerGasFunded");
     expect(await ethers.provider.getBalance(worker.address)).to.equal(workerBefore);
     expect(await token.balanceOf(listener.address)).to.equal(93000000n);
     for (let i = 0; i < 12; i++) {
@@ -92,8 +92,11 @@ describe("DJuke v0.5 platform-funded playlist", function () {
     ] };
     const signature = await worker.signTypedData(domain, singleTypes, value);
     await expect(box.connect(listener).requestPlayWithGas(songs[23], maxPrice, 0, deadline, signature, { value: 1 }))
-      .to.be.revertedWith("Worker gas is platform funded");
-    await box.connect(listener).requestPlayWithGas(songs[23], maxPrice, 0, deadline, signature);
+      .to.be.revertedWith("USDC payment only");
+    const workerBefore = await ethers.provider.getBalance(worker.address);
+    await expect(box.connect(listener).requestPlayWithGas(songs[23], maxPrice, 0, deadline, signature))
+      .not.to.emit(box, "WorkerGasFunded");
+    expect(await ethers.provider.getBalance(worker.address)).to.equal(workerBefore);
     await expect(deliver(0)).to.be.revertedWith("Main lane is not empty");
     const request = await box.getRequest(0);
     await box.connect(worker).fulfill(0, request.songId, request.revision, ethers.id("single-proof"));

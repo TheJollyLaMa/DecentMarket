@@ -1,6 +1,7 @@
 const { ethers, network } = require("hardhat");
 
-const LIVE = "0x5d07489163feBCdB39C9F579CCC36dff5A067FF9";
+const SPONSORED = process.env.DJUKE_REHEARSAL_VERSION === "0.5";
+const LIVE = SPONSORED ? "0xBBCb7F7369978cbdc32C6719B1d24B07f3d55619" : "0x5d07489163feBCdB39C9F579CCC36dff5A067FF9";
 const ROUTER = "0x8ecca903e2a6Daa8CCbB933700e4F2C58C44A4B5";
 const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const OWNER = "0x807061DF657A7697c04045dA7d16D941861cAABc";
@@ -25,6 +26,8 @@ const ROUTER_ABI = [
 const USDC_ABI = ["function balanceOf(address) view returns(uint256)", "function transfer(address,uint256) returns(bool)",
   "function approve(address,uint256) returns(bool)"];
 const OLD_ABI = ["function hasRole(bytes32,address) view returns(bool)", "function pendingCount() view returns(uint256)",
+  "function playlistPendingCount() view returns(uint256)",
+  "function songAlbum(bytes32) view returns(bytes32)", "function playlistListenPrice(bytes32) view returns(uint256)",
   "function paused() view returns(bool)", "function pauseRequests()", "function getSong(bytes32) view returns((string audioURI,bool enabled,address[] recipients,uint16[] sharesBps))"];
 
 async function impersonate(address) {
@@ -39,11 +42,14 @@ async function confirmed(tx, label) {
 }
 
 async function main() {
-  if (!process.env.BASE_FORK_RPC || Number((await ethers.provider.getNetwork()).chainId) !== 8453) {
+  console.log("Starting in-process Base fork preflight");
+  if (network.name !== "hardhat" || !network.config.forking || !process.env.BASE_FORK_RPC ||
+      Number((await ethers.provider.getNetwork()).chainId) !== 8453) {
     throw new Error("Set BASE_FORK_RPC=https://mainnet.base.org; this rehearsal mutates only the in-process fork");
   }
   // Hardhat cannot execute calls at the fork block itself on Base (no hardfork history); read from local blocks.
   await ethers.provider.send("hardhat_mine", ["0x3"]);
+  console.log("Fork initialized; verifying router and source queues");
   const owner = await impersonate(OWNER);
   // Impersonated accounts cannot sign EIP-712 quotes; the fork deploy uses a local key as the worker stand-in.
   const [worker] = await ethers.getSigners();
@@ -53,6 +59,7 @@ async function main() {
   const old = new ethers.Contract(LIVE, OLD_ABI, owner);
   if (!await old.hasRole(ethers.ZeroHash, OWNER)) throw new Error("Impersonated steward is not old-contract admin");
   if (await old.pendingCount() !== 0n) throw new Error("Live source queue is not empty; rehearsal stopped before pause");
+  if (SPONSORED && await old.playlistPendingCount() !== 0n) throw new Error("Source playlist lane must drain before migration");
   if (!await token.balanceOf(ROUTER)) throw new Error("Router has no fork-local USDC available to seed the rehearsal listener");
   for (const fundId of [REPO, PINNERS, PLAYBACK, TOP_TEN]) {
     const fund = await router.funds(fundId);
@@ -71,18 +78,25 @@ async function main() {
   for (const track of snapshot.tracks) {
     const song = await old.getSong(track.songId, { blockTag });
     if (!song.enabled || song.audioURI !== `ipfs://${track.ipfsCid}`) throw new Error(`Catalog mismatch for ${track.songId}`);
+    if (SPONSORED && (await old.songAlbum(track.songId, { blockTag }) !== ethers.ZeroHash ||
+        await old.playlistListenPrice(track.songId, { blockTag }) !== 250000n)) {
+      throw new Error("Source has album metadata or custom listen prices: use a reviewed metadata-preserving migration before cutover");
+    }
     songs.push({ trackId: track.trackId, songId: track.songId, audioURI: song.audioURI, recipients: [...song.recipients], sharesBps: song.sharesBps.map(Number) });
+    if (songs.length % 20 === 0) console.log(`Source catalog verified on fork: ${songs.length}/${snapshot.tracks.length}`);
   }
   if ((await ethers.provider.getBlock(blockTag)).hash !== block.hash) throw new Error("Pinned catalog block changed");
   const catalogHash = ethers.keccak256(ethers.toUtf8Bytes(JSON.stringify(songs)));
   if (!await old.paused()) await confirmed(await old.pauseRequests(), "Fork-only old DJuke pause");
 
-  const module = await (await ethers.getContractFactory("DJukePlaylistModule", owner)).deploy();
+  const moduleName = SPONSORED ? "DJukeSponsoredPlaylistModule" : "DJukePlaylistModule";
+  const contractName = SPONSORED ? "DecentJukeBox_v0_5" : "DecentJukeBox_v0_4";
+  const module = await (await ethers.getContractFactory(moduleName, owner)).deploy();
   await module.waitForDeployment();
-  const artifact = await ethers.getContractFactory("contracts/DecentJukeBox_v0.4.sol:DecentJukeBox_v0_4", owner);
-  const artifactJson = require("../artifacts/contracts/DecentJukeBox_v0.4.sol/DecentJukeBox_v0_4.json");
+  const artifact = await ethers.getContractFactory(contractName, owner);
+  const artifactJson = await require("hardhat").artifacts.readArtifact(contractName);
   const size = (artifactJson.deployedBytecode.length - 2) / 2;
-  const moduleArtifact = require("../artifacts/contracts/DJukePlaylistModule.sol/DJukePlaylistModule.json");
+  const moduleArtifact = await require("hardhat").artifacts.readArtifact(moduleName);
   const moduleSize = (moduleArtifact.deployedBytecode.length - 2) / 2;
   const jukebox = await artifact.deploy(USDC, ROUTER, REPO, PINNERS, OWNER, WORKER_FORK, ethers.parseEther("0.001"), module.target, PLAYBACK, TOP_TEN);
   await jukebox.waitForDeployment();
@@ -92,8 +106,9 @@ async function main() {
     const batch = songs.slice(start, start + 20);
     const calls = batch.map(song => jukebox.interface.encodeFunctionData("registerSong", [song.songId, song.audioURI, song.recipients, song.sharesBps]));
     await confirmed(await jukebox.multicall(calls), `Migrate fork catalog ${start + 1}-${start + batch.length}`);
+    console.log(`Fork migration confirmed: ${start + batch.length}/${songs.length}`);
   }
-  if (await jukebox.CONTRACT_VERSION() !== "0.4") throw new Error("Wrong v0.4 artifact deployed to fork");
+  if (await jukebox.CONTRACT_VERSION() !== (SPONSORED ? "0.5" : "0.4")) throw new Error("Wrong DJuke artifact deployed to fork");
   const workerContract = jukebox.connect(worker);
   // A separate listener keeps payment and artist balance deltas independent (the owner is also a catalog artist).
   const [, listener] = await ethers.getSigners();
@@ -105,7 +120,7 @@ async function main() {
 
   const firstSong = songs[0].songId;
   const now = (await ethers.provider.getBlock("latest")).timestamp;
-  const singleCost = 1_000_000n;
+  const singleCost = SPONSORED ? 0n : 1_000_000n;
   const singleQuote = { listener: listenerAddress, songId: firstSong, maxPrice: await jukebox.quote(),
     fulfillmentCostWei: singleCost, nonce: await jukebox.gasQuoteNonces(listenerAddress), deadline: now + 180 };
   const domain = { name: "DecentJukeBox", version: "0.2", chainId: 8453, verifyingContract: jukebox.target };
@@ -139,7 +154,7 @@ async function main() {
   }
 
   const radioIds = songs.slice(3, 5).map(song => song.songId);
-  const maxTotal = 3_500_000n, fulfillmentCostWei = 1_000_000n;
+  const maxTotal = 3_500_000n, fulfillmentCostWei = SPONSORED ? 0n : 1_000_000n;
   const radioNonce = await jukebox.gasQuoteNonces(listenerAddress);
   const radioDeadline = (await ethers.provider.getBlock("latest")).timestamp + 180;
   const songIdsHash = ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(["bytes32[]"], [radioIds]));
@@ -201,10 +216,10 @@ async function main() {
     } });
     await confirmed(await token.connect(routerSigner).transfer(listenerAddress, 20_000_000n), "Seed worker rehearsal on fork only");
     workerRehearsal = await rehearsePlaylistWorker({ provider: ethers.provider, jukebox, worker, listener, token,
-      router, fundIds: [PLAYBACK, TOP_TEN, PINNERS, REPO], songs, quoteProvider });
+      router, fundIds: [PLAYBACK, TOP_TEN, PINNERS, REPO], songs, quoteProvider, sponsored: SPONSORED });
   }
   console.log(JSON.stringify({ mode: "in-process Base fork only", oldSourcePausedOnFork: await old.paused(),
-    sourceBlock: blockTag, catalogSongs: songs.length, catalogHash, module: module.target, v0_4: jukebox.target,
+    sourceBlock: blockTag, catalogSongs: songs.length, catalogHash, module: module.target, version: await jukebox.CONTRACT_VERSION(), contract: jukebox.target,
     runtimeBytes: size, moduleRuntimeBytes: moduleSize, headroom: 24576 - size, moduleHeadroom: 24576 - moduleSize, worker: WORKER_FORK, productionWorker: WORKER, singleSongDirectArtistPaid: true,
     privatePlaylistDirectArtistPaid: true, radioBatchId: String(batchId), feeAndSongFundDeltas: fundAfter.map((v, i) => String(v - fundBefore[i])),
     refundBatchId: String(refundedBatch), undeliveredSuffixAndFeeRefund: "3,250,000 USDC units",
