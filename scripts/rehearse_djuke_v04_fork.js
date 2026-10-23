@@ -71,7 +71,7 @@ async function main() {
   for (const track of snapshot.tracks) {
     const song = await old.getSong(track.songId, { blockTag });
     if (!song.enabled || song.audioURI !== `ipfs://${track.ipfsCid}`) throw new Error(`Catalog mismatch for ${track.songId}`);
-    songs.push({ songId: track.songId, audioURI: song.audioURI, recipients: [...song.recipients], sharesBps: song.sharesBps.map(Number) });
+    songs.push({ trackId: track.trackId, songId: track.songId, audioURI: song.audioURI, recipients: [...song.recipients], sharesBps: song.sharesBps.map(Number) });
   }
   if ((await ethers.provider.getBlock(blockTag)).hash !== block.hash) throw new Error("Pinned catalog block changed");
   const catalogHash = ethers.keccak256(ethers.toUtf8Bytes(JSON.stringify(songs)));
@@ -183,12 +183,32 @@ async function main() {
   if (await token.balanceOf(listenerAddress) - payerBefore !== 3_250_000n) throw new Error("Refund did not cover only suffix song plus the reserved fee");
   if (await jukebox.artistCredits(singleArtist) !== 0n || size > 24576 || moduleSize > 24576) throw new Error("Direct settlement or EIP-170 check failed");
 
+  let workerRehearsal;
+  if (process.env.BUSKING_WORKTREE) {
+    const { pathToFileURL } = require("node:url");
+    const path = require("node:path");
+    const { rehearsePlaylistWorker } = await import(pathToFileURL(path.join(process.env.BUSKING_WORKTREE,
+      "scripts/rehearse-djuke-playlist-worker.mjs")).href);
+    // Hardhat's synthetic priority fee is not Base's recommendation. Only fee sizing reads the upstream;
+    // all contract reads, quotes, signatures, transactions and L1-oracle calls remain on the fork.
+    const upstream = new ethers.JsonRpcProvider(process.env.BASE_FORK_RPC);
+    let fees;
+    try { fees = await upstream.getFeeData(); } finally { upstream.destroy(); }
+    const quoteProvider = new Proxy(ethers.provider, { get(target, key) {
+      if (key === "getFeeData") return async () => fees;
+      const value = Reflect.get(target, key, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    } });
+    await confirmed(await token.connect(routerSigner).transfer(listenerAddress, 20_000_000n), "Seed worker rehearsal on fork only");
+    workerRehearsal = await rehearsePlaylistWorker({ provider: ethers.provider, jukebox, worker, listener, token,
+      router, fundIds: [PLAYBACK, TOP_TEN, PINNERS, REPO], songs, quoteProvider });
+  }
   console.log(JSON.stringify({ mode: "in-process Base fork only", oldSourcePausedOnFork: await old.paused(),
     sourceBlock: blockTag, catalogSongs: songs.length, catalogHash, module: module.target, v0_4: jukebox.target,
     runtimeBytes: size, moduleRuntimeBytes: moduleSize, headroom: 24576 - size, moduleHeadroom: 24576 - moduleSize, worker: WORKER_FORK, productionWorker: WORKER, singleSongDirectArtistPaid: true,
     privatePlaylistDirectArtistPaid: true, radioBatchId: String(batchId), feeAndSongFundDeltas: fundAfter.map((v, i) => String(v - fundBefore[i])),
     refundBatchId: String(refundedBatch), undeliveredSuffixAndFeeRefund: "3,250,000 USDC units",
-    routerAuthorizedBySuccessfulSettlement: true, realBaseTransactions: 0 }, null, 2));
+    routerAuthorizedBySuccessfulSettlement: true, workerRehearsal, realBaseTransactions: 0 }, null, 2));
   for (const address of [OWNER, WORKER, ROUTER]) await network.provider.request({ method: "hardhat_stopImpersonatingAccount", params: [address] });
 }
 
