@@ -1,6 +1,14 @@
 # DJuke named playlist contract candidate
 
-## Sponsored v0.5 successor (not deployed)
+## Sponsored v0.5 successor (deployed 2026-10-23)
+
+Base host: `0xf51D2F7892cF9D49e14DF4afDf227a59ee170A51`, block 52993982.
+Module: `0x093d2dbCcBA612d2B2aD9B620cA4d0A03D98fE11`.
+See [the deployment record](../deployments/djuke-v05-base.json) for transaction
+hashes, the pinned source catalog hash, migrated song IDs, and legacy receipts.
+All 255 source songs were copied and verified after draining both v0.4 paid lanes
+and pausing new v0.4 requests. The user explicitly approved deployment and cutover.
+No worker top-up, automatic reserve activation, or listener purchase was performed.
 
 `DecentJukeBox_v0.5.sol` requires `DJukeSponsoredPlaylistModule`, removes listener
 worker ETH from both single requests and radio playlist purchases, and retains
