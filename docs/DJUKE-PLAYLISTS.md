@@ -10,3 +10,36 @@ Issue #241 adds a non-upgradeable v0.4 candidate in `DecentJukeBox_v0.4.sol`. It
 - Private playlist checkout accepts up to 24 unique songs, charges each song's ordinary listen price (album `listenPrice` when applicable, otherwise 0.25 USDC), has no platform fee, and uses the same direct 90/8/2 settlement as `purchaseListens`.
 
 Run focused coverage with `npx hardhat test test/DecentJukeBox_v04_playlist.test.js`, and all non-browser contract tests using the repository's Hardhat test suite excluding `*.browser.mjs`. `scripts/rehearse_djuke_v04_fork.js` validates deployment/catalog migration, cut-in lane checkout, fee routing and refunds against an in-process Base fork only. The `PlaylistGasQuote` EIP-712 domain remains `DecentJukeBox` / `0.2`.
+
+## Worker integration rehearsal
+
+Use the matching DecentBusking review checkout, including
+`scripts/rehearse-djuke-playlist-worker.mjs` and its existing worker dependencies:
+
+```sh
+BUSKING_WORKTREE=/absolute/path/to/DecentBusking \
+  npx hardhat run scripts/rehearse_djuke_v04_worker.js
+
+BASE_FORK_RPC=https://mainnet.base.org \
+BUSKING_WORKTREE=/absolute/path/to/DecentBusking \
+  npx hardhat run scripts/rehearse_djuke_v04_fork.js
+```
+
+The first command deploys real v0.4/module contracts to a local Base-chain-ID
+fixture using mock token/router/L1 oracle, with a fixture-only gas cap appropriate
+for Hardhat's synthetic fee schedule. The second migrates the full confirmed live
+catalog and exercises real USDC/router/L1 oracle state on an in-process Base fork.
+The fork takes only its fee recommendation from the read-only upstream RPC,
+avoiding Hardhat's synthetic priority fee without raising the candidate's gas cap.
+The optional fork rehearsal requires the source's payments-disabled preflight,
+or explicit `REHEARSE_WITH_PAYMENTS_ENABLED=1` for a read-only source snapshot;
+the source queue must still be empty.
+
+Both use the real worker HTTP quote handler, EIP-712 signer, confirmed reader,
+playback journal/runtime, fulfiller and batch-event reconciler. They assert
+12 ordered songs cost $7, collaborators and all four funds receive exact
+settlements, interrupted playback recovers, a main paid request cuts in without
+losing completed lane proof across restart, and full/short-playback suffix
+refunds return $3.50/$3.25 respectively. Fork mutations are not real Base
+transactions. This is not a Discord/streamer audio smoke test or production
+deployment approval.
