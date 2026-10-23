@@ -65,6 +65,19 @@ Activation is recorded through each repository's variable, not a webhook in code
 
 Schedules scan registered pending releases twice hourly (best effort, not an
 instant chain watcher). Published/edited releases also trigger a check.
+
+### ENS deployment gate (from the next release)
+
+`supporter-release.yml` also pins the exact-commit site folder (`siteCid`) and
+records `ensName` from the repository variable `SUPPORTER_ENS_NAME`
+(`decentmarket.decentagency.eth`). After the mint is verified, the Head notifier
+reads that name's mainnet contenthash. If it is not yet `ipfs://<siteCid>`, it
+opens the issue "Point decentmarket.decentagency.eth at vX site", which links to
+the owner-signed [DecentHead ENS page](https://thejollylama.github.io/DecentHead/supporter/ens.html),
+and **holds Discord** until ENS serves the new site. It then records
+`supporter-ens-deployed.json` and announces. Releases prepared before this
+change (no `ensName`) announce exactly as before.
+
 After each version's four wallet steps, export the Studio evidence and attach
 it once to that version's official release as `supporter-evidence.json`, or pass
 its public JSON to the dispatch's registration input if no evidence exists.

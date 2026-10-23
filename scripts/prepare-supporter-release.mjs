@@ -2,10 +2,13 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { ethers, validateRelease, validateMetadata } from '../js/supporter-mint.mjs';
 import { renderSupporterArtwork } from './render-supporter-artwork.mjs';
+import { ENS_NAME, pinSite } from './supporter-site.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const { TAG: tag, GITHUB_REPOSITORY: repo, PINATA_JWT: jwt } = process.env;
 if (!/^v\d+\.\d+\.\d+$/.test(tag || '') || repo !== 'TheJollyLaMa/DecentMarket' || !jwt)
   throw new Error('Market release tag, repository and PINATA_JWT required');
+const ensName = String(process.env.SUPPORTER_ENS_NAME || '').trim().toLowerCase();
+if (ensName && !ENS_NAME.test(ensName)) throw new Error('SUPPORTER_ENS_NAME must be a .eth name');
 const run = (command, args) => execFileSync(command, args, { encoding: 'utf8' }).trim();
 const release = JSON.parse(run('gh', ['release', 'view', tag, '--repo', repo, '--json', 'publishedAt,assets,isDraft']));
 if (release.isDraft || release.assets.some(asset => asset.name === 'supporter-release.json'))
@@ -63,12 +66,17 @@ const codeArchiveCid = await pin('supporter-source.tar.gz', 'application/gzip');
 const front = `ipfs://${await pin('supporter-front.png', 'image/png')}`;
 const back = `ipfs://${await pin('supporter-back.png', 'image/png')}`;
 const animation = `ipfs://${await pin('supporter-presentation.html', 'text/html')}`;
+// The runnable site at this exact commit; DecentHead's announce points ENS at it after the mint is verified.
+const site = await pinSite({ repo, commit, jwt });
+console.log(`Pinned ${site.fileCount} site files (${site.bytes} bytes) as ${site.cid}`);
 const manifest = { schema: 1, repo, version: tag, commit, releaseDate, creator: 'thejollylama.eth', creatorAddress,
-  ensChainId: 1, ensObservedBlock, chainId: 8453, quantity: '1000', priceUSDC: '10000000', codeArchiveCid, front, back, animation };
+  ensChainId: 1, ensObservedBlock, chainId: 8453, quantity: '1000', priceUSDC: '10000000', codeArchiveCid, siteCid: site.cid, ...(ensName ? { ensName } : {}), front, back, animation };
 const properties = { repo, version: tag, commit, code_archive_cid: codeArchiveCid, creator: manifest.creator,
   creator_address: creatorAddress, release_date: releaseDate, back_image: back,
   supply: 1000, price: '10 USDC', chain: 'Base', royalty_bps: 1000, license: 'Apache-2.0 + NOTICE',
-  product: { version: tag, repo_url: `https://github.com/${repo}`, commit: `https://github.com/${repo}/commit/${commit}`, artifact_cid: `ipfs://${codeArchiveCid}` } };
+  site_cid: site.cid, ...(ensName ? { ens_name: ensName } : {}),
+  product: { version: tag, repo_url: `https://github.com/${repo}`, commit: `https://github.com/${repo}/commit/${commit}`, artifact_cid: `ipfs://${codeArchiveCid}`,
+    site: `ipfs://${site.cid}`, ...(ensName ? { ens: ensName } : {}) } };
 const metadata = { name: `DecentMarket ${tag} Supporter DNFT`, description: 'Support the Decent Market release. Clone the tagged source under its license. No product ownership or financial return promised.',
   image: front, animation_url: animation, external_url: `https://github.com/${repo}/releases/tag/${tag}`,
   attributes: [{ trait_type: 'Kind', value: 'Supporter' }, { trait_type: 'Version', value: tag }], properties };
@@ -78,4 +86,4 @@ validateRelease(manifest); validateMetadata(manifest, metadata);
 writeFileSync('supporter-release.json', JSON.stringify(manifest, null, 2) + '\n');
 run('gh', ['release', 'upload', tag, 'supporter-source.tar.gz', 'supporter-preview.png', 'supporter-front.png', 'supporter-back.png',
   'supporter-presentation.html', 'supporter-metadata.json', 'supporter-release.json', '--repo', repo]);
-console.log('Frozen source/art/metadata pinned and release assets published. No mint, listing or Discord transaction sent.');
+console.log(`Frozen source/site/art/metadata pinned and release assets published (site ipfs://${site.cid}${ensName ? ` → ${ensName} after mint` : ''}). No mint, listing, ENS or Discord transaction sent.`);
