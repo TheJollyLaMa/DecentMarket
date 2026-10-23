@@ -38,6 +38,7 @@ library PlaylistLaneStorage {
         mapping(uint256 => uint256) batchFirstLane;
         mapping(uint256 => uint256) batchLaneCount;
         uint256 nextPrivatePurchaseId;
+        mapping(uint256 => uint256) releasedFee;
     }
 
     function state() internal pure returns (State storage s) {
@@ -116,9 +117,7 @@ contract DJukePlaylistModule {
         require(total <= maxTotal, "Price exceeds approval");
         require(deadline >= block.timestamp && deadline <= block.timestamp + 5 minutes, "Expired or invalid gas quote");
         IDJukePlaylistHost host = IDJukePlaylistHost(address(this));
-        uint256 maxGas = host.maxGasContributionWei();
-        require(fulfillmentCostWei > 0 && fulfillmentCostWei <= maxGas / 2, "Gas contribution exceeds cap");
-        require(msg.value == fulfillmentCostWei * 2 * songIds.length, "Exact batch gas contribution required");
+        _validateContribution(host, fulfillmentCostWei, songIds.length);
         for (uint256 i; i < songIds.length; ++i) require(host.getSong(songIds[i]).enabled, "Song unavailable");
 
         uint256 nonce = host.consumePlaylistNonce(msg.sender);
@@ -154,9 +153,11 @@ contract DJukePlaylistModule {
             item.sharesBps = song.sharesBps;
         }
         s.playlistPendingCount += songIds.length;
-        (bool sent,) = host.gasWorker().call{value: msg.value}("");
-        require(sent, "Worker funding failed");
-        emit WorkerGasFunded(firstLaneId, msg.sender, host.gasWorker(), msg.value);
+        if (msg.value > 0) {
+            (bool sent,) = host.gasWorker().call{value: msg.value}("");
+            require(sent, "Worker funding failed");
+            emit WorkerGasFunded(firstLaneId, msg.sender, host.gasWorker(), msg.value);
+        }
         emit PlaylistBatchRequested(batchId, msg.sender, songIds, subtotal, fee, firstLaneId);
     }
 
@@ -199,9 +200,10 @@ contract DJukePlaylistModule {
         require(remaining > 0, "Playlist already resolved");
         batch.failed = true;
         batch.feeRefunded = true;
-        token.safeTransfer(batch.payer, batch.fee);
+        uint256 refundableFee = batch.fee - s.releasedFee[batchId];
+        token.safeTransfer(batch.payer, refundableFee);
         _advanceHead(s);
-        emit PlaylistBatchFeeRefunded(batchId, batch.payer, batch.fee);
+        emit PlaylistBatchFeeRefunded(batchId, batch.payer, refundableFee);
     }
 
     function purchasePlaylistPrivate(bytes32[] calldata songIds, uint256 maxTotal) external returns (uint256 purchaseId) {
@@ -258,24 +260,35 @@ contract DJukePlaylistModule {
         }
     }
 
-    function _settleFee(PlaylistLaneStorage.State storage s, uint256 batchId) private {
+    function _validateContribution(IDJukePlaylistHost host, uint256 cost, uint256 count) internal view virtual {
+        require(cost > 0 && cost <= host.maxGasContributionWei() / 2, "Gas contribution exceeds cap");
+        require(msg.value == cost * 2 * count, "Exact batch gas contribution required");
+    }
+
+    function _settleFee(PlaylistLaneStorage.State storage s, uint256 batchId) internal virtual {
         PlaylistLaneStorage.Batch storage batch = s.batches[batchId];
         if (batch.resolvedCount != batch.itemCount || batch.failed || batch.feeSettled || batch.feeRefunded) return;
         batch.feeSettled = true;
-        uint256 playback = batch.fee / 4;
-        uint256 topTen = batch.fee / 4;
-        uint256 pinners = batch.fee / 4;
-        uint256 repoDev = batch.fee - playback - topTen - pinners;
+        s.releasedFee[batchId] = batch.fee;
+        _routeFee(batch.fee);
+        emit PlaylistBatchFeeSettled(batchId, batch.fee, batch.fee / 4, batch.fee / 4,
+            batch.fee / 4, batch.fee - 3 * (batch.fee / 4));
+    }
+
+    function _routeFee(uint256 fee) internal {
+        uint256 playback = fee / 4;
+        uint256 topTen = fee / 4;
+        uint256 pinners = fee / 4;
+        uint256 repoDev = fee - playback - topTen - pinners;
         IDJukePlaylistHost host = IDJukePlaylistHost(address(this));
         IERC20 token = host.paymentToken();
         IDJukePlaylistRouter router = IDJukePlaylistRouter(host.fundRouter());
-        token.forceApprove(address(router), batch.fee);
+        token.forceApprove(address(router), fee);
         router.fundToken(host.playbackFundId(), address(token), playback);
         router.fundToken(host.topTenFundId(), address(token), topTen);
         router.fundToken(host.pinnerFundId(), address(token), pinners);
         router.fundToken(host.repoFundId(), address(token), repoDev);
         token.forceApprove(address(router), 0);
-        emit PlaylistBatchFeeSettled(batchId, batch.fee, playback, topTen, pinners, repoDev);
     }
 
     function _fund(IDJukePlaylistHost host, bytes32 fundId, uint256 amount) private {

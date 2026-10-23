@@ -10,11 +10,12 @@ async function main() {
   // Initialize a local Base-chain-ID fixture without an external RPC or production credentials.
   network.config.chainId = 8453;
   const [admin, listener, artist, worker, collaborator] = await ethers.getSigners();
+  const sponsored = process.env.DJUKE_REHEARSAL_VERSION === "0.5";
   const token = await (await ethers.getContractFactory("MockDJukeToken")).deploy();
   const router = await (await ethers.getContractFactory("MockDJukeRouter")).deploy();
-  const module = await (await ethers.getContractFactory("DJukePlaylistModule")).deploy();
+  const module = await (await ethers.getContractFactory(sponsored ? "DJukeSponsoredPlaylistModule" : "DJukePlaylistModule")).deploy();
   const fundIds = ["dbusk-playback", "dbusk-top10", "dbusk-pinners", "dbusk-repo-dev"].map(ethers.id);
-  const jukebox = await (await ethers.getContractFactory("DecentJukeBox_v0_4")).deploy(
+  const jukebox = await (await ethers.getContractFactory(sponsored ? "DecentJukeBox_v0_5" : "DecentJukeBox_v0_4")).deploy(
     token.target, router.target, fundIds[3], fundIds[2], admin.address, worker.address,
     ethers.parseEther("0.1"), module.target, fundIds[0], fundIds[1]);
   await (await jukebox.grantRole(await jukebox.REGISTRAR_ROLE(), admin.address)).wait();
@@ -32,7 +33,7 @@ async function main() {
   const { rehearsePlaylistWorker } = await import(pathToFileURL(path.join(process.env.BUSKING_WORKTREE,
     "scripts/rehearse-djuke-playlist-worker.mjs")).href);
   const result = await rehearsePlaylistWorker({ provider: ethers.provider, jukebox, worker, listener, token, router,
-    fundIds, songs, oracle: { getL1Fee: async () => 1000n }, readFundBalance: id => router.received(id) });
+    fundIds, songs, sponsored, oracle: { getL1Fee: async () => 1000n }, readFundBalance: id => router.received(id) });
   console.log(JSON.stringify({ mode: "in-process local contracts, mock token/router/L1 oracle", ...result }, null, 2));
 }
 

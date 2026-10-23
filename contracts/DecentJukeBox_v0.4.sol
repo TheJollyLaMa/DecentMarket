@@ -6,7 +6,7 @@ import "./DJukePlaylistModule.sol";
 
 /// @notice DJuke candidate preserving v0.2 behavior with a separately scheduled playlist lane.
 contract DecentJukeBox_v0_4 is DecentJukeBox_v0_2_v04 {
-    string public constant CONTRACT_VERSION = "0.4";
+    function CONTRACT_VERSION() public pure virtual returns (string memory) { return "0.4"; }
 
     struct ArtistLedger { uint256 totalPaid; uint256 payoutCount; }
     bytes32 private constant ARTIST_LEDGER_SLOT = keccak256("decentmarket.djuke.v0.4.artist-ledger.v1");
