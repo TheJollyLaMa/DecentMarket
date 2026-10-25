@@ -229,3 +229,24 @@ When a new contract version is deployed:
 3. Add or update the ABI file in `abis/` (e.g. `abis/DecentNFT_v0.3.json`).
 4. Update `js/config/contracts.js` with the new address (and new ABI import if the interface changed).
 5. Open a PR referencing this file so the change is reviewed before going live.
+# DVert v0.2 platform-funded scheduler
+
+`DeVert_v0_2` reuses v0.1 campaign scheduling and 45/45/8/2 settlement, but
+accepts zero worker ETH only. Operators manually fund the shared DJuke worker;
+advertisers still pay normal Base network gas. `quoteSchedulerGasTopUp` returns
+zero. The v0.1 deployed contract retains its original mandatory contribution.
+
+`scripts/deploy_devert_v02.js` performs read-only Base preflight by default.
+It refuses a cutover while any legacy campaign's paid term remains, or while
+pending paid requests/unclaimed refund reserves remain. Broadcasting requires
+the project owner signer and `CONFIRM_DEPLOY=v0.2-base`. It journals each
+transaction, pauses the legacy contracts, deploys the campaign and a replacement
+v0.2 queue, and leaves the replacements paused. Activation is separate:
+`CONFIRM_ACTIVATE=v0.2-base`, after updating the worker and site to matching
+addresses/versions. The script verifies worker funding and API identities before
+unpausing. The old queue cannot be repointed because its campaign source is
+immutable. Preserve all old manifests, journals, NFT ownership and fund receipts.
+
+Deployment output, when authorized, is recorded in
+`deployments/devert-v02-base.json`; do not label the release live until that
+manifest and the worker/site cutover are verified.

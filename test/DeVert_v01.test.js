@@ -224,6 +224,33 @@ describe("DeVert deployment preflight policy", function () {
       .to.throw("dedicated scheduler wallet");
   });
 
+  describe("DeVert_v0_2 Base settlement rehearsal", function () {
+    it("routes a USDC-only campaign through the live router and records its advert", async function () {
+      if (!process.env.BASE_FORK_RPC) this.skip();
+      const [admin, scheduler, advertiser] = await ethers.getSigners();
+      const usdcAddress = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+      const routerAddress = "0x8ecca903e2a6Daa8CCbB933700e4F2C58C44A4B5";
+      const djukeAddress = "0xf51D2F7892cF9D49e14DF4afDf227a59ee170A51";
+      const funds = ["dbusk-playback", "dbusk-top10", "dbusk-pinners", "dbusk-repo-dev"].map(ethers.id);
+      const token = await ethers.getContractAt("IERC20", usdcAddress);
+      const router = new ethers.Contract(routerAddress,
+        ["function fundBalances(bytes32,address) view returns(uint256)"], ethers.provider);
+      const devert = await (await ethers.getContractFactory("DeVert_v0_2")).deploy(
+        usdcAddress, routerAddress, djukeAddress, ...funds, admin.address, scheduler.address);
+      await devert.unpause();
+      await fundForkUsdc(token, advertiser.address, 5_000_000n);
+      await token.connect(advertiser).approve(devert.target, 5_000_000n);
+      const before = await Promise.all(funds.map(id => router.fundBalances(id, usdcAddress)));
+      const workerBefore = await ethers.provider.getBalance(scheduler.address);
+      await devert.connect(advertiser).createCampaign("USDC only", "ipfs://bafy-ad", 5_000_000, 5_000_000);
+      expect(await ethers.provider.getBalance(scheduler.address)).to.equal(workerBefore);
+      const after = await Promise.all(funds.map(id => router.fundBalances(id, usdcAddress)));
+      expect(after.map((balance, i) => balance - before[i])).to.deep.equal([2_250_000n, 2_250_000n, 400_000n, 100_000n]);
+      await devert.connect(scheduler).recordCampaignPlay(1, false, ethers.id("sponsored-fork-ad"));
+      expect((await devert.getCampaign(1)).devertPlays).to.equal(1);
+    });
+  });
+
   it("requires exact live confirmation and refuses an existing deployment manifest", function () {
     expect(deploymentConfirmed("yes")).to.equal(true);
     for (const value of [undefined, "YES", "true", "1", "no"]) expect(deploymentConfirmed(value)).to.equal(false);

@@ -123,7 +123,7 @@ contract DeVert_v0_1 is AccessControl, Pausable, ReentrancyGuard {
         return (uint128(nextOffer) > MINIMUM_WEEKLY_PRICE ? uint128(nextOffer) : MINIMUM_WEEKLY_PRICE, lowestCampaignId);
     }
 
-    function quoteSchedulerGasTopUp(uint256 maxFeePerGas) public pure returns (uint256) {
+    function quoteSchedulerGasTopUp(uint256 maxFeePerGas) public pure virtual returns (uint256) {
         return SCHEDULER_GAS_UNITS_PER_CAMPAIGN * maxFeePerGas;
     }
 
@@ -146,7 +146,7 @@ contract DeVert_v0_1 is AccessControl, Pausable, ReentrancyGuard {
         require(campaignsStartedInWeek[weekId] < MAX_CAMPAIGNS_PER_WEEK, "Weekly campaign limit reached");
         (uint128 minimumOffer,) = quoteCampaign(weekId);
         require(offerUnits >= minimumOffer, "Offer below current market minimum");
-        require(msg.value >= SCHEDULER_GAS_UNITS_PER_CAMPAIGN * tx.gasprice, "Scheduler gas top-up too low");
+        _validateSchedulerGasTopUp();
 
         uint256 beforeBalance = paymentToken.balanceOf(address(this));
         paymentToken.safeTransferFrom(msg.sender, address(this), offerUnits);
@@ -165,7 +165,11 @@ contract DeVert_v0_1 is AccessControl, Pausable, ReentrancyGuard {
         emit CampaignCreated(campaignId, msg.sender, weekId, title, audioURI, offerUnits, startedAt, expiresAt);
     }
 
-    function _sendSchedulerGasTopUp(uint256 campaignId) private {
+    function _validateSchedulerGasTopUp() internal view virtual {
+        require(msg.value >= SCHEDULER_GAS_UNITS_PER_CAMPAIGN * tx.gasprice, "Scheduler gas top-up too low");
+    }
+
+    function _sendSchedulerGasTopUp(uint256 campaignId) internal virtual {
         uint256 amount = msg.value;
         uint256 effectiveGasPrice = tx.gasprice;
         require(amount >= SCHEDULER_GAS_UNITS_PER_CAMPAIGN * effectiveGasPrice, "Scheduler gas top-up too low");

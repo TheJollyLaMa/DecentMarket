@@ -11,6 +11,7 @@ const contracts = [
   ["DecentJukeBox_v0.4.sol", "DecentJukeBox_v0_4", "DecentJukeBox_v0.4.json"],
   ["DJukePlaylistModule.sol", "DJukePlaylistModule", "DJukePlaylistModule.json"],
   ["DeVert_v0.1.sol", "DeVert_v0_1", "DeVert_v0.1.json"],
+  ["DeVert_v0.2.sol", "DeVert_v0_2", "DeVert_v0.2.json"],
   ["DeVertQueue_v0.1.sol", "DeVertQueue_v0_1", "DeVertQueue_v0.1.json"],
   ["DeVertQueue_v0.2.sol", "DeVertQueue_v0_2", "DeVertQueue_v0.2.json"],
 ];
