@@ -231,6 +231,14 @@ When a new contract version is deployed:
 5. Open a PR referencing this file so the change is reviewed before going live.
 # DVert v0.2 platform-funded scheduler
 
+Deployed on Base at blocks 53048694 (campaigns:
+`0xc73c9623C6E8E9c43872b1883ae4A290F2BAdD6F`) and 53048696 (replacement queue:
+`0x3A771295af7F15B68c53251683916b65440eD8d3`). Both have exact creation/runtime
+matches on Sourcify (2026-10-25 UTC). Both remain paused pending the coordinated
+Render/site cutover; legacy purchases are paused and the paid lanes were drained.
+The deployment manifest records all transaction hashes. Basescan's automatic
+source submission hit its daily limit; the independent Sourcify matches succeeded.
+
 `DeVert_v0_2` reuses v0.1 campaign scheduling and 45/45/8/2 settlement, but
 accepts zero worker ETH only. Operators manually fund the shared DJuke worker;
 advertisers still pay normal Base network gas. `quoteSchedulerGasTopUp` returns

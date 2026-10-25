@@ -91,7 +91,9 @@ async function main() {
       manifest.transactions[key] = tx.hash;
       write();
     }
-    const receipt = await ethers.provider.waitForTransaction(manifest.transactions[key], 2, 120000);
+    const transaction = await ethers.provider.getTransaction(manifest.transactions[key]);
+    if (!transaction) throw new Error(`Submitted transaction is not available yet: ${key}`);
+    const receipt = await transaction.wait(2, 120000);
     if (receipt?.status !== 1) throw new Error(`Transaction did not confirm: ${key}`);
     return receipt;
   };
