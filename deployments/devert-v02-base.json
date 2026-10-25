@@ -20,9 +20,11 @@
     "pauseLegacyCampaigns": "0x3a226a5056483541c3ff8656983e0c0b07da9aeeca78b94d1ecc2b84e006c1c4",
     "campaignDeployment": "0x4b4f39ec8de8ce43b391a9a4f9284c3004fd9767a8e64aef3720c2eb141ce168",
     "queueDeployment": "0x1d35a6e27449c50a093985c48ec9dd8ca613dba7b7207b4b157cf970f177f9e9",
-    "pauseReplacementQueue": "0xa1103cf3049f1c3c76467bf8ee245132997cd9b4d3535151199f1487a43eff0e"
+    "pauseReplacementQueue": "0xa1103cf3049f1c3c76467bf8ee245132997cd9b4d3535151199f1487a43eff0e",
+    "activateCampaigns": "0xc015b012060a6f911bc5f5d37d0a70fe056a9cf9b3b9d05c22df398328b54918",
+    "activateQueue": "0xe7ae962a36584d9f7108e368a14a73a44c3cf07b2338d1a6108d467020bed90b"
   },
-  "phase": "deployed-paused",
+  "phase": "active",
   "sourceVerification": {
     "provider": "sourcify",
     "campaignMatch": "exact_match",

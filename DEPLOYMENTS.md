@@ -234,8 +234,9 @@ When a new contract version is deployed:
 Deployed on Base at blocks 53048694 (campaigns:
 `0xc73c9623C6E8E9c43872b1883ae4A290F2BAdD6F`) and 53048696 (replacement queue:
 `0x3A771295af7F15B68c53251683916b65440eD8d3`). Both have exact creation/runtime
-matches on Sourcify (2026-10-25 UTC). Both remain paused pending the coordinated
-Render/site cutover; legacy purchases are paused and the paid lanes were drained.
+matches on Sourcify (2026-10-25 UTC). Both were activated on 2026-10-25 UTC
+after the Render/site cutover and scheduler readiness verification; legacy
+purchases remain paused and the paid lanes were drained.
 The deployment manifest records all transaction hashes. Basescan's automatic
 source submission hit its daily limit; the independent Sourcify matches succeeded.
 
