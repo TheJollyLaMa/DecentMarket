@@ -63,6 +63,40 @@ test('actual release validates without changing its pinned metadata or explicit 
   assert.equal(args[3], account);
   assert.equal(args[4], 1000n);
 });
+test('100 editions at 100 USDC bind metadata, exact calldata, all receipt events and purchase evidence', () => {
+  const m = { ...manifest, quantity: '100', priceUSDC: '100000000' };
+  const md = { ...metadata, properties: { ...metadata.properties, supply: 100, price: '100 USDC' } };
+  validateMetadata(m, md);
+  assert.throws(() => validateMetadata(m, metadata), /edition, price/);
+  const session = newSession(m, account);
+  const register = nft.parseTransaction(transactionFor(m, session, 'register'));
+  assert.equal(register.args[0], 100n);
+  assert.equal(register.args[4], 1000n);
+  const events = {
+    register: ['TokenRegistered', [7, account, 100, 0, m.metadataURI]],
+    mint: ['TransferSingle', [account, ethers.ZeroAddress, account, 7, 100]],
+    transfer: ['TransferSingle', [account, account, BASE.ESCROW, 7, 100]],
+    list: ['Listed', [9, BASE.DNFT, 7, 0, BASE.USDC, 100000000, 100, 'Supporter']],
+  };
+  for (const step of STEPS) {
+    const iface = step === 'list' ? escrow : nft;
+    const transaction = iface.parseTransaction(transactionFor(m, session, step));
+    if (step === 'mint') assert.equal(transaction.args[2], 100n);
+    if (step === 'transfer') assert.equal(transaction.args[3], 100n);
+    if (step === 'list') { assert.equal(transaction.args[4], 100000000n); assert.equal(transaction.args[5], 100n); }
+    const [name, args] = events[step];
+    const receipt = { status: 1, hash: '0x' + 'a'.repeat(64), blockNumber: 100,
+      logs: [{ address: step === 'list' ? BASE.ESCROW : BASE.DNFT, ...iface.encodeEventLog(iface.getEvent(name), args) }] };
+    session.completed[step] = verifyReceipt(m, session, step, receipt);
+    if (step === 'list') {
+      const wrongArgs = [...args]; wrongArgs[5] = 10000000;
+      assert.throws(() => verifyReceipt(m, session, step, { ...receipt, logs: [{ address: BASE.ESCROW,
+        ...iface.encodeEventLog(iface.getEvent(name), wrongArgs) }] }), /frozen Supporter terms/);
+    }
+  }
+  const url = new URL(buildEvidence(m, session, 'https://thejollylama.github.io/DecentHead/supporter/buy.html').purchaseUrl);
+  assert.equal(url.searchParams.get('priceUSDC'), '100000000');
+});
 for (const [key, value] of Object.entries({ chainId: 1, quantity: '999', priceUSDC: '1', metadataURI: 'https://example.org', front: 'ipfs://bad', creatorAddress: ethers.ZeroAddress, commit: 'HEAD', releaseDate: 'yesterday' })) {
   test(`rejects unsupported manifest ${key}`, () => assert.throws(() => validateRelease({ ...manifest, [key]: value })));
 }

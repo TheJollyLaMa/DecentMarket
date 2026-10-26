@@ -30,7 +30,7 @@ export function validateRelease(m) {
   requireThat(/^[a-f0-9]{40}$/.test(m.commit || '') && cid(m.codeArchiveCid), 'Exact source commit and pinned archive required');
   requireThat(Number.isFinite(Date.parse(m.releaseDate)) && new Date(m.releaseDate).toISOString() === m.releaseDate, 'Canonical release date required');
   requireThat(m.creator === 'thejollylama.eth' && ethers.isAddress(m.creatorAddress) && !same(m.creatorAddress, ethers.ZeroAddress), 'Resolved Decent creator identity required');
-  requireThat(m.chainId === 8453 && m.quantity === '1000' && m.priceUSDC === '10000000', 'Only Base / 1,000 editions / 10 USDC is supported');
+  requireThat(m.chainId === 8453 && ['100', '1000'].includes(m.quantity) && ['10000000', '100000000'].includes(m.priceUSDC), 'Only Base / 100 or 1000 editions / 10 or 100 USDC is supported');
   for (const key of ['front', 'back', 'animation', 'metadataURI']) requireThat(pinned(m[key]), `Pinned ${key} CID required`);
   return m;
 }
@@ -41,7 +41,7 @@ export function validateMetadata(m, metadata) {
   for (const [key, expected] of Object.entries({ repo: m.repo, version: m.version, commit: m.commit, code_archive_cid: m.codeArchiveCid, creator_address: m.creatorAddress, release_date: m.releaseDate })) {
     requireThat(p[key] === expected, `Metadata ${key} differs from prepared release`);
   }
-  requireThat(p.supply === 1000 && p.price === '10 USDC' && p.chain === 'Base' && p.royalty_bps === 1000, 'Metadata edition, price, chain or royalty terms differ');
+  requireThat(p.supply === Number(m.quantity) && p.price === `${BigInt(m.priceUSDC) / 1000000n} USDC` && p.chain === 'Base' && p.royalty_bps === 1000, 'Metadata edition, price, chain or royalty terms differ');
   return metadata;
 }
 export const releaseKey = m => `decent-supporter:8453:${m.repo}:${m.version}`;
@@ -58,15 +58,16 @@ export function nextStep(session) {
   return STEPS.find(step => !session.completed[step]) || null;
 }
 export function transactionFor(m, s, step) {
+  validateRelease(m);
   requireThat(STEPS.includes(step), 'Unknown transaction step');
   const nft = new ethers.Interface(NFT_ABI), escrow = new ethers.Interface(ESCROW_ABI);
   const token = s.completed.register?.tokenId;
   if (step !== 'register') requireThat(/^\d+$/.test(token || ''), 'Verified registration token ID required');
   const calls = {
-    register: () => [BASE.DNFT, nft.encodeFunctionData('registerToken', [1000, m.metadataURI, 0, s.account, 1000])],
-    mint: () => [BASE.DNFT, nft.encodeFunctionData('mintProduct', [s.account, token, 1000])],
-    transfer: () => [BASE.DNFT, nft.encodeFunctionData('safeTransferFrom', [s.account, BASE.ESCROW, token, 1000, '0x'])],
-    list: () => [BASE.ESCROW, escrow.encodeFunctionData('listDNFT', [BASE.DNFT, token, 0, BASE.USDC, 10000000, 1000, `${m.repo} ${m.version} Supporter DNFT`])],
+    register: () => [BASE.DNFT, nft.encodeFunctionData('registerToken', [m.quantity, m.metadataURI, 0, s.account, 1000])],
+    mint: () => [BASE.DNFT, nft.encodeFunctionData('mintProduct', [s.account, token, m.quantity])],
+    transfer: () => [BASE.DNFT, nft.encodeFunctionData('safeTransferFrom', [s.account, BASE.ESCROW, token, m.quantity, '0x'])],
+    list: () => [BASE.ESCROW, escrow.encodeFunctionData('listDNFT', [BASE.DNFT, token, 0, BASE.USDC, m.priceUSDC, m.quantity, `${m.repo} ${m.version} Supporter DNFT`])],
   };
   const [to, data] = calls[step]();
   return { to, data, value: 0n };
@@ -76,6 +77,7 @@ export function verifyTransaction(tx, expected, account, nonce) {
     && same(tx.data, expected.data) && BigInt(tx.value) === 0n && tx.nonce === nonce, 'Transaction does not match this account, Base network, nonce and exact release step');
 }
 export function verifyReceipt(m, s, step, receipt) {
+  validateRelease(m);
   requireThat(receipt && Number(receipt.status) === 1, 'Transaction has not succeeded');
   const nft = new ethers.Interface(NFT_ABI), escrow = new ethers.Interface(ESCROW_ABI);
   const target = step === 'list' ? BASE.ESCROW : BASE.DNFT;
@@ -84,19 +86,19 @@ export function verifyReceipt(m, s, step, receipt) {
   let result = { hash: receipt.hash, blockNumber: receipt.blockNumber };
   if (step === 'register') {
     const event = events.find(e => e.name === 'TokenRegistered');
-    requireThat(event && same(event.args.creator, s.account) && event.args.maxSupply === 1000n && event.args.kind === 0n && event.args.uri === m.metadataURI, 'Registration event differs from prepared release');
+    requireThat(event && same(event.args.creator, s.account) && event.args.maxSupply === BigInt(m.quantity) && event.args.kind === 0n && event.args.uri === m.metadataURI, 'Registration event differs from prepared release');
     result.tokenId = event.args.tokenId.toString();
   } else if (step === 'list') {
     const e = events.find(e => e.name === 'Listed')?.args;
     requireThat(e && same(e.nftContract, BASE.DNFT) && e.tokenId === BigInt(s.completed.register.tokenId)
-      && e.priceETH === 0n && same(e.priceToken, BASE.USDC) && e.priceAmount === 10000000n && e.quantity === 1000n, 'Listing event differs from fixed Supporter terms');
+      && e.priceETH === 0n && same(e.priceToken, BASE.USDC) && e.priceAmount === BigInt(m.priceUSDC) && e.quantity === BigInt(m.quantity), 'Listing event differs from frozen Supporter terms');
     result.listingId = e.listingId.toString();
   } else {
     const from = step === 'mint' ? ethers.ZeroAddress : s.account;
     const to = step === 'mint' ? s.account : BASE.ESCROW;
     const event = events.find(e => e.name === 'TransferSingle' && same(e.args.from, from) && same(e.args.to, to)
-      && e.args.id === BigInt(s.completed.register.tokenId) && e.args.value === 1000n);
-    requireThat(event, 'Expected 1,000-edition mint/transfer event not found');
+      && e.args.id === BigInt(s.completed.register.tokenId) && e.args.value === BigInt(m.quantity));
+    requireThat(event, 'Expected edition mint/transfer event not found');
   }
   return result;
 }
@@ -105,6 +107,7 @@ export function buildEvidence(m, s, purchaseBase) {
   const url = new URL(purchaseBase);
   requireThat(url.protocol === 'https:' && !url.username && !url.password && url.pathname.endsWith('/supporter/buy.html'), 'Public HTTPS supporter/buy.html purchase route required');
   url.search = new URLSearchParams({ chainId: '8453', escrow: BASE.ESCROW, listingId: s.completed.list.listingId });
+  if (m.priceUSDC !== '10000000') url.searchParams.set('priceUSDC', m.priceUSDC);
   return {
     chainId: 8453, rpcUrl: 'https://mainnet.base.org', mintTxHash: s.completed.mint.hash,
     nftContract: BASE.DNFT, tokenId: s.completed.register.tokenId, escrow: BASE.ESCROW,

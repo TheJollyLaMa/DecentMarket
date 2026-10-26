@@ -25,6 +25,13 @@ export function parseMarketPurchase(search) {
     throw new Error('A valid Base Market escrow listing link is required');
   return params.get('listingId');
 }
+export function parseSupporterPrice(search) {
+  const params = new URLSearchParams(search);
+  const price = params.get('priceUSDC') ?? '10000000';
+  if (params.getAll('priceUSDC').length > 1 || !['10000000', '100000000'].includes(price))
+    throw new Error('Supporter price must be exactly 10 or 100 USDC');
+  return price;
+}
 export const assetKey = product => same(product.nftContract || BASE.DNFT, BASE.DNFT)
   ? String(product.tokenId) : `${product.nftContract.toLowerCase()}:${product.tokenId}`;
 export const listingTerms = listing => [listing.nftContract.toLowerCase(), String(listing.tokenId),
