@@ -3,6 +3,9 @@ import { readFileSync } from 'node:fs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = process.env.BASE_URL || 'http://127.0.0.1:8792';
 const embedded = process.env.EMBEDDED_STUDIO === '1';
+const quantity = process.env.SUPPORTER_QUANTITY || '1000';
+const priceUSDC = process.env.SUPPORTER_PRICE_USDC || '10000000';
+const quantityLabel = Number(quantity).toLocaleString('en-US'), priceLabel = `${BigInt(priceUSDC) / 1000000n} USDC`;
 const statusSelector = embedded ? '.supporter-studio-embed #status' : 'main #status';
 const browser = await chromium.launch();
 const errors = [];
@@ -17,8 +20,20 @@ try {
   });
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64');
   await page.route('https://gateway.pinata.cloud/**', route => route.fulfill({ contentType: 'image/png', body: png }));
+  if (quantity !== '1000' || priceUSDC !== '10000000') await page.route('**/releases/decenthead-v2.0.0/*.json', async route => {
+    const response = await route.fetch(), value = await response.json();
+    if (route.request().url().endsWith('supporter-release.json')) Object.assign(value, { quantity, priceUSDC });
+    else {
+      Object.assign(value.properties, { supply: Number(quantity), price: priceLabel });
+      for (const trait of value.attributes || []) {
+        if (trait.trait_type === 'supply') trait.value = Number(quantity);
+        if (trait.trait_type === 'price') trait.value = priceLabel;
+      }
+    }
+    await route.fulfill({ json: value });
+  });
   await page.addInitScript({ content: readFileSync(new URL('../js/vendor/ethers.umd.min.js', import.meta.url), 'utf8') });
-  await page.addInitScript(() => {
+  await page.addInitScript(({ quantity, priceUSDC }) => {
     const E = window.ethers;
     const account = '0x807061DF657A7697c04045dA7d16D941861cAABc';
     const nftAddress = '0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B';
@@ -59,9 +74,9 @@ try {
           const tx = params[0], iface = tx.to.toLowerCase() === nftAddress.toLowerCase() ? nft : escrow;
           const call = iface.parseTransaction({ data: tx.data });
           const values = {
-            hasRole: [true], owner: [account], paused: [false], uri: [metadataURI], royaltyInfo: [account, 1000], balanceOf: [1000],
+            hasRole: [true], owner: [account], paused: [false], uri: [metadataURI], royaltyInfo: [account, 1000], balanceOf: [quantity],
             registerToken: [7], listDNFT: [9],
-            listings: [nftAddress, 7, 0, usdc, 10000000, 1000, true, 'Supporter'],
+            listings: [nftAddress, 7, 0, usdc, priceUSDC, quantity, true, 'Supporter'],
           };
           return iface.encodeFunctionResult(call.name, values[call.name] || []);
         }
@@ -79,10 +94,10 @@ try {
             transactionIndex: '0x0', r: '0x' + '1'.repeat(64), s: '0x' + '2'.repeat(64), v: '0x1b',
           };
           let event, args;
-          if (call.name === 'registerToken') { event = 'TokenRegistered'; args = [7, account, 1000, 0, metadataURI]; }
-          if (call.name === 'mintProduct') { event = 'TransferSingle'; args = [account, E.ZeroAddress, account, 7, 1000]; }
-          if (call.name === 'safeTransferFrom') { event = 'TransferSingle'; args = [account, account, escrowAddress, 7, 1000]; }
-          if (call.name === 'listDNFT') { event = 'Listed'; args = [9, nftAddress, 7, 0, usdc, 10000000, 1000, 'Supporter']; }
+          if (call.name === 'registerToken') { event = 'TokenRegistered'; args = [7, account, quantity, 0, metadataURI]; }
+          if (call.name === 'mintProduct') { event = 'TransferSingle'; args = [account, E.ZeroAddress, account, 7, quantity]; }
+          if (call.name === 'safeTransferFrom') { event = 'TransferSingle'; args = [account, account, escrowAddress, 7, quantity]; }
+          if (call.name === 'listDNFT') { event = 'Listed'; args = [9, nftAddress, 7, 0, usdc, priceUSDC, quantity, 'Supporter']; }
           if (!event) throw new Error(`Unexpected transaction ${call.name}`);
           const log = iface.encodeEventLog(iface.getEvent(event), args);
           state.receipts[hash] = {
@@ -96,7 +111,7 @@ try {
         throw new Error(`Unexpected RPC method ${method}`);
       },
     };
-  });
+  }, { quantity, priceUSDC });
   async function openStudio() {
     if (embedded) {
       await page.getByRole('button', { name: '📜', exact: true }).click();
@@ -125,7 +140,7 @@ try {
   await page.waitForFunction(() => document.querySelector('#status').dataset.error === 'true');
   assert.match(await page.locator(statusSelector).textContent(), /reject|denied/i);
   assert.equal(await page.locator('#progress').getByText('Verified — Register release', { exact: false }).count(), 0);
-  for (const label of ['Register release', 'Mint 1,000 editions to creator', 'Transfer 1,000 editions to escrow', 'List 1,000 editions at 10 USDC each']) {
+  for (const label of ['Register release', `Mint ${quantityLabel} editions to creator`, `Transfer ${quantityLabel} editions to escrow`, `List ${quantityLabel} editions at ${priceLabel} each`]) {
     const downloading = page.waitForEvent('download');
     await page.getByRole('button', { name: label, exact: true }).click();
     await downloading;
@@ -136,7 +151,7 @@ try {
       await page.getByRole('button', { name: 'Load DecentHead v2.0.0' }).click();
       await page.getByRole('checkbox').check();
       await page.getByRole('button', { name: 'Connect creator wallet' }).click();
-      await page.getByRole('button', { name: 'Mint 1,000 editions to creator', exact: true }).waitFor();
+      await page.getByRole('button', { name: `Mint ${quantityLabel} editions to creator`, exact: true }).waitFor();
     }
   }
   const evidenceDownload = page.waitForEvent('download');
@@ -145,6 +160,7 @@ try {
   const evidence = JSON.parse(readFileSync(await download.path()));
   assert.equal(evidence.tokenId, '7'); assert.equal(evidence.listingId, '9');
   assert.match(evidence.purchaseUrl, /listingId=9/);
+  assert.equal(new URL(evidence.purchaseUrl).searchParams.get('priceUSDC'), priceUSDC === '10000000' ? null : priceUSDC);
   assert.equal(await page.getByRole('button', { name: 'All steps verified' }).isDisabled(), true);
   assert.deepEqual(errors, []);
   await page.setViewportSize({ width: 390, height: 844 });

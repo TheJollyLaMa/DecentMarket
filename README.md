@@ -24,6 +24,11 @@ Market's own next version and Supporter edition remain separate upcoming work.
 The right **Mint New DNFT** panel has Regular, Supporter (embedded Release
 Studio) and Music (Busking owner-approval submission) dropdowns.
 See [mint lanes, filters and music protocol boundaries](./docs/MINT-LANES.md).
+The Supporter Studio accepts frozen Base releases of 100 or 1,000 editions at
+10 or 100 USDC each. It binds registration, mint, transfer, listing, receipts,
+and displayed terms to that release; historical manifests are not rewritten.
+100-USDC purchase evidence adds `priceUSDC=100000000` to the compatible Head
+checkout route. Deploy that consumer before distributing new-price links.
 See [Base storefront, ENS portal and display moderation](./docs/MARKET-MAKEOVER.md)
 for the local makeover's release gates and read-only versus signing boundaries.
 

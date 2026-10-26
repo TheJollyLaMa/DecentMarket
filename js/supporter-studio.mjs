@@ -4,7 +4,12 @@ import { marketBrowserProvider } from './market-wallet.mjs';
 export function mountSupporterStudio(root) {
 const $ = id => root.querySelector(`#${id}`);
 let manifest, studio, busy = false;
-const titles = { register: 'Register release', mint: 'Mint 1,000 editions to creator', transfer: 'Transfer 1,000 editions to escrow', list: 'List 1,000 editions at 10 USDC each' };
+function stepTitles() {
+  const quantity = manifest ? Number(manifest.quantity).toLocaleString('en-US') : 'reviewed';
+  const price = manifest ? `${BigInt(manifest.priceUSDC) / 1000000n} USDC` : 'reviewed price';
+  return { register: 'Register release', mint: `Mint ${quantity} editions to creator`,
+    transfer: `Transfer ${quantity} editions to escrow`, list: `List ${quantity} editions at ${price} each` };
+}
 function status(message, error = false) { $('status').textContent = message; $('status').dataset.error = String(error); }
 function download(name, value) {
   const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2) + '\n'], { type: 'application/json' }));
@@ -30,6 +35,7 @@ async function action(callback) {
   finally { busy = false; controls.forEach((button, i) => { button.disabled = disabled[i]; }); render(); }
 }
 function render() {
+  const titles = stepTitles();
   $('transactions').hidden = !studio?.session;
   $('finished').hidden = !studio?.session || nextStep(studio.session) !== null || !!studio.session.pending;
   const session = studio?.session;
@@ -55,7 +61,7 @@ async function load(m, metadata) {
   manifest = m; studio = null;
   $('consent').checked = false;
   $('review').hidden = false;
-  $('release-summary').textContent = `${m.repo} ${m.version}\nRelease: ${m.releaseDate}\nCreator / royalty recipient: ${m.creator}\n${m.creatorAddress}\nSource commit: ${m.commit}\nSource CID: ${m.codeArchiveCid}\nMetadata: ${m.metadataURI}\nNFT: ${BASE.DNFT}\nEscrow: ${BASE.ESCROW}\nPrice: 10 USDC per edition; 1,000 editions`;
+  $('release-summary').textContent = `${m.repo} ${m.version}\nRelease: ${m.releaseDate}\nCreator / royalty recipient: ${m.creator}\n${m.creatorAddress}\nSource commit: ${m.commit}\nSource CID: ${m.codeArchiveCid}\nMetadata: ${m.metadataURI}\nNFT: ${BASE.DNFT}\nEscrow: ${BASE.ESCROW}\nPrice: ${BigInt(m.priceUSDC) / 1000000n} USDC per edition; ${Number(m.quantity).toLocaleString('en-US')} editions`;
   const asset = uri => `https://gateway.pinata.cloud/ipfs/${uri.slice(7)}`;
   for (const key of ['front', 'back']) { $(key).onerror = () => status(`${key} artwork gateway failed. Open the official release assets to review before signing.`, true); $(key).src = asset(m[key]); }
   $('source').href = `https://github.com/${m.repo}/releases/tag/${encodeURIComponent(m.version)}`;
@@ -133,7 +139,7 @@ $('evidence').onclick = () => action(async () => {
   const s = studio.session, nft = new ethers.Contract(BASE.DNFT, NFT_ABI, studio.provider);
   const escrow = new ethers.Contract(BASE.ESCROW, ESCROW_ABI, studio.provider);
   const l = await escrow.listings(s.completed.list.listingId);
-  if (!l.active || l.available <= 0n || l.priceAmount !== 10000000n || l.priceETH !== 0n
+  if (!l.active || l.available <= 0n || l.available > BigInt(manifest.quantity) || l.priceAmount !== BigInt(manifest.priceUSDC) || l.priceETH !== 0n
     || l.priceToken.toLowerCase() !== BASE.USDC.toLowerCase() || l.nftContract.toLowerCase() !== BASE.DNFT.toLowerCase()
     || l.tokenId !== BigInt(s.completed.register.tokenId) || await nft.balanceOf(BASE.ESCROW, l.tokenId) < l.available) throw new Error('Listing is inactive, changed, or insufficiently stocked');
   const evidence = buildEvidence(manifest, s, $('purchase-base').value.trim());

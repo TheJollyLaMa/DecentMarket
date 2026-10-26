@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { BASE, ethers, validateRelease } from '../js/supporter-mint.mjs';
-import { assetKey, listingPrices, listingTerms, readFundedListings, executeMarketPurchase, MARKET_ESCROW_ABI, parseMarketPurchase } from '../js/market-listings.mjs';
+import { assetKey, listingPrices, listingTerms, readFundedListings, executeMarketPurchase, MARKET_ESCROW_ABI, parseMarketPurchase, parseSupporterPrice } from '../js/market-listings.mjs';
 import { validateModeration, moderationKey, isMarketAdmin, ADMIN } from '../js/market-moderation.mjs';
 import { coinCaption, starPoints } from '../js/market-coin.mjs';
 import { COIN_RADIUS, SPIRAL_RADIUS, timelinePosition, viewingDistance, nearbyFlipKeys, advanceStarDepth } from '../js/market-flight.mjs';
@@ -14,6 +14,14 @@ test('Supporter purchase links bind exact Base escrow and accept listing zero, r
   for (const search of ['', `${base}-1`, `${base}01`, `${base}1&listingId=2`, `${base}1&chainId=8453`,
     `${base}1`.replace('8453', '10'), `${base}1`.replace(BASE.ESCROW, BASE.DNFT)])
     assert.throws(() => parseMarketPurchase(search));
+});
+test('Supporter route defaults to historical 10 USDC and accepts only explicit canonical 100 USDC', () => {
+  assert.equal(parseSupporterPrice(''), '10000000');
+  assert.equal(parseSupporterPrice('?priceUSDC=100000000'), '100000000');
+  for (const value of ['100', '1', '0100000000', '', '100000000&priceUSDC=100000000'])
+    assert.throws(() => parseSupporterPrice(`?priceUSDC=${value}`));
+  const studio = readFileSync(new URL('../supporter.html', import.meta.url), 'utf8');
+  assert.doesNotMatch(studio, /1,000 editions · 10 USDC each/);
 });
 test('starfield gently approaches the viewer and wraps behind at a frame-rate independent speed', () => {
   assert.equal(advanceStarDepth(-50, 1), -47.5);
