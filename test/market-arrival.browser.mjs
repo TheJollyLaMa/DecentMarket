@@ -47,7 +47,10 @@ try {
     if (token) return route.fulfill({ json: { ...metadata, name: token === '79' ? 'DecentCanopy Supporter v0.1.0' : 'DecentBusking Supporter v1.2.0' } });
     return route.fulfill({ contentType: 'image/png', body: image });
   });
-  await page.route('https://mainnet.base.org/**', route => {
+  let failedPrimarySymbol = false, fallbackReads = 0;
+  const rpcRoute = route => {
+    const fallback = route.request().url().includes('base-rpc.publicnode.com');
+    if (fallback) fallbackReads++;
     const data = route.request().postDataJSON();
     const reply = call => {
       let result;
@@ -58,6 +61,10 @@ try {
         const tx = call.params[0], address = tx.to.toLowerCase();
         const iface = address === BASE.DNFT.toLowerCase() ? nft : address === BASE.USDC.toLowerCase() ? erc20 : escrow;
         const parsed = iface.parseTransaction({ data: tx.data });
+        if (parsed.name === 'symbol' && !fallback && !failedPrimarySymbol) {
+          failedPrimarySymbol = true;
+          return { jsonrpc: '2.0', id: call.id, error: { code: -32000, message: 'Injected payment symbol RPC failure' } };
+        }
         const id = parsed.args.length ? parsed.args[0] : 0n;
         const values = {
           owner: [BASE.DNFT], paused: [false], nextListingId: [2],
@@ -70,7 +77,9 @@ try {
       return { jsonrpc: '2.0', id: call.id, result };
     };
     return route.fulfill({ json: Array.isArray(data) ? data.map(reply) : reply(data) });
-  });
+  };
+  await page.route('https://mainnet.base.org/**', rpcRoute);
+  await page.route('https://base-rpc.publicnode.com/**', rpcRoute);
   const url = new URL(base);
   url.search = `supporters=1&chainId=8453&nftContract=${BASE.DNFT}&tokenId=79`;
   await page.goto(url.href);
@@ -79,6 +88,13 @@ try {
   assert.match(await page.locator('#nft-detail-modal').innerText(), /10 USDC/);
   assert.equal(await page.locator('#market-catalog .market-catalog-items > button').count(), 2);
   assert.equal(await page.evaluate(() => document.querySelector('decent-canvas')._selectedEdition), '79');
+  assert.ok(failedPrimarySymbol);
+  assert.ok(fallbackReads > 0, 'Incomplete primary verification must use the fallback RPC');
+  assert.equal(await page.locator('#nft-detail-modal').getByRole('button', { name: 'Buy one · 10 USDC', exact: true }).isEnabled(), true);
+  await page.locator('#nft-detail-modal').getByRole('button', { name: 'Refresh price and availability', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#nft-detail-modal .market-offers').textContent.includes('Ready to purchase')
+    && !document.querySelector('#nft-detail-modal .market-offers').textContent.includes('Rechecking'));
+  assert.equal(await page.locator('#nft-detail-modal').getByRole('button', { name: 'Buy one · 10 USDC', exact: true }).isEnabled(), true);
   assert.deepEqual(await page.evaluate(() => window.walletRequests), []);
   const card = page.locator('#nft-detail-modal');
   const headerWallet = page.locator('decent-header wallet-connect');
@@ -110,7 +126,7 @@ try {
   assert.equal(await page.locator('#market-catalog').isVisible(), false);
   assert.equal(await headerWallet.getAttribute('data-purchase-needed'), null);
   assert.equal(await card.evaluate(e => e.classList.contains('market-wallet-needed')), false);
-  assert.ok(await card.evaluate(e => e.getBoundingClientRect().width) > disconnectedWidth);
+  await page.waitForFunction(width => document.querySelector('#nft-detail-modal').getBoundingClientRect().width > width, disconnectedWidth);
   assert.match(await card.innerText(), /DecentCanopy Supporter/);
   assert.equal(await card.getByRole('button', { name: 'Buy one · 10 USDC', exact: true }).isEnabled(), true);
   assert.equal(await page.evaluate(() => window.walletRequests.some(r => r.name !== 'B')), false);

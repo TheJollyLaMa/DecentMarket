@@ -50,16 +50,27 @@ export async function readFundedListings({ escrow, nftFor, tokenFor, blockTag, f
   const [count, paused] = await Promise.all([escrow.nextListingId({ blockTag }), escrow.paused({ blockTag })]);
   if (count > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('Listing count is too large');
   const listings = [], errors = [], stock = new Map(), totals = new Map(), tokens = new Map();
-  // Read the small escrow index, not every registered NFT. Serial reads avoid public-RPC bursts.
+  const rows = [];
+  let inventoryComplete = true;
   for (let id = Number(count) - 1; id >= 0; id--) {
     try {
       const raw = await escrow.listings(id, { blockTag });
       if (!raw.active || raw.available === 0n) continue;
+      const key = assetKey(raw);
+      totals.set(key, (totals.get(key) || 0n) + raw.available);
+      rows.push({ id, raw });
+    } catch (error) {
+      inventoryComplete = false;
+      errors.push(`Listing ${id} inventory could not be verified: ${error.message}`);
+    }
+  }
+  // Read the small escrow index, not every registered NFT. Serial reads avoid public-RPC bursts.
+  for (const { id, raw } of rows) {
+    try {
       const listing = { id: String(id), nftContract: raw.nftContract, tokenId: String(raw.tokenId),
         priceETH: raw.priceETH, priceToken: raw.priceToken, priceAmount: raw.priceAmount,
         available: raw.available, note: raw.note };
       const key = assetKey(listing), nft = nftFor(listing.nftContract);
-      totals.set(key, (totals.get(key) || 0n) + raw.available);
       if (!stock.has(key)) stock.set(key, await nft.balanceOf(BASE.ESCROW, listing.tokenId, { blockTag }));
       if (raw.priceAmount > 0n) {
         const address = raw.priceToken.toLowerCase();
@@ -85,9 +96,10 @@ export async function readFundedListings({ escrow, nftFor, tokenFor, blockTag, f
   const products = new Map();
   for (const listing of listings) {
     const key = assetKey(listing);
-    listing.purchasable = !paused && stock.get(key) >= totals.get(key) && listingPrices(listing).length > 0 && errors.every(e => !e.includes('could not be verified'));
+    listing.purchasable = !paused && inventoryComplete && stock.get(key) >= totals.get(key) && listingPrices(listing).length > 0;
     listing.status = paused ? 'Escrow paused' : stock.get(key) < totals.get(key) ? 'Uncovered escrow stock'
-      : listing.purchasable ? 'Ready to purchase' : 'Listing verification incomplete';
+      : !inventoryComplete ? 'Listing inventory incomplete: an escrow row could not be read. Refresh verification to retry safely.'
+        : listing.purchasable ? 'Ready to purchase' : 'Payment verification incomplete. Refresh verification to retry.';
     if (!products.has(key)) products.set(key, { tokenId: listing.tokenId, nftContract: listing.nftContract,
       metadata: listing.metadata, escrowStock: stock.get(key).toString(), blockNumber: Number(listing.id), listings: [] });
     products.get(key).listings.push(listing);
@@ -96,26 +108,38 @@ export async function readFundedListings({ escrow, nftFor, tokenFor, blockTag, f
 }
 
 export async function loadMarketListings() {
-  const provider = publicMarketProvider(ethers, 'https://mainnet.base.org');
-  try {
-    if ((await provider.getNetwork()).chainId !== 8453n) throw new Error('Marketplace RPC is not Base');
-    const blockTag = await provider.getBlockNumber();
-    return await readFundedListings({
-      escrow: new ethers.Contract(BASE.ESCROW, MARKET_ESCROW_ABI, provider),
-      nftFor: address => new ethers.Contract(address, NFT, provider),
-      tokenFor: address => new ethers.Contract(address, ERC20, provider),
-      blockTag,
-      fetchMetadata: async uri => {
-        const url = resolveMarketAsset(uri);
-        if (!url) throw new Error('Missing metadata URL');
-        const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
-        if (!response.ok) throw new Error(`Metadata HTTP ${response.status}`);
-        const value = await response.json();
-        if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid metadata');
-        return value;
-      },
-    });
-  } finally { provider.destroy(); }
+  let partial;
+  const failures = [];
+  for (const rpc of ['https://mainnet.base.org', 'https://base-rpc.publicnode.com']) {
+    const provider = publicMarketProvider(ethers, rpc);
+    try {
+      if ((await provider.getNetwork()).chainId !== 8453n) throw new Error('Marketplace RPC is not Base');
+      const blockTag = await provider.getBlockNumber();
+      const result = await readFundedListings({
+        escrow: new ethers.Contract(BASE.ESCROW, MARKET_ESCROW_ABI, provider),
+        nftFor: address => new ethers.Contract(address, NFT, provider),
+        tokenFor: address => new ethers.Contract(address, ERC20, provider),
+        blockTag,
+        fetchMetadata: async uri => {
+          const url = resolveMarketAsset(uri);
+          if (!url) throw new Error('Missing metadata URL');
+          const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
+          if (!response.ok) throw new Error(`Metadata HTTP ${response.status}`);
+          const value = await response.json();
+          if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid metadata');
+          return value;
+        },
+      });
+      if (!result.errors.some(error => error.includes('could not be verified'))) return result;
+      partial = result;
+      console.error('[Market listing RPC verification]', rpc, result.errors.join(' · '));
+    } catch (error) {
+      failures.push(`${rpc}: ${error.message}`);
+      console.error('[Market listing RPC unavailable]', rpc, error);
+    } finally { provider.destroy(); }
+  }
+  if (partial) return { ...partial, errors: [...partial.errors, ...failures] };
+  throw new Error(`Base listing verification unavailable: ${failures.join(' · ')}`);
 }
 
 export async function executeMarketPurchase({ listing, method, provider, escrow, tokenFor, nftFor, account, assertSession, status }) {

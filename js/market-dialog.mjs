@@ -48,7 +48,9 @@ export function openMarketDialog(id, title, { purchase = false } = {}) {
     document.addEventListener('keydown', key);
     dialog.addEventListener('close', () => {
       document.removeEventListener('keydown', key);
-      if (catalog?.isConnected) { catalog.style.visibility = ''; catalog.inert = false; catalog.focus(); }
+      if (catalog?.isConnected && !document.querySelector('#nft-detail-modal[open]')) {
+        catalog.style.visibility = ''; catalog.inert = false; catalog.focus();
+      }
     }, { once: true });
     dialog.show();
   } else dialog.showModal();

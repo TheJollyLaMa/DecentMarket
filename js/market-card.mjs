@@ -1,7 +1,7 @@
 import { BASE } from './supporter-mint.mjs';
 import { collectibleFaces, resolveCollectibleAsset } from './supporter-display.mjs';
 import { element, externalLink, openMarketDialog } from './market-dialog.mjs';
-import { listingPrices, purchaseMarketListing } from './market-listings.mjs';
+import { assetKey, listingPrices, loadMarketListings, purchaseMarketListing } from './market-listings.mjs';
 import { visibleMarketProducts } from './market-moderation.mjs';
 import { dnftCategory } from './market-filters.mjs';
 import { connectPurchaseWallet, purchaseWalletReady, trackPurchaseWallet } from './market-wallet-controls.mjs';
@@ -35,6 +35,29 @@ export function openCollectibleCard(product) {
   if (!listings.length) offers.append(element('p', 'Not verified for sale in this Base escrow. A metadata price alone is not an active listing.'));
   let busy = false;
   const status = element('p'); status.setAttribute('role', 'status');
+  const refresh = element('button', 'Refresh price and availability');
+  refresh.type = 'button';
+  refresh.onclick = async () => {
+    if (busy) return;
+    busy = true;
+    offers.querySelectorAll('button').forEach(button => { button.disabled = true; });
+    dialog.addEventListener('cancel', preventClose);
+    status.textContent = 'Rechecking Base listing prices, stock and payment tokens…';
+    try {
+      const result = await loadMarketListings();
+      const updated = visibleMarketProducts(result.products).find(item => assetKey(item) === assetKey(product));
+      if (result.errors.length) console.error('[Market listing refresh]', result.errors.join(' · '));
+      document.dispatchEvent(new CustomEvent('market:listed-products', { detail: result }));
+      if (dialog.isConnected && dialog.open) {
+        openCollectibleCard(updated || { ...product, listings: [] });
+      }
+    } catch (error) {
+      console.error('[Market listing refresh]', error);
+      status.textContent = `Listing verification unavailable: ${error.message}. Refresh again to retry; no purchase submitted.`;
+      refresh.disabled = false;
+    } finally { busy = false; dialog.removeEventListener('cancel', preventClose); }
+  };
+  offers.append(refresh);
   for (const listing of listings) {
     offers.append(element('h3', `Listing #${listing.id} · ${listing.available} editions`));
     offers.append(element('p', listing.status));

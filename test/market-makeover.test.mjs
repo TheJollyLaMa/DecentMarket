@@ -138,6 +138,39 @@ test('failed verification is explicit and cannot enable partial unsafe buy offer
   assert.match(metadataFailure.errors[0], /gateway offline/);
   assert.equal(metadataFailure.products[0].listings[0].purchasable, true, 'Metadata failure is not a fabricated stock failure');
 });
+test('one known listing payment read failure does not disable independently verified editions', async () => {
+  const f = fixture([raw({ tokenId: 79n }), raw({ tokenId: 80n, priceToken: '0x' + '3'.repeat(40) })]);
+  const original = f.tokenFor;
+  f.tokenFor = address => address === BASE.USDC ? original(address) : {
+    decimals: async () => 6n, symbol: async () => { throw new Error('RPC symbol call failed'); },
+  };
+  const result = await readFundedListings(f);
+  assert.match(result.errors[0], /symbol call failed/);
+  assert.equal(result.products.find(p => p.tokenId === '79').listings[0].purchasable, true);
+});
+test('transient USDC symbol failure on a newer listing cannot poison Canopy readiness', async () => {
+  const f = fixture([raw({ tokenId: 79n, available: 900n }), raw({ tokenId: 80n, available: 900n })]);
+  let symbols = 0;
+  f.tokenFor = () => ({ decimals: async () => 6n, symbol: async () => {
+    if (++symbols === 1) throw new Error('missing revert data for symbol');
+    return 'USDC';
+  } });
+  const result = await readFundedListings(f);
+  assert.match(result.errors[0], /missing revert data/);
+  const canopy = result.products.find(product => product.tokenId === '79');
+  assert.equal(canopy.listings[0].purchasable, true);
+  assert.equal(canopy.listings[0].status, 'Ready to purchase');
+});
+test('failed known listing still reserves its inventory when payment verification fails', async () => {
+  const f = fixture([raw({ available: 600n }), raw({ available: 600n, priceToken: '0x' + '3'.repeat(40) })]);
+  const original = f.tokenFor;
+  f.tokenFor = address => address === BASE.USDC ? original(address) : {
+    decimals: async () => { throw new Error('RPC decimals failed'); }, symbol: async () => 'OTHER',
+  };
+  const result = await readFundedListings(f);
+  assert.equal(result.products[0].listings[0].purchasable, false);
+  assert.equal(result.products[0].listings[0].status, 'Uncovered escrow stock');
+});
 function purchaseFixture() {
   const f = fixture(), calls = [], account = ADMIN;
   const listing = { ...raw(), id: '0', tokenId: '70', purchasable: true, tokenInfo: { symbol: 'USDC', decimals: 6 } };

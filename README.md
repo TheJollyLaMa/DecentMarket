@@ -10,6 +10,13 @@ only; after connection, a second **Buy** click starts purchase confirmations.
 The selected token and catalog remain available during connection and rejection.
 Connecting through the header also restores the panel's normal presentation.
 Sale readiness still requires verified live price, pause state and covered stock.
+Listing discovery enumerates all escrow reservations before checking per-edition
+stock and payment metadata. A failed symbol/decimals/stock read for one known
+listing does not disable independently verified editions; an unread escrow row
+still blocks purchases because its reservations are unknown. A second public Base
+RPC is tried for incomplete verification, using a fresh fixed-block snapshot rather
+than mixing providers' reads. Errors remain visible. Each collectible offers
+**Refresh price and availability** to recover without leaving the selected token.
 The reserve cutover uses replacement sale listings 11 (Head) and 18 (Voyager)
 in `releases/listings.json`. Both retain 10 USDC pricing; each has 900 sale units
 at cutover after 100 moved to VoyagerRewards. Original release metadata remains
