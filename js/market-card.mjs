@@ -3,6 +3,7 @@ import { collectibleFaces, resolveCollectibleAsset } from './supporter-display.m
 import { element, externalLink, openMarketDialog } from './market-dialog.mjs';
 import { listingPrices, purchaseMarketListing } from './market-listings.mjs';
 import { visibleMarketProducts } from './market-moderation.mjs';
+import { dnftCategory } from './market-filters.mjs';
 
 const addLink = (root, label, url) => { const link = externalLink(label, url); if (link) root.append(link); };
 export function openCollectibleCard(product) {
@@ -89,8 +90,8 @@ export function openCollectibleCard(product) {
   return dialog;
 }
 
-export function openMarketCatalog(products) {
-  const { dialog, body } = openMarketDialog('market-catalog', 'Base marketplace');
+export function openMarketCatalog(products, { supporters = false } = {}) {
+  const { dialog, body } = openMarketDialog('market-catalog', supporters ? 'A Decent Series · Supporter DNFT Star' : 'Base marketplace');
   body.append(element('p', 'Live funded escrow listings. Review a collectible and its exact price before signing. Refresh to check new stock.'));
   const refresh = element('button', 'Refresh listings');
   refresh.onclick = () => document.dispatchEvent(new Event('market:refresh-listings'));
@@ -112,7 +113,7 @@ export function openMarketCatalog(products) {
     if (!items.length) rows.append(element('p', 'No verified listings loaded. Check the status in the filter panel and refresh to retry.'));
   };
   let currentProducts = products;
-  const moderated = () => render(visibleMarketProducts(currentProducts));
+  const moderated = () => render(visibleMarketProducts(currentProducts).filter(p => !supporters || dnftCategory(p.metadata) === 'supporter'));
   moderated();
   const update = event => { currentProducts = event.detail.products; moderated(); };
   document.addEventListener('market:listed-products', update);

@@ -1,4 +1,22 @@
 # DecentMarket
+
+### Supporter Star arrivals
+
+`?supporters=1&chainId=8453&nftContract=0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B&tokenId=79`
+opens the observed A Decent Series Supporter catalog with Canopy's exact Base
+edition selected above it. Closing that card reveals the other offerings; it does
+not reduce the collection to Canopy or prompt a wallet. Listing verification,
+moderation and purchase checks still apply. Unknown/unavailable editions show an
+explicit status, never a substitute. Duplicate/foreign chain/collection parameters
+are rejected. This is a read-time inventory, not every historical NFT on every chain.
+
+Reuse: adapted the existing `openMarketCatalog`, `openCollectibleCard`,
+`readFundedListings` and `gallery:fly-to` surfaces rather than adding a second shop.
+Supporter category includes 10/100-USDC releases and on-chain Supporter listing
+notes when metadata is unavailable (clearly labeled as such). No frozen metadata
+or contracts changed. `node --test test/market-arrival.test.mjs` verifies exact
+selection and rejected routes; `test/market-arrival.browser.mjs` checks the landing
+and full catalog without wallet consent.
 A Decent Market With a Decent Head, a Decent Canvas, and a Decent Foot in a Web3 space to display a gallery of Decent Assets and Tools in a coordinate system.
 
 ## Shared Head and live releases

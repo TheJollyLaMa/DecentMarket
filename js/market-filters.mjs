@@ -1,7 +1,8 @@
 export const defaultFilters = { category: 'all', search: '', availability: 'sale' };
 export function dnftCategory(metadata = {}) {
   if (metadata.audioUrl || metadata.videoUrl || /^(audio|video)\//.test(metadata.mediaType || '')) return 'music';
-  if (metadata.properties?.back_image && metadata.properties?.repo && metadata.properties?.price === '10 USDC') return 'supporter';
+  if (metadata.properties?.back_image && metadata.properties?.repo && ['10 USDC', '100 USDC'].includes(metadata.properties?.price)) return 'supporter';
+  if (/\bsupporter\b/i.test(metadata.name || '')) return 'supporter';
   if (Array.isArray(metadata.attributes) && metadata.attributes.some(a => a.trait_type === 'Kind' && /supporter/i.test(String(a.value)))) return 'supporter';
   if (metadata.animation_url && (metadata.artist || metadata.creator) && !metadata.properties?.product && !metadata.properties?.repo) return 'music';
   return 'regular';

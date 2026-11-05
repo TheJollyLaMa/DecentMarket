@@ -5,7 +5,19 @@ import './components/DecentCanvas.js';
 import './components/Footer.js';
 import { showPublicReleases } from './market-releases.mjs';
 import { loadMarketListings } from './market-listings.mjs';
-import { loadModeration } from './market-moderation.mjs';
+import { loadModeration, visibleMarketProducts } from './market-moderation.mjs';
+import { openCollectibleCard, openMarketCatalog } from './market-card.mjs';
+import { parseMarketArrival, arrivalProduct } from './market-arrival.mjs';
+import { dnftCategory } from './market-filters.mjs';
+import { openMarketDialog } from './market-dialog.mjs';
+let arrival, arrivalHandled = false;
+try { arrival = parseMarketArrival(location.search); }
+catch (error) {
+  console.error('[Market arrival]', error);
+  const { body } = openMarketDialog('market-arrival-error', 'Supporter link unavailable');
+  const status = document.createElement('p');
+  status.setAttribute('role', 'alert'); status.textContent = error.message; body.append(status);
+}
 const header = document.querySelector('decent-header');
 new ResizeObserver(() => {
   document.documentElement.style.setProperty('--market-header-height', `${header.getBoundingClientRect().height}px`);
@@ -26,6 +38,21 @@ async function refreshListings() {
     listingStatus(result.errors.length ? `Some listings unavailable: ${result.errors.join(' · ')}`
       : `${result.products.reduce((n, p) => n + p.listings.length, 0)} Base listing(s) · ${result.paused ? 'escrow paused' : 'prices and stock checked'}`);
     document.dispatchEvent(new CustomEvent('market:listed-products', { detail: result }));
+    if (arrival && !arrivalHandled) {
+      arrivalHandled = true;
+      const supporters = visibleMarketProducts(result.products).filter(product => dnftCategory(product.metadata) === 'supporter');
+      openMarketCatalog(supporters, { supporters: true });
+      const product = arrivalProduct(supporters, arrival);
+      if (product) {
+        document.dispatchEvent(new CustomEvent('gallery:fly-to', { detail: { tokenId: arrival.tokenId } }));
+        openCollectibleCard(product);
+      }
+      else {
+        const status = document.createElement('p'); status.setAttribute('role', 'status');
+        status.textContent = 'The linked Supporter edition is unavailable in the current public listing read. Browse the other observed Supporter editions or refresh; no replacement token selected.';
+        document.querySelector('#market-catalog .market-dialog-body').prepend(status);
+      }
+    }
     document.dispatchEvent(new CustomEvent('market:gallery-status', { detail: { error: result.errors.join(' · '), loading: false } }));
     for (const error of result.errors) console.error('[Market listing]', error);
   } catch (error) {

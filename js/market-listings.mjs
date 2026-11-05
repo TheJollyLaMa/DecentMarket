@@ -75,7 +75,7 @@ export async function readFundedListings({ escrow, nftFor, tokenFor, blockTag, f
       try { metadata = await fetchMetadata((await nft.uri(listing.tokenId, { blockTag })).replace(/\{id\}/g, BigInt(listing.tokenId).toString(16).padStart(64, '0'))); }
       catch (error) {
         errors.push(`Listing ${id} artwork/metadata unavailable: ${error.message}`);
-        metadata = { name: `DNFT #${listing.tokenId}`, description: 'Metadata unavailable; inspect the contract before purchasing.' };
+        metadata = { name: /\bsupporter\b/i.test(raw.note || '') ? raw.note : `DNFT #${listing.tokenId}`, description: 'Metadata unavailable; name may be the on-chain listing note. Inspect the contract before purchasing.' };
       }
       listings.push({ ...listing, metadata });
       onProgress({ checked: Number(count) - id, total: Number(count) });
