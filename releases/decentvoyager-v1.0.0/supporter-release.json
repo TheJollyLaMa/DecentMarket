@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "repo": "TheJollyLaMa/AsteRoid",
+  "version": "v1.0.0",
+  "commit": "f7b71fbd7f5a549f0b2be3f6c35b38f3b655b9f8",
+  "releaseDate": "2026-11-05T21:10:31.000Z",
+  "creator": "thejollylama.eth",
+  "creatorAddress": "0x807061DF657A7697c04045dA7d16D941861cAABc",
+  "ensChainId": 1,
+  "ensObservedBlock": 26351242,
+  "chainId": 8453,
+  "quantity": "1000",
+  "priceUSDC": "10000000",
+  "codeArchiveCid": "QmY2BdbKmqLYnvRHupFRRR4fZFeY6WAtQFfnmBS1PyEqaq",
+  "front": "ipfs://QmRBdBUg73Cd3y1aAzTT6jVgcRaVbw3roPpb4KaCrVqxce",
+  "back": "ipfs://QmT1Bhrw7fH3rXK3vxTLaJdtTX61HrRNXnNPac4YB7jqBf",
+  "animation": "ipfs://QmRcfXXsSFKqav1YQkRWM7zfhp1Kaxds9Kp91i5a6iuCGf",
+  "summary": "Decent Voyager: a Galactica-style Mandelblum gauntlet on the Decent stack. 20 sectors, Nova charge cannon, guarded Supporter vaults, Victory Stamp DNFTs and $10 USDC Co-op/Versus arenas on Base.",
+  "metadataURI": "ipfs://QmacnQSJCxmqjWnMxDqhkLXCJv1zqp1EKoeF7nY782rGpe"
+}
