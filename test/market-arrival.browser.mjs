@@ -7,7 +7,8 @@ const metadata = JSON.parse(readFileSync(new URL('../releases/decenthead-v2.0.0/
 const image = readFileSync(new URL('../img/MetaMaskFox.png', import.meta.url));
 const nft = new ethers.Interface(NFT_ABI);
 const escrow = new ethers.Interface([...ESCROW_ABI, 'function nextListingId() view returns(uint256)']);
-const erc20 = new ethers.Interface(['function decimals() view returns(uint8)', 'function symbol() view returns(string)']);
+const erc20 = new ethers.Interface(['function decimals() view returns(uint8)', 'function symbol() view returns(string)',
+  'function balanceOf(address) view returns(uint256)', 'function allowance(address,address) view returns(uint256)']);
 const browser = await chromium.launch();
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
@@ -21,6 +22,13 @@ try {
       if (r.method === 'eth_requestAccounts' && window.rejectConnection) throw Object.assign(new Error('Declined'), { code: 4001 });
       if (r.method === 'eth_accounts' || r.method === 'eth_requestAccounts') return [`0x${'1'.repeat(40)}`];
       if (r.method === 'eth_chainId') return '0x2105';
+      if (r.method === 'eth_call' || r.method === 'eth_blockNumber') {
+        const response = await fetch('https://mainnet.base.org/', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: r.method, params: r.params || [] }),
+        });
+        return (await response.json()).result;
+      }
       throw new Error(`Unexpected wallet request ${r.method}`);
     } });
     window.ethereum = make('wrong-global');
@@ -73,23 +81,42 @@ try {
   assert.equal(await page.evaluate(() => document.querySelector('decent-canvas')._selectedEdition), '79');
   assert.deepEqual(await page.evaluate(() => window.walletRequests), []);
   const card = page.locator('#nft-detail-modal');
+  const headerWallet = page.locator('decent-header wallet-connect');
+  assert.equal(await card.locator('.market-wallet-controls').count(), 0);
+  assert.equal(await card.evaluate(e => e.matches(':modal')), false);
+  assert.ok(await card.evaluate(e => e.classList.contains('market-wallet-needed')));
+  assert.equal(await headerWallet.getAttribute('data-purchase-needed'), '');
+  const disconnectedWidth = await card.evaluate(e => e.getBoundingClientRect().width);
+  for (const width of [1440, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    assert.ok(await card.evaluate(e => e.scrollWidth <= e.clientWidth + 1));
+    const bounds = await card.boundingBox(), fox = await headerWallet.boundingBox();
+    assert.ok(bounds.y >= fox.y + fox.height);
+    if (process.env.SCREENSHOT_DIR) {
+      mkdirSync(process.env.SCREENSHOT_DIR, { recursive: true });
+      await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/wallet-needed-${width}.png` });
+    }
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await headerWallet.getByLabel('Choose wallet').selectOption('1');
   await card.getByRole('button', { name: 'Buy one · 10 USDC', exact: true }).click();
-  assert.match(await card.innerText(), /Connect your chosen wallet on Base/);
+  await page.waitForFunction(() => document.querySelector('#nft-detail-modal').textContent.includes('declined'));
+  assert.equal(await card.isVisible(), true);
   assert.equal(await card.getByRole('button', { name: 'Buy one · 10 USDC', exact: true }).isEnabled(), true);
-  assert.deepEqual(await page.evaluate(() => window.walletRequests), []);
-  await card.getByLabel('Choose wallet').selectOption('1');
-  await card.getByRole('button', { name: 'Connect wallet here', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('#nft-detail-modal .market-wallet-controls').textContent.includes('declined'));
-  assert.equal(await card.isVisible(), true);
-  assert.equal(await card.getByRole('button', { name: 'Connect wallet here', exact: true }).isEnabled(), true);
   await page.evaluate(() => { window.rejectConnection = false; });
-  await card.getByRole('button', { name: 'Connect wallet here', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('#nft-detail-modal .market-wallet-controls').textContent.includes('Connected on Base'));
+  await card.getByRole('button', { name: 'Buy one · 10 USDC', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#nft-detail-modal').textContent.includes('Wallet connected on Base'));
   assert.equal(await card.isVisible(), true);
-  assert.equal(await page.locator('#market-catalog').isVisible(), true);
+  assert.equal(await page.locator('#market-catalog').isVisible(), false);
+  assert.equal(await headerWallet.getAttribute('data-purchase-needed'), null);
+  assert.equal(await card.evaluate(e => e.classList.contains('market-wallet-needed')), false);
+  assert.ok(await card.evaluate(e => e.getBoundingClientRect().width) > disconnectedWidth);
   assert.match(await card.innerText(), /DecentCanopy Supporter/);
   assert.equal(await card.getByRole('button', { name: 'Buy one · 10 USDC', exact: true }).isEnabled(), true);
   assert.equal(await page.evaluate(() => window.walletRequests.some(r => r.name !== 'B')), false);
+  assert.equal(await page.evaluate(() => window.walletRequests.some(r => /sendTransaction|sign/i.test(r.method))), false);
+  await card.getByRole('button', { name: 'Buy one · 10 USDC', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#nft-detail-modal').textContent.includes('Insufficient payment-token balance'));
   assert.equal(await page.evaluate(() => window.walletRequests.some(r => /sendTransaction|sign/i.test(r.method))), false);
   for (const width of [1440, 390, 320]) {
     await page.setViewportSize({ width, height: 900 });
@@ -100,14 +127,17 @@ try {
     }
   }
   await page.locator('#nft-detail-close').click();
+  await page.waitForFunction(() => !document.getElementById('nft-detail-modal'));
   assert.equal(await page.locator('#market-catalog').isVisible(), true);
   assert.match(await page.locator('#market-catalog').innerText(), /DecentCanopy.*10 USDC/s);
   assert.match(await page.locator('#market-catalog').innerText(), /DecentBusking.*100 USDC/s);
-  assert.match(await page.locator('#market-catalog .market-wallet-controls').innerText(), /Connected on Base/);
   await page.evaluate(() => window.DecentHead.getWallet().forget());
-  await page.locator('#market-catalog').getByLabel('Choose wallet').selectOption('1');
-  await page.locator('#market-catalog').getByRole('button', { name: 'Connect wallet here', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('#market-catalog .market-wallet-controls').textContent.includes('Connected on Base'));
+  assert.equal(await headerWallet.getAttribute('data-purchase-needed'), '');
+  await headerWallet.getByLabel('Choose wallet').selectOption('1');
+  await headerWallet.getByRole('button', { name: 'Connect wallet', exact: true }).click();
+  await page.waitForFunction(() => window.DecentHead.getWallet().snapshot().connected);
+  assert.equal(await page.locator('#market-catalog').isVisible(), true);
+  assert.equal(await headerWallet.getAttribute('data-purchase-needed'), null);
   assert.equal(await page.locator('#market-catalog .market-catalog-items > button').count(), 2);
   await page.getByRole('button', { name: 'Refresh listings', exact: true }).click();
   await page.waitForFunction(() => document.querySelectorAll('#market-catalog .market-catalog-items > button').length === 2);
@@ -120,5 +150,5 @@ try {
   assert.match(await page.locator('#market-arrival-error').innerText(), /Exactly one tokenId/);
   assert.deepEqual(await page.evaluate(() => window.walletRequests), []);
   assert.deepEqual(errors, []);
-  console.log('PASS: exact Canopy landing and full catalog; inline multi-wallet connection, declined consent/retry, selection retained, Buy before connection stays usable, 1440/390/320px. No transaction/signing.');
+  console.log('PASS: smaller dim nonmodal panels, accessible spotlighted header fox, no redundant Connect button; first Buy connects chosen wallet only, second Buy enters live purchase checks, rejection/retry and selection preserved; header connection retains catalog; 1440/390/320px. No transaction/signing.');
 } finally { await browser.close(); }

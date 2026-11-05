@@ -5,7 +5,14 @@ for (const header of document.querySelectorAll('decent-header')) {
   const wallet = header.shadowRoot?.querySelector('wallet-connect');
   if (!wallet?.shadowRoot) throw new Error('Shared wallet control did not initialize');
   const style = document.createElement('style');
-  style.textContent = '#mobile { display:none !important; }';
+  style.textContent = `#mobile { display:none !important; }
+    :host([data-purchase-needed]) #connect {
+      outline:3px solid #ffe36b; outline-offset:6px;
+      box-shadow:0 0 18px 8px #ffe36b88,0 0 65px 24px #7af0c655;
+    }
+    :host([data-purchase-needed]) #connect::before {
+      inset:-55%; background:radial-gradient(circle,#ffe36b88,transparent 68%);
+    }`;
   wallet.shadowRoot.append(style);
   const ipfs = header.shadowRoot.querySelector('ipfs-status');
   const ipfsStyle = document.createElement('style');

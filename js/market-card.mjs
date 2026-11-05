@@ -4,12 +4,13 @@ import { element, externalLink, openMarketDialog } from './market-dialog.mjs';
 import { listingPrices, purchaseMarketListing } from './market-listings.mjs';
 import { visibleMarketProducts } from './market-moderation.mjs';
 import { dnftCategory } from './market-filters.mjs';
-import { mountMarketWalletControls } from './market-wallet-controls.mjs';
+import { connectPurchaseWallet, purchaseWalletReady, trackPurchaseWallet } from './market-wallet-controls.mjs';
 
 const addLink = (root, label, url) => { const link = externalLink(label, url); if (link) root.append(link); };
 export function openCollectibleCard(product) {
   const { metadata = {}, tokenId, nftContract = BASE.DNFT, listings = [] } = product;
-  const { dialog, body } = openMarketDialog('nft-detail-modal', metadata.name || `DNFT #${tokenId ?? '?'}`);
+  const { dialog, body } = openMarketDialog('nft-detail-modal', metadata.name || `DNFT #${tokenId ?? '?'}`, { purchase: true });
+  trackPurchaseWallet(dialog);
   body.classList.add('market-collectible-card');
   const artwork = element('div', undefined, 'market-card-art');
   const faces = collectibleFaces(metadata);
@@ -30,7 +31,6 @@ export function openCollectibleCard(product) {
   const info = element('section');
   info.append(element('p', metadata.description || 'A Decent digital keepsake.'));
   if (tokenId !== undefined) info.append(element('p', `Base · DNFT #${tokenId}`, 'market-token-label'));
-  const walletControls = mountMarketWalletControls(dialog);
   const offers = element('section', undefined, 'market-offers');
   if (!listings.length) offers.append(element('p', 'Not verified for sale in this Base escrow. A metadata price alone is not an active listing.'));
   let busy = false;
@@ -42,11 +42,21 @@ export function openCollectibleCard(product) {
       const button = element('button', `Buy one · ${price.label}`);
       button.disabled = !listing.purchasable;
       button.onclick = async () => {
-        if (busy || walletControls.isBusy()) return;
-        const walletState = globalThis.DecentHead?.getWallet()?.snapshot();
-        if (!walletState?.connected || BigInt(walletState.chainId || 0) !== 8453n) {
-          status.textContent = 'Connect your chosen wallet on Base using the controls in this card, then choose Buy. No purchase submitted.';
-          walletControls.focusConnection();
+        if (busy) return;
+        if (!purchaseWalletReady()) {
+          busy = true; button.disabled = true;
+          dialog.addEventListener('cancel', preventClose);
+          status.textContent = 'Confirm wallet connection. No purchase will be submitted until you choose Buy again.';
+          try {
+            await connectPurchaseWallet();
+            status.textContent = 'Wallet connected on Base. Review the price, then choose Buy again to purchase one edition.';
+          } catch (error) {
+            console.error('[Market wallet connection]', error);
+            status.textContent = `${error.code === 4001 || error.code === 'ACTION_REJECTED' ? 'Wallet connection declined.' : error.shortMessage || error.message} No purchase submitted. You can try Buy again.`;
+          } finally {
+            busy = false; button.disabled = !listing.purchasable;
+            dialog.removeEventListener('cancel', preventClose);
+          }
           return;
         }
         busy = true;
@@ -99,8 +109,8 @@ export function openCollectibleCard(product) {
 }
 
 export function openMarketCatalog(products, { supporters = false } = {}) {
-  const { dialog, body } = openMarketDialog('market-catalog', supporters ? 'A Decent Series · Supporter DNFT Star' : 'Base marketplace');
-  mountMarketWalletControls(dialog);
+  const { dialog, body } = openMarketDialog('market-catalog', supporters ? 'A Decent Series · Supporter DNFT Star' : 'Base marketplace', { purchase: true });
+  trackPurchaseWallet(dialog);
   body.append(element('p', 'Live funded escrow listings. Review a collectible and its exact price before signing. Refresh to check new stock.'));
   const refresh = element('button', 'Refresh listings');
   refresh.onclick = () => document.dispatchEvent(new Event('market:refresh-listings'));

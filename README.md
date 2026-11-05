@@ -2,14 +2,14 @@
 
 ### Supporter Star arrivals
 
-The catalog and selected collectible card both offer **Connect wallet here**
-with explicit multi-wallet selection using the existing Head session. Native
-modal dialogs block the header behind them, so purchasers need not dismiss their
-collection to reach the header fox. Connecting (or declining and retrying) leaves
-the selected token and collection in place; it never submits a purchase.
-Connected network/account status is shown in both views. Review the listing and
-choose Buy separately. Sale readiness still depends on verified live price,
-pause state and covered stock—not merely wallet connection.
+The catalog and collectible card are nonmodal panels below the header. Before
+wallet connection they are smaller and dimmed, with a static spotlight on the
+existing header fox. There is no second Connect button in the card. The first
+**Buy** click connects the wallet selected in the header (or switches to Base)
+only; after connection, a second **Buy** click starts purchase confirmations.
+The selected token and catalog remain available during connection and rejection.
+Connecting through the header also restores the panel's normal presentation.
+Sale readiness still requires verified live price, pause state and covered stock.
 
 `?supporters=1&chainId=8453&nftContract=0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B&tokenId=79`
 opens the observed A Decent Series Supporter catalog with Canopy's exact Base

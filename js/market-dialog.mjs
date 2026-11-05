@@ -15,7 +15,7 @@ export function externalLink(label, value) {
   } catch { return null; }
 }
 
-export function openMarketDialog(id, title) {
+export function openMarketDialog(id, title, { purchase = false } = {}) {
   document.getElementById(id)?.close();
   const dialog = element('dialog', undefined, 'market-dialog');
   dialog.id = id;
@@ -36,6 +36,21 @@ export function openMarketDialog(id, title) {
   } });
   dialog.addEventListener('close', () => dialog.remove(), { once: true });
   document.body.append(dialog);
-  dialog.showModal();
+  if (purchase) {
+    dialog.classList.add('market-purchase-dialog');
+    const catalog = id === 'nft-detail-modal' ? document.getElementById('market-catalog') : null;
+    if (catalog) { catalog.style.visibility = 'hidden'; catalog.inert = true; }
+    const key = event => {
+      if (event.key !== 'Escape' || document.querySelector('.market-purchase-dialog[open]:not([style*="visibility: hidden"])') !== dialog) return;
+      const cancel = new Event('cancel', { cancelable: true });
+      if (dialog.dispatchEvent(cancel)) dialog.close();
+    };
+    document.addEventListener('keydown', key);
+    dialog.addEventListener('close', () => {
+      document.removeEventListener('keydown', key);
+      if (catalog?.isConnected) { catalog.style.visibility = ''; catalog.inert = false; catalog.focus(); }
+    }, { once: true });
+    dialog.show();
+  } else dialog.showModal();
   return { dialog, body };
 }
