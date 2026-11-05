@@ -4,6 +4,7 @@ import { element, externalLink, openMarketDialog } from './market-dialog.mjs';
 import { listingPrices, purchaseMarketListing } from './market-listings.mjs';
 import { visibleMarketProducts } from './market-moderation.mjs';
 import { dnftCategory } from './market-filters.mjs';
+import { mountMarketWalletControls } from './market-wallet-controls.mjs';
 
 const addLink = (root, label, url) => { const link = externalLink(label, url); if (link) root.append(link); };
 export function openCollectibleCard(product) {
@@ -29,6 +30,7 @@ export function openCollectibleCard(product) {
   const info = element('section');
   info.append(element('p', metadata.description || 'A Decent digital keepsake.'));
   if (tokenId !== undefined) info.append(element('p', `Base · DNFT #${tokenId}`, 'market-token-label'));
+  const walletControls = mountMarketWalletControls(dialog);
   const offers = element('section', undefined, 'market-offers');
   if (!listings.length) offers.append(element('p', 'Not verified for sale in this Base escrow. A metadata price alone is not an active listing.'));
   let busy = false;
@@ -40,7 +42,13 @@ export function openCollectibleCard(product) {
       const button = element('button', `Buy one · ${price.label}`);
       button.disabled = !listing.purchasable;
       button.onclick = async () => {
-        if (busy) return;
+        if (busy || walletControls.isBusy()) return;
+        const walletState = globalThis.DecentHead?.getWallet()?.snapshot();
+        if (!walletState?.connected || BigInt(walletState.chainId || 0) !== 8453n) {
+          status.textContent = 'Connect your chosen wallet on Base using the controls in this card, then choose Buy. No purchase submitted.';
+          walletControls.focusConnection();
+          return;
+        }
         busy = true;
         offers.querySelectorAll('button').forEach(button => { button.disabled = true; });
         dialog.addEventListener('cancel', preventClose);
@@ -92,6 +100,7 @@ export function openCollectibleCard(product) {
 
 export function openMarketCatalog(products, { supporters = false } = {}) {
   const { dialog, body } = openMarketDialog('market-catalog', supporters ? 'A Decent Series · Supporter DNFT Star' : 'Base marketplace');
+  mountMarketWalletControls(dialog);
   body.append(element('p', 'Live funded escrow listings. Review a collectible and its exact price before signing. Refresh to check new stock.'));
   const refresh = element('button', 'Refresh listings');
   refresh.onclick = () => document.dispatchEvent(new Event('market:refresh-listings'));

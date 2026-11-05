@@ -2,6 +2,15 @@
 
 ### Supporter Star arrivals
 
+The catalog and selected collectible card both offer **Connect wallet here**
+with explicit multi-wallet selection using the existing Head session. Native
+modal dialogs block the header behind them, so purchasers need not dismiss their
+collection to reach the header fox. Connecting (or declining and retrying) leaves
+the selected token and collection in place; it never submits a purchase.
+Connected network/account status is shown in both views. Review the listing and
+choose Buy separately. Sale readiness still depends on verified live price,
+pause state and covered stock—not merely wallet connection.
+
 `?supporters=1&chainId=8453&nftContract=0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B&tokenId=79`
 opens the observed A Decent Series Supporter catalog with Canopy's exact Base
 edition selected above it. Closing that card reveals the other offerings; it does

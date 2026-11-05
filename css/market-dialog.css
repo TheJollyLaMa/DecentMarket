@@ -13,6 +13,9 @@
 .market-dialog button:hover:enabled { background:#254d59; box-shadow:0 0 15px #a99aff55; }
 .market-dialog :focus-visible { outline:3px solid #c5b6ff; outline-offset:3px; }
 .market-dialog a { color:#99ffe0; display:inline-block; margin:6px 12px 6px 0; text-underline-offset:4px; }
+.market-wallet-controls { padding:12px 22px; border-top:1px solid #7af0c655; overflow-wrap:anywhere; }
+.market-wallet-controls select { max-width:100%; padding:8px; color:#effff9; background:#193b42; border:1px solid #7af0c688; border-radius:6px; font:inherit; }
+.market-wallet-controls p { margin:6px 0; }
 .market-dialog li { margin-block:14px; }
 .market-dialog dl { display:grid; grid-template-columns:minmax(70px,1fr) minmax(0,2fr); gap:8px; }
 .market-dialog dd { margin:0; }
