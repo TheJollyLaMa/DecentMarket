@@ -2,13 +2,13 @@
   {
     "release": "decenthead-v2.0.0",
     "tokenId": "70",
-    "listingId": "0",
-    "purchaseUrl": "https://thejollylama.github.io/DecentHead/supporter/buy.html?chainId=8453&escrow=0x31b07b83e99A9bdF379bf40225b8A80d3804C89d&listingId=0"
+    "listingId": "11",
+    "purchaseUrl": "https://thejollylama.github.io/DecentHead/supporter/buy.html?chainId=8453&escrow=0x31b07b83e99A9bdF379bf40225b8A80d3804C89d&listingId=11&priceUSDC=10000000"
   },
   {
     "release": "decentvoyager-v1.0.0",
     "tokenId": "80",
-    "listingId": "10",
-    "purchaseUrl": "https://thejollylama.github.io/DecentHead/supporter/buy.html?chainId=8453&escrow=0x31b07b83e99A9bdF379bf40225b8A80d3804C89d&listingId=10"
+    "listingId": "18",
+    "purchaseUrl": "https://thejollylama.github.io/DecentHead/supporter/buy.html?chainId=8453&escrow=0x31b07b83e99A9bdF379bf40225b8A80d3804C89d&listingId=18&priceUSDC=10000000"
   }
 ]

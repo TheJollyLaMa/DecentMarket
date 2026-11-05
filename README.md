@@ -10,6 +10,12 @@ only; after connection, a second **Buy** click starts purchase confirmations.
 The selected token and catalog remain available during connection and rejection.
 Connecting through the header also restores the panel's normal presentation.
 Sale readiness still requires verified live price, pause state and covered stock.
+The reserve cutover uses replacement sale listings 11 (Head) and 18 (Voyager)
+in `releases/listings.json`. Both retain 10 USDC pricing; each has 900 sale units
+at cutover after 100 moved to VoyagerRewards. Original release metadata remains
+historical; supplemental `supporter-current-listing.json` assets record the
+confirmed withdrawal and relisting transactions. The live catalog reads chain
+inventory rather than treating those dated quantities as guaranteed stock.
 
 `?supporters=1&chainId=8453&nftContract=0xe63EC9f8228720bAAC2fD528C0A6d06B3Dc5439B&tokenId=79`
 opens the observed A Decent Series Supporter catalog with Canopy's exact Base
