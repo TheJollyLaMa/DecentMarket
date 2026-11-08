@@ -82,8 +82,18 @@ try {
   await page.route('https://base-rpc.publicnode.com/**', rpcRoute);
   const url = new URL(base);
   url.search = `supporters=1&chainId=8453&nftContract=${BASE.DNFT}&tokenId=79`;
-  await page.goto(url.href);
+  let releaseRuntime;
+  const runtimeGate = new Promise(resolve => { releaseRuntime = resolve; });
+  await page.route('**/js/vendor/three-r128.min.js', async route => { await runtimeGate; await route.continue(); });
+  const navigating = page.goto(url.href);
+  await page.locator('#market-arrival-loading').waitFor();
+  assert.match(await page.locator('#market-arrival-loading').innerText(), /Loading your Supporter DNFT/);
+  assert.equal(await page.locator('#nft-detail-modal').count(), 0);
+  assert.deepEqual(await page.evaluate(() => window.walletRequests), []);
+  releaseRuntime();
+  await navigating;
   await page.locator('#nft-detail-modal').waitFor();
+  assert.equal(await page.locator('#market-arrival-loading').count(), 0, 'loading hands off to exact NFT');
   assert.match(await page.locator('#nft-detail-modal').innerText(), /DecentCanopy Supporter v0.1.0/);
   assert.match(await page.locator('#nft-detail-modal').innerText(), /10 USDC/);
   assert.equal(await page.locator('#market-catalog .market-catalog-items > button').count(), 2);
@@ -163,6 +173,7 @@ try {
   assert.equal(await page.locator('#nft-detail-modal').count(), 0);
   await page.goto(url.href + '&tokenId=78');
   await page.locator('#market-arrival-error').waitFor();
+  assert.equal(await page.locator('#market-arrival-loading').count(), 0);
   assert.match(await page.locator('#market-arrival-error').innerText(), /Exactly one tokenId/);
   assert.deepEqual(await page.evaluate(() => window.walletRequests), []);
   assert.deepEqual(errors, []);

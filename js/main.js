@@ -11,13 +11,16 @@ import { parseMarketArrival, arrivalProduct } from './market-arrival.mjs';
 import { dnftCategory } from './market-filters.mjs';
 import { openMarketDialog } from './market-dialog.mjs';
 let arrival, arrivalHandled = false;
+const arrivalLoading = detail => document.dispatchEvent(new CustomEvent('market:arrival-loading', { detail }));
 try { arrival = parseMarketArrival(location.search); }
 catch (error) {
+  arrivalLoading({ done: true });
   console.error('[Market arrival]', error);
   const { body } = openMarketDialog('market-arrival-error', 'Supporter link unavailable');
   const status = document.createElement('p');
   status.setAttribute('role', 'alert'); status.textContent = error.message; body.append(status);
 }
+if (arrival) arrivalLoading({ ready: true, text: 'Connecting to Base to verify your Supporter edition…' });
 const header = document.querySelector('decent-header');
 new ResizeObserver(() => {
   document.documentElement.style.setProperty('--market-header-height', `${header.getBoundingClientRect().height}px`);
@@ -34,12 +37,20 @@ async function refreshListings() {
   listingStatus('Verifying current Base prices and stock...');
   document.dispatchEvent(new CustomEvent('market:listed-products', { detail: { products: [] } }));
   try {
-    const result = await loadMarketListings();
+    const result = await loadMarketListings({ onProgress: progress => {
+      if (arrival && !arrivalHandled) arrivalLoading({
+        ...progress,
+        text: progress.stage === 'inventory'
+          ? `Checking Base listings · ${progress.checked} of ${progress.total}`
+          : `Loading artwork and prices · ${progress.checked} of ${progress.total}`
+      });
+    } });
     listingStatus(result.errors.length ? `Some listings unavailable: ${result.errors.join(' · ')}`
       : `${result.products.reduce((n, p) => n + p.listings.length, 0)} Base listing(s) · ${result.paused ? 'escrow paused' : 'prices and stock checked'}`);
     document.dispatchEvent(new CustomEvent('market:listed-products', { detail: result }));
     if (arrival && !arrivalHandled) {
       arrivalHandled = true;
+      arrivalLoading({ done: true });
       const supporters = visibleMarketProducts(result.products).filter(product => dnftCategory(product.metadata) === 'supporter');
       openMarketCatalog(supporters, { supporters: true });
       const product = arrivalProduct(supporters, arrival);
@@ -56,6 +67,7 @@ async function refreshListings() {
     document.dispatchEvent(new CustomEvent('market:gallery-status', { detail: { error: result.errors.join(' · '), loading: false } }));
     for (const error of result.errors) console.error('[Market listing]', error);
   } catch (error) {
+    if (arrival && !arrivalHandled) arrivalLoading({ error: `Could not verify your Supporter edition: ${error.message}` });
     listingStatus(`Base listings unavailable: ${error.message}. Refresh in the filters to retry.`);
     console.error('[Market listings]', error);
     document.dispatchEvent(new CustomEvent('market:gallery-status', { detail: { error: `Base listings unavailable: ${error.message}. Refresh to retry.`, loading: false } }));

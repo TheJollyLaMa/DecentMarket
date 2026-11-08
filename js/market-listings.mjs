@@ -63,9 +63,10 @@ export async function readFundedListings({ escrow, nftFor, tokenFor, blockTag, f
       inventoryComplete = false;
       errors.push(`Listing ${id} inventory could not be verified: ${error.message}`);
     }
+    onProgress({ stage: 'inventory', checked: Number(count) - id, total: Number(count) });
   }
   // Read the small escrow index, not every registered NFT. Serial reads avoid public-RPC bursts.
-  for (const { id, raw } of rows) {
+  for (const [index, { id, raw }] of rows.entries()) {
     try {
       const listing = { id: String(id), nftContract: raw.nftContract, tokenId: String(raw.tokenId),
         priceETH: raw.priceETH, priceToken: raw.priceToken, priceAmount: raw.priceAmount,
@@ -89,8 +90,8 @@ export async function readFundedListings({ escrow, nftFor, tokenFor, blockTag, f
         metadata = { name: /\bsupporter\b/i.test(raw.note || '') ? raw.note : `DNFT #${listing.tokenId}`, description: 'Metadata unavailable; name may be the on-chain listing note. Inspect the contract before purchasing.' };
       }
       listings.push({ ...listing, metadata });
-      onProgress({ checked: Number(count) - id, total: Number(count) });
     } catch (error) { errors.push(`Listing ${id} could not be verified: ${error.message}`); }
+    onProgress({ stage: 'metadata', checked: index + 1, total: rows.length });
   }
   // The escrow can list the same inventory twice. Do not advertise uncovered reservations.
   const products = new Map();
@@ -107,7 +108,7 @@ export async function readFundedListings({ escrow, nftFor, tokenFor, blockTag, f
   return { products: [...products.values()], errors, paused };
 }
 
-export async function loadMarketListings() {
+export async function loadMarketListings({ onProgress = () => {} } = {}) {
   let partial;
   const failures = [];
   for (const rpc of ['https://mainnet.base.org', 'https://base-rpc.publicnode.com']) {
@@ -120,6 +121,7 @@ export async function loadMarketListings() {
         nftFor: address => new ethers.Contract(address, NFT, provider),
         tokenFor: address => new ethers.Contract(address, ERC20, provider),
         blockTag,
+        onProgress,
         fetchMetadata: async uri => {
           const url = resolveMarketAsset(uri);
           if (!url) throw new Error('Missing metadata URL');

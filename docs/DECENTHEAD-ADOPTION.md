@@ -43,6 +43,20 @@ receipts are unchanged. Disconnect preserves progress but disables the next
 transaction; reconnect/review before continuing. The Studio still validates
 the account, Base, contracts, calldata and receipts at every step.
 
+Direct Supporter links show a lightweight x/backdrop-dismissable loading panel
+before Ethers, Three.js and the application modules load. It reports Base listing
+and metadata progress, explains slow waits after 12 seconds, and offers retry on
+script or verification failure. The panel hands off to the exact selected edition
+or an explicit unavailable state, never a substitute token. Normal gallery visits
+have no arrival overlay. Full inventory coverage checks remain required before
+advertising a purchase; no cached preview is treated as verified stock.
+
+Reuse: adapt the existing `market-arrival` selection, `readFundedListings`
+progress callback and host dialog styling rather than creating a second purchase
+page. The loading bootstrap has no wallet, RPC or 3D dependency. Tests cover
+delayed runtime loading, slow/error/retry states and the existing exact-token
+arrival and wallet flow on desktop/mobile.
+
 ## Storage boundary
 
 The active page no longer loads the retired web3.storage browser script.

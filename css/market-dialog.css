@@ -2,6 +2,9 @@
   color:#effff9; background:radial-gradient(ellipse at top left,#26335c,#07111f 65%); border:1px solid #a999ef;
   border-radius:22px; box-shadow:0 0 55px #9e86ff44; font:15px/1.6 system-ui,sans-serif; overflow:auto; }
 .market-dialog::backdrop { background:#020817cc; backdrop-filter:blur(8px); }
+.market-arrival-loading { width:min(520px,calc(100vw - 24px)); }
+.market-arrival-loading progress { width:100%; height:12px; accent-color:#99ffe0; }
+.market-arrival-loading header button { min-width:44px; min-height:44px; }
 .market-dialog > header { position:sticky; top:0; z-index:1; display:flex; justify-content:space-between; align-items:center;
   gap:16px; padding:16px 22px; background:#0b172cf5; border-bottom:1px solid #a99aff55; }
 .market-dialog h2 { font-size:clamp(18px,3vw,26px); line-height:1.3; margin:0; }
