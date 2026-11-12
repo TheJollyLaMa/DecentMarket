@@ -383,3 +383,14 @@ Support the work with a [Supporter DNFT](https://thejollylama.github.io/DecentMa
 ## Live performance escrow (undeployed)
 
 `LivePerformanceEscrow` implements configurable USDC bookings, admin full/partial review, performer-only claims, automatic claim protection, cancellation fees and original-funder refunds. No deployment is authorized. See [lifecycle and safety notes](docs/LIVE_PERFORMANCE_ESCROW.md); Friday DecentBusking uses the deployed router with earmarked, **not escrowed**, funds.
+
+
+## Link previews
+
+Public entry pages include static Open Graph and Twitter large-image metadata,
+with an absolute HTTPS image URL. The 1200 x 630 JPEG at
+`assets/social-preview.jpg` previews this public website without a connected wallet.
+Keep the image in the deployed artifact when changing the build. After updating
+it, check the raw HTML and image response as a crawler; Discord and other services
+may cache earlier previews. ENS/IPFS snapshots need a separate site publication;
+metadata alone does not update an existing immutable snapshot.
