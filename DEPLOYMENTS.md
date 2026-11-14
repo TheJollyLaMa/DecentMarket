@@ -17,6 +17,7 @@ Single source of truth for all on-chain deployments of DecentMarket smart contra
 | Base Mainnet | DeVert | v0.1 | `0x135Cbc573F87637158eb3186C87c584fb0B34CD9` | `abis/DeVert_v0.1.json` | [BaseScan](https://basescan.org/address/0x135Cbc573F87637158eb3186C87c584fb0B34CD9) |
 | Base Mainnet | DeVertQueue | v0.1 | `0x9ebf98367319E6c8b15b5517d808CCfEb3dddA61` | `abis/DeVertQueue_v0.1.json` | [BaseScan verified source](https://basescan.org/address/0x9ebf98367319E6c8b15b5517d808CCfEb3dddA61#code) |
 | Base Mainnet | DeVertQueue | v0.2 | `0xe54609f022A8D760417E7cc0Eea6360b6E1D11Bb` | `abis/DeVertQueue_v0.2.json` | [BaseScan verified source](https://basescan.org/address/0xe54609f022A8D760417E7cc0Eea6360b6E1D11Bb#code) |
+| Base Mainnet | DecentBuskingTipRouter | v0.1 | `0xAa0207731e9F836273634F7B08cE87FfAA125183` | `abis/DecentBuskingTipRouter.json` | [BaseScan verified source (exact match)](https://basescan.org/address/0xAa0207731e9F836273634F7B08cE87FfAA125183#code) |
 
 ### DeVert paid queue v0.1
 
@@ -111,6 +112,77 @@ the 45/45/8/2 split, or the advertiser's separate transaction gas cost. Only set
 the public app's DeVert address and unpause after main-radio staging playback,
 durable impression recovery, and role/expiry/overbid checks pass. The public
 checkout address remains unset; no campaign purchase or ad playback has occurred.
+
+### DecentBusking tip router v0.1 (deployed, not yet enabled in the app)
+
+Deployed November 14, 2026, transaction
+[`0xb046e5c7197eecc3318f1667f6df6dee39114a941aed30ce4365c4ff86e9030f`](https://basescan.org/tx/0xb046e5c7197eecc3318f1667f6df6dee39114a941aed30ce4365c4ff86e9030f),
+block 57465793; the contract has code at that block and none at the block before.
+The [deployment record](deployments/busking-tip-router-base.json) holds the
+address, start block, compiler settings and source hash. Solidity 0.8.26,
+optimizer 200 runs, Cancun EVM, no imports. The source is
+[verified on BaseScan as an exact match](https://basescan.org/address/0xAa0207731e9F836273634F7B08cE87FfAA125183#code)
+(single-file form, MIT license, no constructor arguments), and BaseScan's ABI
+equals `abis/DecentBuskingTipRouter.json`. The deployer
+`0xcAeEd8422fB5682C298B7F0971906d446fFd4e7a` has no
+special role: the router has no owner, fee, pause, allowlist, upgrade path or
+storage, and no receive/fallback function.
+
+`tip(address recipient, uint8 sourceKind, string contextRef)` forwards 100% of the
+attached ETH to `recipient` in the same transaction and emits
+`TipSent(sender, recipient, contextId, sourceKind, amount, contextRef)` with
+`contextId = keccak256(contextRef)`, so a ledger can tell a live-show, radio or
+archive tip from a plain wallet transfer. Source kinds: 0 live show, 1 radio
+play, 2 archived recording. The contract rejects a zero recipient, a zero amount,
+an unknown source kind and an empty or over-256-byte reference, and reverts the
+whole tip if the recipient refuses the payment, so an event always means the
+money was delivered. Canonical references are
+`decentbusking:live:<bookingId>` and
+`decentbusking:<radio|archive>:<chainId>:<collection>:<tokenId>`; the ledger
+checks them off-chain. A wallet may tip itself, so apps should not celebrate
+tips whose sender equals their recipient.
+
+Validation: 16 unit tests (`test/DecentBuskingTipRouter.test.js`), the existing
+escrow tests, a local rehearsal of `scripts/deploy_busking_tip_router.js`, and
+DecentBusking's own `js/tip-protocol.mjs` receipt verifier accepting real router
+receipts for live, radio and archive tips while rejecting any mismatched amount,
+recipient, payer, source or router. The deploy script is a dry run unless
+`CONFIRM_DEPLOY=yes` is set, saves the record before running its post-deploy
+checks, and refuses a second Base deployment unless `ALLOW_REDEPLOY=yes`.
+
+Rehearsal on November 14, 2026: three real tips totalling 0.000012 ETH, sent from
+the deployer to the DecentBusking admin wallet
+`0x807061DF657A7697c04045dA7d16D941861cAABc` (the tip wallet of the radio tracks
+used). A radio tip for track #12 (0.000005 ETH,
+[`0x728b…9e0e`](https://basescan.org/tx/0x728ba31b4f74ddd40d3d3f58976e61db41f51b6206ace5a15143b5ec93e09e0e),
+block 57490129) and an archive tip for track #11 (0.000004 ETH,
+[`0x6361…4f7b`](https://basescan.org/tx/0x6361ffdd356b365f9bde623c1af7d6790bd6f1f960eb813c335c60d166c04f7b),
+block 57490808) were verified by DecentBusking's tip ledger and source resolver.
+A tip labelled as an invented live show (0.000003 ETH,
+[`0xb146…77f7`](https://basescan.org/tx/0xb146d1b5c97693683c14169afe7b338e9b5a0c8ea77bf4c77fc60862408c77f7),
+block 57490820) was refused as a mismatch. In each tip's block the recipient's
+balance rose by exactly the tip amount. Started from block 57465793 on public RPC
+only, the ledger was ready and caught up in about 7 seconds and totalled 0.000009
+ETH attributed and 0.000003 ETH unattributed. Not yet proven: a real live-show tip
+to a booked performer's wallet, the site's tip button and interrupted-tip
+recheck, and the render worker settings.
+
+Release order, which must not be skipped:
+
+1. Deploy and verify the source (done; this entry).
+2. Set the render worker's `TIP_ROUTER_ADDRESS=0xAa0207731e9F836273634F7B08cE87FfAA125183`
+   and `TIP_START_BLOCK=57465793`, next to the existing
+   `LIVE_PERFORMANCE_ESCROW_ADDRESS`. The worker's RPC must serve historical
+   `eth_getCode` and `eth_getLogs` at that block.
+3. Wait until the worker's tip ledger reports ready and caught up, with no
+   entries that still need restoring.
+4. Only then set the public `tipRouterAddress` in the DecentBusking
+   `decent.config.js`, refresh the frontend cache version, and rehearse live,
+   radio, archive and interrupted tips through the site (the router and ledger
+   themselves were rehearsed on November 14; see above). That site change needs
+   explicit approval.
+
+Direct wallet transfers that happened before the router are never backfilled.
 
 ### Supported Escrow Tokens (Optimism Mainnet)
 
