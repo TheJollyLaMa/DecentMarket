@@ -1,0 +1,54 @@
+{
+  "contract": "DecentBuskingTipRouter",
+  "chainId": 8453,
+  "address": "0xAa0207731e9F836273634F7B08cE87FfAA125183",
+  "transactionHash": "0xb046e5c7197eecc3318f1667f6df6dee39114a941aed30ce4365c4ff86e9030f",
+  "startBlock": 57465793,
+  "deployer": "0xcAeEd8422fB5682C298B7F0971906d446fFd4e7a",
+  "deployedAt": "2026-11-14T19:12:14.336Z",
+  "compiler": {
+    "solc": "0.8.26+commit.8a97fa7a",
+    "optimizerRuns": 200,
+    "evmVersion": "cancun",
+    "viaIR": false
+  },
+  "sourceSha256": "9db59923fb2226a1b63e515b3bf9a0a3f6163b958c3530bbfb1aa7be2d95225b",
+  "verification": {
+    "explorer": "BaseScan",
+    "method": "web form, Solidity single file, no API key",
+    "result": "Exact Match",
+    "url": "https://basescan.org/address/0xAa0207731e9F836273634F7B08cE87FfAA125183#code",
+    "confirmedAt": "2026-11-14T19:56:27Z"
+  },
+  "interface": {
+    "tip": "tip(address,uint8,string)",
+    "event": "TipSent(address,address,bytes32,uint8,uint256,string)"
+  },
+  "checks": {
+    "ok": true,
+    "codeMatchesCompiled": true,
+    "runtimeCodeHash": "0xb67b492a495d0bd2d132103d36cc441d6b3c5881fda19ebe8d3b380a5aec17dc",
+    "simulations": [
+      {
+        "name": "a valid live tip simulates",
+        "ok": true
+      },
+      {
+        "name": "an unknown source kind is rejected",
+        "ok": true
+      },
+      {
+        "name": "a zero recipient is rejected",
+        "ok": true
+      },
+      {
+        "name": "an empty context is rejected",
+        "ok": true
+      },
+      {
+        "name": "a zero amount is rejected",
+        "ok": true
+      }
+    ]
+  }
+}
