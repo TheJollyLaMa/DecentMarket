@@ -1,0 +1,1050 @@
+[
+  {
+    "type": "constructor",
+    "stateMutability": "undefined",
+    "payable": false,
+    "inputs": [
+      {
+        "type": "address",
+        "name": "admin"
+      },
+      {
+        "type": "address",
+        "name": "usdc"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "AccessControlBadConfirmation",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "AccessControlUnauthorizedAccount",
+    "inputs": [
+      {
+        "type": "address",
+        "name": "account"
+      },
+      {
+        "type": "bytes32",
+        "name": "neededRole"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "InvalidBooking",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidState",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidTime",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ReentrancyGuardReentrantCall",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "SafeERC20FailedOperation",
+    "inputs": [
+      {
+        "type": "address",
+        "name": "token"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "TransferFailed",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "UnsupportedToken",
+    "inputs": []
+  },
+  {
+    "type": "event",
+    "anonymous": false,
+    "name": "FeeDecision",
+    "inputs": [
+      {
+        "type": "bytes32",
+        "name": "bookingId",
+        "indexed": true
+      },
+      {
+        "type": "uint8",
+        "name": "status",
+        "indexed": false
+      },
+      {
+        "type": "string",
+        "name": "reasonUri",
+        "indexed": false
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "anonymous": false,
+    "name": "FeeSettled",
+    "inputs": [
+      {
+        "type": "bytes32",
+        "name": "bookingId",
+        "indexed": true
+      },
+      {
+        "type": "uint8",
+        "name": "status",
+        "indexed": false
+      },
+      {
+        "type": "address",
+        "name": "recipient",
+        "indexed": true
+      },
+      {
+        "type": "uint256",
+        "name": "amount",
+        "indexed": false
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "anonymous": false,
+    "name": "Funded",
+    "inputs": [
+      {
+        "type": "bytes32",
+        "name": "bookingId",
+        "indexed": true
+      },
+      {
+        "type": "address",
+        "name": "performer",
+        "indexed": true
+      },
+      {
+        "type": "address",
+        "name": "funder",
+        "indexed": true
+      },
+      {
+        "type": "tuple",
+        "name": "terms",
+        "indexed": false,
+        "components": [
+          {
+            "type": "address",
+            "name": "performer"
+          },
+          {
+            "type": "address",
+            "name": "asset"
+          },
+          {
+            "type": "uint256",
+            "name": "amount"
+          },
+          {
+            "type": "uint64",
+            "name": "showStart"
+          },
+          {
+            "type": "uint64",
+            "name": "showEnd"
+          },
+          {
+            "type": "uint32",
+            "name": "reviewWindow"
+          },
+          {
+            "type": "bytes32",
+            "name": "termsHash"
+          },
+          {
+            "type": "address",
+            "name": "collection"
+          },
+          {
+            "type": "uint256",
+            "name": "tokenId"
+          },
+          {
+            "type": "uint256",
+            "name": "quantity"
+          },
+          {
+            "type": "address",
+            "name": "giftTreasury"
+          }
+        ]
+      },
+      {
+        "type": "string",
+        "name": "termsUri",
+        "indexed": false
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "anonymous": false,
+    "name": "GiftDecision",
+    "inputs": [
+      {
+        "type": "bytes32",
+        "name": "bookingId",
+        "indexed": true
+      },
+      {
+        "type": "uint8",
+        "name": "status",
+        "indexed": false
+      },
+      {
+        "type": "string",
+        "name": "reasonUri",
+        "indexed": false
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "anonymous": false,
+    "name": "GiftSettled",
+    "inputs": [
+      {
+        "type": "bytes32",
+        "name": "bookingId",
+        "indexed": true
+      },
+      {
+        "type": "uint8",
+        "name": "status",
+        "indexed": false
+      },
+      {
+        "type": "address",
+        "name": "recipient",
+        "indexed": true
+      },
+      {
+        "type": "address",
+        "name": "collection",
+        "indexed": false
+      },
+      {
+        "type": "uint256",
+        "name": "tokenId",
+        "indexed": false
+      },
+      {
+        "type": "uint256",
+        "name": "quantity",
+        "indexed": false
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "anonymous": false,
+    "name": "Recovery",
+    "inputs": [
+      {
+        "type": "bytes32",
+        "name": "bookingId",
+        "indexed": true
+      },
+      {
+        "type": "address",
+        "name": "recipient",
+        "indexed": true
+      },
+      {
+        "type": "bool",
+        "name": "fee",
+        "indexed": false
+      },
+      {
+        "type": "bool",
+        "name": "gift",
+        "indexed": false
+      },
+      {
+        "type": "string",
+        "name": "reasonUri",
+        "indexed": false
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "anonymous": false,
+    "name": "RoleAdminChanged",
+    "inputs": [
+      {
+        "type": "bytes32",
+        "name": "role",
+        "indexed": true
+      },
+      {
+        "type": "bytes32",
+        "name": "previousAdminRole",
+        "indexed": true
+      },
+      {
+        "type": "bytes32",
+        "name": "newAdminRole",
+        "indexed": true
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "anonymous": false,
+    "name": "RoleGranted",
+    "inputs": [
+      {
+        "type": "bytes32",
+        "name": "role",
+        "indexed": true
+      },
+      {
+        "type": "address",
+        "name": "account",
+        "indexed": true
+      },
+      {
+        "type": "address",
+        "name": "sender",
+        "indexed": true
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "anonymous": false,
+    "name": "RoleRevoked",
+    "inputs": [
+      {
+        "type": "bytes32",
+        "name": "role",
+        "indexed": true
+      },
+      {
+        "type": "address",
+        "name": "account",
+        "indexed": true
+      },
+      {
+        "type": "address",
+        "name": "sender",
+        "indexed": true
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "anonymous": false,
+    "name": "SurplusRecovered",
+    "inputs": [
+      {
+        "type": "address",
+        "name": "asset",
+        "indexed": true
+      },
+      {
+        "type": "uint256",
+        "name": "tokenId",
+        "indexed": true
+      },
+      {
+        "type": "address",
+        "name": "recipient",
+        "indexed": true
+      },
+      {
+        "type": "uint256",
+        "name": "amount",
+        "indexed": false
+      },
+      {
+        "type": "bool",
+        "name": "nft",
+        "indexed": false
+      },
+      {
+        "type": "string",
+        "name": "reasonUri",
+        "indexed": false
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "anonymous": false,
+    "name": "TokenApproval",
+    "inputs": [
+      {
+        "type": "address",
+        "name": "token",
+        "indexed": true
+      },
+      {
+        "type": "bool",
+        "name": "approved",
+        "indexed": false
+      }
+    ]
+  },
+  {
+    "type": "function",
+    "name": "ADMIN_ROLE",
+    "constant": true,
+    "stateMutability": "view",
+    "payable": false,
+    "inputs": [],
+    "outputs": [
+      {
+        "type": "bytes32",
+        "name": ""
+      }
+    ]
+  },
+  {
+    "type": "function",
+    "name": "DEFAULT_ADMIN_ROLE",
+    "constant": true,
+    "stateMutability": "view",
+    "payable": false,
+    "inputs": [],
+    "outputs": [
+      {
+        "type": "bytes32",
+        "name": ""
+      }
+    ]
+  },
+  {
+    "type": "function",
+    "name": "approvePerformance",
+    "constant": false,
+    "payable": false,
+    "inputs": [
+      {
+        "type": "bytes32",
+        "name": "id"
+      },
+      {
+        "type": "string",
+        "name": "reportUri"
+      }
+    ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "approvedTokens",
+    "constant": true,
+    "stateMutability": "view",
+    "payable": false,
+    "inputs": [
+      {
+        "type": "address",
+        "name": ""
+      }
+    ],
+    "outputs": [
+      {
+        "type": "bool",
+        "name": ""
+      }
+    ]
+  },
+  {
+    "type": "function",
+    "name": "bookings",
+    "constant": true,
+    "stateMutability": "view",
+    "payable": false,
+    "inputs": [
+      {
+        "type": "bytes32",
+        "name": "id"
+      }
+    ],
+    "outputs": [
+      {
+        "type": "tuple",
+        "name": "",
+        "components": [
+          {
+            "type": "tuple",
+            "name": "terms",
+            "components": [
+              {
+                "type": "address",
+                "name": "performer"
+              },
+              {
+                "type": "address",
+                "name": "asset"
+              },
+              {
+                "type": "uint256",
+                "name": "amount"
+              },
+              {
+                "type": "uint64",
+                "name": "showStart"
+              },
+              {
+                "type": "uint64",
+                "name": "showEnd"
+              },
+              {
+                "type": "uint32",
+                "name": "reviewWindow"
+              },
+              {
+                "type": "bytes32",
+                "name": "termsHash"
+              },
+              {
+                "type": "address",
+                "name": "collection"
+              },
+              {
+                "type": "uint256",
+                "name": "tokenId"
+              },
+              {
+                "type": "uint256",
+                "name": "quantity"
+              },
+              {
+                "type": "address",
+                "name": "giftTreasury"
+              }
+            ]
+          },
+          {
+            "type": "address",
+            "name": "funder"
+          },
+          {
+            "type": "uint8",
+            "name": "feeStatus"
+          },
+          {
+            "type": "uint8",
+            "name": "giftStatus"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "function",
+    "name": "claim",
+    "constant": false,
+    "payable": false,
+    "inputs": [
+      {
+        "type": "bytes32",
+        "name": "id"
+      }
+    ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "createBooking",
+    "constant": false,
+    "stateMutability": "payable",
+    "payable": true,
+    "inputs": [
+      {
+        "type": "bytes32",
+        "name": "id"
+      },
+      {
+        "type": "tuple",
+        "name": "t",
+        "components": [
+          {
+            "type": "address",
+            "name": "performer"
+          },
+          {
+            "type": "address",
+            "name": "asset"
+          },
+          {
+            "type": "uint256",
+            "name": "amount"
+          },
+          {
+            "type": "uint64",
+            "name": "showStart"
+          },
+          {
+            "type": "uint64",
+            "name": "showEnd"
+          },
+          {
+            "type": "uint32",
+            "name": "reviewWindow"
+          },
+          {
+            "type": "bytes32",
+            "name": "termsHash"
+          },
+          {
+            "type": "address",
+            "name": "collection"
+          },
+          {
+            "type": "uint256",
+            "name": "tokenId"
+          },
+          {
+            "type": "uint256",
+            "name": "quantity"
+          },
+          {
+            "type": "address",
+            "name": "giftTreasury"
+          }
+        ]
+      },
+      {
+        "type": "string",
+        "name": "termsUri"
+      }
+    ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "feeLiability",
+    "constant": true,
+    "stateMutability": "view",
+    "payable": false,
+    "inputs": [
+      {
+        "type": "address",
+        "name": ""
+      }
+    ],
+    "outputs": [
+      {
+        "type": "uint256",
+        "name": ""
+      }
+    ]
+  },
+  {
+    "type": "function",
+    "name": "getRoleAdmin",
+    "constant": true,
+    "stateMutability": "view",
+    "payable": false,
+    "inputs": [
+      {
+        "type": "bytes32",
+        "name": "role"
+      }
+    ],
+    "outputs": [
+      {
+        "type": "bytes32",
+        "name": ""
+      }
+    ]
+  },
+  {
+    "type": "function",
+    "name": "giftLiability",
+    "constant": true,
+    "stateMutability": "view",
+    "payable": false,
+    "inputs": [
+      {
+        "type": "address",
+        "name": ""
+      },
+      {
+        "type": "uint256",
+        "name": ""
+      }
+    ],
+    "outputs": [
+      {
+        "type": "uint256",
+        "name": ""
+      }
+    ]
+  },
+  {
+    "type": "function",
+    "name": "grantRole",
+    "constant": false,
+    "payable": false,
+    "inputs": [
+      {
+        "type": "bytes32",
+        "name": "role"
+      },
+      {
+        "type": "address",
+        "name": "account"
+      }
+    ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "hasRole",
+    "constant": true,
+    "stateMutability": "view",
+    "payable": false,
+    "inputs": [
+      {
+        "type": "bytes32",
+        "name": "role"
+      },
+      {
+        "type": "address",
+        "name": "account"
+      }
+    ],
+    "outputs": [
+      {
+        "type": "bool",
+        "name": ""
+      }
+    ]
+  },
+  {
+    "type": "function",
+    "name": "markUnperformedGift",
+    "constant": false,
+    "payable": false,
+    "inputs": [
+      {
+        "type": "bytes32",
+        "name": "id"
+      },
+      {
+        "type": "string",
+        "name": "reasonUri"
+      }
+    ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "noShow",
+    "constant": false,
+    "payable": false,
+    "inputs": [
+      {
+        "type": "bytes32",
+        "name": "id"
+      },
+      {
+        "type": "string",
+        "name": "reasonUri"
+      }
+    ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "onERC1155BatchReceived",
+    "constant": false,
+    "payable": false,
+    "inputs": [
+      {
+        "type": "address",
+        "name": ""
+      },
+      {
+        "type": "address",
+        "name": ""
+      },
+      {
+        "type": "uint256[]",
+        "name": ""
+      },
+      {
+        "type": "uint256[]",
+        "name": ""
+      },
+      {
+        "type": "bytes",
+        "name": ""
+      }
+    ],
+    "outputs": [
+      {
+        "type": "bytes4",
+        "name": ""
+      }
+    ]
+  },
+  {
+    "type": "function",
+    "name": "onERC1155Received",
+    "constant": false,
+    "payable": false,
+    "inputs": [
+      {
+        "type": "address",
+        "name": ""
+      },
+      {
+        "type": "address",
+        "name": ""
+      },
+      {
+        "type": "uint256",
+        "name": ""
+      },
+      {
+        "type": "uint256",
+        "name": ""
+      },
+      {
+        "type": "bytes",
+        "name": ""
+      }
+    ],
+    "outputs": [
+      {
+        "type": "bytes4",
+        "name": ""
+      }
+    ]
+  },
+  {
+    "type": "function",
+    "name": "performerCancel",
+    "constant": false,
+    "payable": false,
+    "inputs": [
+      {
+        "type": "bytes32",
+        "name": "id"
+      },
+      {
+        "type": "string",
+        "name": "reasonUri"
+      }
+    ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "platformFault",
+    "constant": false,
+    "payable": false,
+    "inputs": [
+      {
+        "type": "bytes32",
+        "name": "id"
+      },
+      {
+        "type": "string",
+        "name": "reasonUri"
+      }
+    ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "recover",
+    "constant": false,
+    "payable": false,
+    "inputs": [
+      {
+        "type": "bytes32",
+        "name": "id"
+      },
+      {
+        "type": "address",
+        "name": "recipient"
+      },
+      {
+        "type": "bool",
+        "name": "fee"
+      },
+      {
+        "type": "bool",
+        "name": "gift"
+      },
+      {
+        "type": "string",
+        "name": "reasonUri"
+      }
+    ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "recoverSurplus",
+    "constant": false,
+    "payable": false,
+    "inputs": [
+      {
+        "type": "address",
+        "name": "asset"
+      },
+      {
+        "type": "uint256",
+        "name": "tokenId"
+      },
+      {
+        "type": "address",
+        "name": "recipient"
+      },
+      {
+        "type": "uint256",
+        "name": "amount"
+      },
+      {
+        "type": "bool",
+        "name": "nft"
+      },
+      {
+        "type": "string",
+        "name": "reasonUri"
+      }
+    ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "refund",
+    "constant": false,
+    "payable": false,
+    "inputs": [
+      {
+        "type": "bytes32",
+        "name": "id"
+      }
+    ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "releaseGift",
+    "constant": false,
+    "payable": false,
+    "inputs": [
+      {
+        "type": "bytes32",
+        "name": "id"
+      }
+    ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "renounceRole",
+    "constant": false,
+    "payable": false,
+    "inputs": [
+      {
+        "type": "bytes32",
+        "name": "role"
+      },
+      {
+        "type": "address",
+        "name": "callerConfirmation"
+      }
+    ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "returnGift",
+    "constant": false,
+    "payable": false,
+    "inputs": [
+      {
+        "type": "bytes32",
+        "name": "id"
+      }
+    ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "revokeRole",
+    "constant": false,
+    "payable": false,
+    "inputs": [
+      {
+        "type": "bytes32",
+        "name": "role"
+      },
+      {
+        "type": "address",
+        "name": "account"
+      }
+    ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "setTokenApproval",
+    "constant": false,
+    "payable": false,
+    "inputs": [
+      {
+        "type": "address",
+        "name": "token"
+      },
+      {
+        "type": "bool",
+        "name": "allowed"
+      }
+    ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "supportsInterface",
+    "constant": true,
+    "stateMutability": "view",
+    "payable": false,
+    "inputs": [
+      {
+        "type": "bytes4",
+        "name": "interfaceId"
+      }
+    ],
+    "outputs": [
+      {
+        "type": "bool",
+        "name": ""
+      }
+    ]
+  }
+]
