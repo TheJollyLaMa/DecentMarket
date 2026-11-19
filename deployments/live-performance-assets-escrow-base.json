@@ -1,0 +1,13 @@
+{
+  "contract": "LivePerformanceAssetsEscrow",
+  "chainId": 8453,
+  "address": "0x64A5CE57c5dA4C35688b72366Ec505E020ec9Ce8",
+  "transactionHash": "0xecc680669d9f030921a3dc37ff4fcef6168a8b3d8d9d332ef22265652a65551e",
+  "startBlock": 59704864,
+  "usdc": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  "admin": "0x807061DF657A7697c04045dA7d16D941861cAABc",
+  "giftTreasury": "0x807061DF657A7697c04045dA7d16D941861cAABc",
+  "deployer": "0x807061DF657A7697c04045dA7d16D941861cAABc",
+  "runtimeCodeHash": "0x71f515b34f62ad7958ba1902e0c36b56a7af3ff77661b1a2b339005f05460fb7",
+  "deployedAt": "2026-11-19T23:35:48.951Z"
+}
