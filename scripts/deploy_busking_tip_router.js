@@ -1,6 +1,6 @@
 // Deploys DecentBuskingTipRouter. v0.1 is stateless with no owner, fee, pause or custody.
 // TIP_ROUTER_VERSION=v0.2 deploys the v0.2 router (split ETH, allowlisted ERC-20 tips, NFT gifts) with its own record.
-// v0.2 has an admin owner (TIP_ROUTER_OWNER, default the deployer) for the token allowlist and mistaken-transfer recovery;
+// v0.2 has an admin owner (TIP_ROUTER_OWNER, default the deployer) for the token allowlist only (no recovery or withdrawal);
 // it launches with Base USDC allowed. Tips and gifts still move straight from the tipper to the owners; the router holds nothing.
 // Dry-run by default; a Base broadcast requires CONFIRM_DEPLOY=yes.
 //   Local rehearsal (in-process chain, no keys):  npx hardhat run scripts/deploy_busking_tip_router.js

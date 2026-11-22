@@ -21,9 +21,8 @@ import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 ///      totalling 10000 basis points. Each recipient gets `amount * share / 10000` and the last also
 ///      receives the rounding remainder, matching DJuke artist credits.
 ///
-///      The owner (admin) can only allow/disallow ERC-20 tokens and recover assets sent to this address
-///      by mistake (for example a plain ERC-20 transfer). The owner can never move a tipper's tokens or
-///      NFTs: transfers always use msg.sender as the source.
+///      The owner (admin) can only allow/disallow ERC-20 tokens. There is no recovery or withdrawal
+///      function: the owner can never move any asset, and transfers always use msg.sender as the source.
 contract DecentBuskingTipRouter_v0_2 is Ownable2Step, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
@@ -83,7 +82,6 @@ contract DecentBuskingTipRouter_v0_2 is Ownable2Step, ReentrancyGuard {
     );
 
     event TokenAllowed(address indexed token, bool allowed);
-    event Recovered(address indexed token, address indexed to, uint256 amount);
 
     error InvalidRecipient();
     error InvalidAmount();
@@ -191,25 +189,6 @@ contract DecentBuskingTipRouter_v0_2 is Ownable2Step, ReentrancyGuard {
     /// @notice Allows or disallows an ERC-20 token for tips (for example OMMM once it exists on Base).
     function setTokenAllowed(address token, bool allowed) external onlyOwner {
         _setTokenAllowed(token, allowed);
-    }
-
-    /// @notice Recovers ETH (`token` = 0) or an ERC-20 sent to this address by mistake. Tips never rest here.
-    function recover(address token, address to, uint256 amount) external onlyOwner nonReentrant {
-        if (to == address(0)) revert InvalidRecipient();
-        if (token == address(0)) {
-            (bool delivered, ) = to.call{value: amount}("");
-            if (!delivered) revert TransferFailed();
-        } else {
-            IERC20(token).safeTransfer(to, amount);
-        }
-        emit Recovered(token, to, amount);
-    }
-
-    /// @notice Recovers an ERC-721 sent to this address with a plain (unsafe) transferFrom.
-    function recoverERC721(address collection, uint256 tokenId, address to) external onlyOwner nonReentrant {
-        if (to == address(0)) revert InvalidRecipient();
-        IERC721(collection).transferFrom(address(this), to, tokenId);
-        emit Recovered(collection, to, 1);
     }
 
     // ── Internals ─────────────────────────────────────────────────────────

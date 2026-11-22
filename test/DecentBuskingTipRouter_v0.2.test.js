@@ -111,7 +111,6 @@ describe('DecentBuskingTipRouter v0.2', function () {
       expect(await ommm.balanceOf(audio.address)).to.equal(5n);
       await router.connect(admin).setTokenAllowed(usdc.target, false);
       await expect(router.connect(tipper).tipToken(usdc.target, audio.address, 1n, RADIO, radioRef)).to.be.revertedWithCustomError(router, 'TokenNotAllowed');
-      await expect(router.connect(admin).recover(usdc.target, admin.address, 1n)).to.be.reverted;
       expect(await usdc.balanceOf(tipper.address)).to.equal(1_000_000n);
     });
   });
@@ -168,16 +167,10 @@ describe('DecentBuskingTipRouter v0.2', function () {
     });
   });
 
-  it('lets only the admin recover ERC-20 and ERC-721 assets sent to it by mistake', async function () {
-    await usdc.mint(router.target, 9n);
-    const nft721 = await (await ethers.getContractFactory('MockTipNFT721')).deploy();
-    await nft721.mint(router.target, 1n);
-    await expect(router.connect(tipper).recover(usdc.target, tipper.address, 9n)).to.be.revertedWithCustomError(router, 'OwnableUnauthorizedAccount');
-    await expect(router.connect(admin).recover(usdc.target, admin.address, 9n)).to.emit(router, 'Recovered').withArgs(usdc.target, admin.address, 9n);
-    expect(await usdc.balanceOf(admin.address)).to.equal(9n);
-    await expect(router.connect(tipper).recoverERC721(nft721.target, 1n, tipper.address)).to.be.revertedWithCustomError(router, 'OwnableUnauthorizedAccount');
-    await router.connect(admin).recoverERC721(nft721.target, 1n, admin.address);
-    expect(await nft721.ownerOf(1n)).to.equal(admin.address);
-    await expect(router.connect(admin).recover(ethers.ZeroAddress, admin.address, 1n)).to.be.revertedWithCustomError(router, 'TransferFailed');
+  it('has no recovery, withdrawal or fallback entry point', async function () {
+    const names = router.interface.fragments.filter(f => f.type === 'function').map(f => f.name);
+    expect(names.some(name => /recover|withdraw|sweep|rescue/i.test(name))).to.equal(false);
+    expect(router.interface.fallback).to.equal(null);
+    expect(router.interface.receive).to.equal(false);
   });
 });
