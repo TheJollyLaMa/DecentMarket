@@ -1,5 +1,6 @@
 // Deploys DecentBuskingTipRouter: a stateless tip router with no owner, fee, pause or custody.
 // Dry-run by default; a Base broadcast requires CONFIRM_DEPLOY=yes.
+// TIP_ROUTER_VERSION=v0.2 deploys the split-capable v0.2 router with its own deployment record.
 //   Local rehearsal (in-process chain, no keys):  npx hardhat run scripts/deploy_busking_tip_router.js
 //   Base dry run (PRIVATE_KEY from .env):         npx hardhat run scripts/deploy_busking_tip_router.js --network base
 //   Base mainnet:                                 CONFIRM_DEPLOY=yes npx hardhat run scripts/deploy_busking_tip_router.js --network base
@@ -8,9 +9,18 @@ const fs = require("fs");
 const path = require("path");
 const hre = require("hardhat");
 
-const RECORD = path.join(__dirname, "../deployments/busking-tip-router-base.json");
-const SOURCE = path.join(__dirname, "../contracts/DecentBuskingTipRouter.sol");
-const FQN = "contracts/DecentBuskingTipRouter.sol:DecentBuskingTipRouter";
+const VERSIONS = {
+  "v0.1": { record: "busking-tip-router-base.json", source: "DecentBuskingTipRouter.sol", name: "DecentBuskingTipRouter",
+    interface: { tip: "tip(address,uint8,string)" } },
+  "v0.2": { record: "busking-tip-router-v02-base.json", source: "DecentBuskingTipRouter_v0.2.sol", name: "DecentBuskingTipRouter_v0_2",
+    interface: { tip: "tip(address,uint8,string)", tipSplit: "tipSplit(address[],uint16[],uint8,string)" } },
+};
+const VERSION = process.env.TIP_ROUTER_VERSION || "v0.1";
+const TARGET = VERSIONS[VERSION];
+if (!TARGET) throw new Error(`Unknown TIP_ROUTER_VERSION ${VERSION}`);
+const RECORD = path.join(__dirname, "../deployments", TARGET.record);
+const SOURCE = path.join(__dirname, "../contracts", TARGET.source);
+const FQN = `contracts/${TARGET.source}:${TARGET.name}`;
 const BASE_GAS_PRICE_ORACLE = "0x420000000000000000000000000000000000000F";
 const PROBE_CONTEXT = "decentbusking:live:deployment-check";
 
@@ -24,7 +34,7 @@ function revertName(iface, error) {
 // Read-only checks on the deployed contract. eth_call simulations broadcast nothing and move no funds.
 async function checkDeployment({ ethers, artifacts, router, address }) {
   const code = await ethers.provider.getCode(address);
-  const artifact = await artifacts.readArtifact("DecentBuskingTipRouter");
+  const artifact = await artifacts.readArtifact(TARGET.name);
   const probe = ethers.Wallet.createRandom().address;
   const simulate = (recipient, kind, context, value) => router.tip.staticCall(recipient, kind, context, { value });
   const cases = [
@@ -34,6 +44,16 @@ async function checkDeployment({ ethers, artifacts, router, address }) {
     ["an empty context is rejected", () => simulate(probe, 0, "", 1n), "InvalidContext"],
     ["a zero amount is rejected", () => simulate(probe, 0, PROBE_CONTEXT, 0n), "InvalidAmount"],
   ];
+  if (TARGET.interface.tipSplit) {
+    const second = ethers.Wallet.createRandom().address;
+    const split = (recipients, shares, value) => router.tipSplit.staticCall(recipients, shares, 1, PROBE_CONTEXT, { value });
+    cases.push(
+      ["a valid 50/50 split tip simulates", () => split([probe, second], [5000, 5000], 2n), null],
+      ["shares not totalling 10000 are rejected", () => split([probe, second], [5000, 4999], 2n), "InvalidSplit"],
+      ["a duplicate co-owner is rejected", () => split([probe, probe], [5000, 5000], 2n), "InvalidSplit"],
+      ["a split too small to pay everyone is rejected", () => split([probe, second], [9999, 1], 1n), "InvalidAmount"],
+    );
+  }
   const simulations = [];
   for (const [name, call, expected] of cases) {
     try { await call(); simulations.push({ name, ok: expected === null }); }
@@ -71,7 +91,7 @@ async function main() {
 
   const [deployer] = await ethers.getSigners();
   if (!deployer) throw new Error("Set PRIVATE_KEY in .env (a funded Base wallet)");
-  const factory = await ethers.getContractFactory("DecentBuskingTipRouter", deployer);
+  const factory = await ethers.getContractFactory(TARGET.name, deployer);
   const request = await factory.getDeployTransaction();
   const gas = await ethers.provider.estimateGas({ ...request, from: deployer.address });
   const fee = await ethers.provider.getFeeData();
@@ -82,7 +102,7 @@ async function main() {
   const balance = await ethers.provider.getBalance(deployer.address);
   const confirmed = process.env.CONFIRM_DEPLOY === "yes";
   console.log(JSON.stringify({
-    network: network.name, chainId, mode: live && !confirmed ? "dry-run" : "deploy",
+    version: VERSION, network: network.name, chainId, mode: live && !confirmed ? "dry-run" : "deploy",
     deployer: deployer.address, deployGas: String(gas), maxFeePerGasGwei: ethers.formatUnits(maxFee, "gwei"),
     executionCostEth: ethers.formatEther(executionCost),
     l1DataFeeEth: l1Fee === null ? "unavailable (a 0.0003 ETH reserve is assumed)" : ethers.formatEther(l1Fee),
@@ -101,11 +121,11 @@ async function main() {
   const buildInfo = await artifacts.getBuildInfo(FQN);
   const settings = buildInfo?.input?.settings ?? {};
   const record = {
-    contract: "DecentBuskingTipRouter", chainId, address, transactionHash: tx.hash, startBlock: receipt.blockNumber,
+    contract: TARGET.name, version: VERSION, chainId, address, transactionHash: tx.hash, startBlock: receipt.blockNumber,
     deployer: deployer.address, deployedAt: new Date().toISOString(),
     compiler: { solc: buildInfo?.solcLongVersion ?? "0.8.26", optimizerRuns: settings.optimizer?.runs, evmVersion: settings.evmVersion, viaIR: Boolean(settings.viaIR) },
     sourceSha256: crypto.createHash("sha256").update(fs.readFileSync(SOURCE)).digest("hex"),
-    interface: { tip: "tip(address,uint8,string)", event: "TipSent(address,address,bytes32,uint8,uint256,string)" },
+    interface: { ...TARGET.interface, event: "TipSent(address,address,bytes32,uint8,uint256,string)" },
   };
   const save = () => live && fs.writeFileSync(RECORD, JSON.stringify(record, null, 2) + "\n");
   save();
