@@ -1,0 +1,67 @@
+.draft-studio { max-width:1180px; }
+.draft-studio-intro p { max-width:70ch; }
+.skip-link { position:absolute; left:8px; top:-60px; padding:10px 14px; background:#123b38; color:#edfff8; border-radius:8px; z-index:10; }
+.skip-link:focus { top:8px; }
+.visually-hidden { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+fieldset { border:0; padding:0; margin:0 0 8px; }
+legend { font-weight:600; margin-bottom:6px; }
+.choice { display:inline-flex; align-items:center; gap:8px; margin:6px 20px 6px 0; min-height:44px; }
+input[type=radio] { width:20px; height:20px; accent-color:#7af0c6; }
+select,textarea { display:block; box-sizing:border-box; width:100%; padding:10px; margin:6px 0; min-height:44px;
+  background:#050c16; color:#eaf8ff; border:1px solid #7af0c666; border-radius:8px; font:inherit; }
+textarea { resize:vertical; }
+.draft-studio input:not([type=checkbox]):not([type=radio]) { font:inherit; min-height:44px; }
+.jump-link { display:inline-block; margin:4px 0 8px; }
+@media(min-width:961px) { .jump-link { display:none; } }
+select:focus-visible,textarea:focus-visible,a:focus-visible,h2[tabindex]:focus-visible { outline:3px solid #a99aff; outline-offset:4px; }
+[aria-invalid=true] { border-color:#ff9090 !important; }
+.muted { opacity:.55; }
+.help { display:block; font-size:.9rem; color:#b9cfe0; }
+.field { margin:18px 0; }
+.field label { margin:0; font-weight:600; }
+.field-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:0 14px; }
+.field-error { display:block; color:#ffbdbd; font-size:.9rem; }
+.field-error:empty { display:none; }
+.badge { display:inline-block; margin-left:6px; padding:1px 8px; font-size:.75rem; font-weight:500; border-radius:999px;
+  border:1px solid #a99aff88; color:#d9d0ff; vertical-align:middle; }
+.badge[data-kind=source] { border-color:#7af0c6; color:#b6ffe3; }
+.badge[data-kind=default] { border-color:#9fc6ff; color:#cfe2ff; }
+.badge[data-kind=edited] { border-color:#ffd88a; color:#ffe7b5; }
+.badge[data-kind=unknown] { border-color:#ff9f9f; color:#ffc8c8; border-style:dashed; }
+.badge.stale { margin:4px 0; border-color:#ffd88a; color:#ffe7b5; }
+.draft-studio-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:20px; align-items:start; }
+.draft-studio-grid > * { margin:20px 0; padding:20px; border:1px solid #7af0c64d; border-radius:16px; background:#0b1526dd; box-shadow:0 0 22px #8d7cf719; }
+.draft-studio-grid > [hidden] { display:none; }
+#previews { position:sticky; top:12px; max-height:calc(100dvh - 24px); overflow:auto; }
+#previews h3 { color:#c7ffe4; font-size:1rem; margin:18px 0 8px; }
+.studio-preview.market-dialog { width:100%; max-height:none; overflow:visible; font-size:14px; }
+.studio-preview .studio-preview-title { font-size:clamp(17px,2.4vw,22px); line-height:1.3; margin:0; }
+.studio-preview h5 { color:#c7ffe4; margin:0 0 6px; font-size:1rem; }
+.studio-preview.market-dialog > header { position:static; }
+/* Undo this page's generic section boxes so previews match the Market card exactly. */
+.studio-preview section:not(.market-offers) { margin:0; padding:0; border:0; border-radius:0; background:none; box-shadow:none; }
+.studio-preview .market-offers { box-shadow:none; }
+#previews .market-collectible-card { grid-template-columns:1fr; gap:12px; }
+#previews .market-card-art img { max-height:360px; }
+.studio-listing-row { padding:10px 16px; margin:4px; background:#193b42; color:#effff9; border:1px solid #7af0c688; border-radius:12px; }
+.studio-listing-row strong,.studio-listing-row span { display:block; }
+.studio-listing-row span { font-size:13px; color:#c2d9de; }
+.terms { display:grid; grid-template-columns:minmax(110px,auto) minmax(0,1fr); gap:8px 14px; margin:0; }
+.terms dt { font-weight:600; color:#c7ffe4; }
+.terms dd { margin:0; }
+.terms dd[data-known=false] { color:#ffe7b5; }
+.draft-list { list-style:none; padding:0; margin:0; }
+.draft-list li { display:grid; gap:4px; padding:12px 0; border-bottom:1px solid #a99aff33; }
+.draft-buttons button { margin:6px 8px 0 0; }
+.mint-waiting button:disabled { border-style:dashed; }
+#status { z-index:5; }
+@media(max-width:960px) {
+  .draft-studio-grid { grid-template-columns:1fr; gap:0; }
+  #previews { position:static; max-height:none; }
+}
+@media(max-width:560px) {
+  .draft-studio-grid > * { padding:14px; }
+  .terms { grid-template-columns:1fr; gap:2px; }
+  .terms dd { margin-bottom:8px; }
+  #status { padding:10px 12px; font-size:.9rem; }
+}

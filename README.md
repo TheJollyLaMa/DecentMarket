@@ -371,6 +371,22 @@ or Discord posting is performed. See [setup, recovery and evidence registration]
 Validate with `npm run test:supporter`; browser rehearsal:
 `BASE_URL=http://127.0.0.1:8792 npm run test:supporter:browser`.
 
+### Supporter Studio drafts and previews (#83)
+
+[Supporter Studio](studio.html) lets a creator choose an existing project (prefilled
+from a published release's `supporter-metadata.json`) or start a new one, edit the
+edition, and see live previews of the Market card, listing row and supporter terms.
+Every value is labelled as from source, default, edited or unknown. Drafts are saved
+only in this browser (`localStorage` key `decent-market:supporter-studio:drafts`,
+versioned and validated by `js/supporter-draft.mjs`); unreadable or newer stores are
+left untouched. The page never connects a wallet, uploads to IPFS, calls a contract
+or posts to ENS/Discord. Mint and list stay disabled until creator permissions
+(#47) and seller-scoped listings (#84) exist. Part of epic #85.
+
+Validate with `npm run test:supporter`; browser check:
+`BASE_URL=http://127.0.0.1:8792 npm run test:supporter:drafts:browser`
+(optional `SCREENSHOT_DIR=…`).
+
 ## License
 
 Code: [Apache-2.0](LICENSE) · Art and docs: [CC BY 4.0](LICENSES/CC-BY-4.0.txt) · Please keep the [NOTICE](NOTICE) and give The Jolly LaMa / A Decent Agency a head nod when you reuse this work.

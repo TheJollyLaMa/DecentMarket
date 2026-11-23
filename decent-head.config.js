@@ -20,6 +20,7 @@ window.DECENT_CONFIG = {
   links: [
     { label: 'Source and license', url: 'https://github.com/TheJollyLaMa/DecentMarket' },
     { label: 'Supporter Release Studio', url: './supporter.html' },
+    { label: 'Supporter Studio drafts (preview only)', url: './studio.html' },
     { label: 'Agency marathon', url: 'https://a-decent-agency.github.io/' },
   ],
   relatedDapps: [
