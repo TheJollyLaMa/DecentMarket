@@ -7,7 +7,9 @@ import { BASE } from '../js/supporter-mint.mjs';
 import { IPFSSession } from '../vendor/decent-head/2.0.0/js/ipfs.js';
 import { uploadFileToIPFS, uploadMetadataToIPFS } from '../js/ipfs.js';
 const manifest = JSON.parse(readFileSync(new URL('../releases/decenthead-v2.0.0/supporter-release.json', import.meta.url)));
-const entry = JSON.parse(readFileSync(new URL('../releases/listings.json', import.meta.url)))[0];
+const entry = JSON.parse(readFileSync(new URL('../releases/listings.json', import.meta.url)))
+  .find(item => item.release === 'decenthead-v2.0.0');
+assert.ok(entry, 'The DecentHead release must have a listing entry');
 const cid = manifest.front.slice(7);
 globalThis.window = new EventTarget();
 test('public RPC has a ten-second deadline and at most ten calls per batch', () => {
@@ -55,14 +57,18 @@ test('assets use configured non-retired gateway and reject unsafe schemes', () =
   assert.match(resolveMarketAsset(`ipfs://${cid}`), /^https:\/\/gateway.pinata.cloud\/ipfs\//);
   assert.throws(() => resolveMarketAsset('javascript:alert(1)'), /Unsupported/);
 });
-function listingFixture() {
+function listingFixture(listedEntry = entry) {
   const listing = { nftContract: BASE.DNFT, tokenId: 70n, priceETH: 0n, priceToken: BASE.USDC, priceAmount: 10000000n, available: 1000n, active: true };
   const nft = { uri: async () => manifest.metadataURI, balanceOf: async () => 1000n, royaltyInfo: async () => [manifest.creatorAddress, 1000n] };
-  const escrow = { listings: async id => { assert.equal(id, '0'); return listing; }, paused: async () => false };
-  return { listing, nft, escrow, entry, manifest };
+  const escrow = { listings: async id => { assert.equal(id, listedEntry.listingId); return listing; }, paused: async () => false };
+  return { listing, nft, escrow, entry: listedEntry, manifest };
 }
-test('real listing zero is accepted only with exact URI, royalty, price and covered stock', async () => {
+test('the published listing and listing zero require exact URI, royalty, price and covered stock', async () => {
   assert.deepEqual(await verifyPublicListing(listingFixture()), { available: '1000', purchasable: true, paused: false });
+  const zeroUrl = new URL(entry.purchaseUrl);
+  zeroUrl.searchParams.set('listingId', '0');
+  const zero = { ...entry, listingId: '0', purchaseUrl: zeroUrl.href };
+  assert.deepEqual(await verifyPublicListing(listingFixture(zero)), { available: '1000', purchasable: true, paused: false });
 });
 for (const field of ['nftContract', 'tokenId', 'priceETH', 'priceToken', 'priceAmount']) {
   test(`public listing rejects changed ${field}`, async () => {
@@ -82,7 +88,9 @@ test('uncovered, paused and sold-out listings never produce a buy action', async
 test('wrong prepared metadata and purchase binding are rejected', async () => {
   const f = listingFixture(); f.nft.uri = async () => 'ipfs://different';
   await assert.rejects(verifyPublicListing(f), /metadata/);
-  const g = listingFixture(); g.entry = { ...entry, purchaseUrl: entry.purchaseUrl.replace('listingId=0', 'listingId=1') };
+  const wrongUrl = new URL(entry.purchaseUrl);
+  wrongUrl.searchParams.set('listingId', (BigInt(entry.listingId) + 1n).toString());
+  const g = listingFixture(); g.entry = { ...entry, purchaseUrl: wrongUrl.href };
   await assert.rejects(verifyPublicListing(g), /Purchase/);
 });
 test('file and metadata uploads use shared session only; no implicit credentials, invalid CID or swallowed HTTP errors', async () => {
