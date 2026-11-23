@@ -70,7 +70,7 @@
         "type": "address"
       }
     ],
-    "name": "CreatorLimitReached",
+    "name": "CreatorNotAuthorized",
     "type": "error"
   },
   {
@@ -82,6 +82,22 @@
       }
     ],
     "name": "CreatorProductLocked",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "creator",
+        "type": "address"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "projectHash",
+        "type": "bytes32"
+      }
+    ],
+    "name": "CreatorProjectNotApproved",
     "type": "error"
   },
   {
@@ -273,6 +289,22 @@
   {
     "inputs": [
       {
+        "internalType": "address",
+        "name": "expected",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "configured",
+        "type": "address"
+      }
+    ],
+    "name": "GiftRecipientMismatch",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "uint256",
         "name": "balance",
         "type": "uint256"
@@ -284,6 +316,11 @@
       }
     ],
     "name": "InsufficientBalance",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "InvalidCanopyProjectId",
     "type": "error"
   },
   {
@@ -321,6 +358,11 @@
       }
     ],
     "name": "InvalidCreatorSupply",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "InvalidGiftRecipient",
     "type": "error"
   },
   {
@@ -369,6 +411,22 @@
       }
     ],
     "name": "SafeERC20FailedOperation",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "value",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "length",
+        "type": "uint256"
+      }
+    ],
+    "name": "StringsInsufficientHexLength",
     "type": "error"
   },
   {
@@ -424,17 +482,42 @@
       {
         "indexed": false,
         "internalType": "uint64",
-        "name": "maxProducts",
-        "type": "uint64"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint64",
         "name": "maxEditionsPerProduct",
         "type": "uint64"
       }
     ],
     "name": "CreatorAuthorized",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "tokenId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "creator",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "recipient",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "CreatorEditionsGifted",
     "type": "event"
   },
   {
@@ -482,6 +565,62 @@
         "internalType": "address",
         "name": "creator",
         "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "projectHash",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "projectId",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "bool",
+        "name": "approved",
+        "type": "bool"
+      }
+    ],
+    "name": "CreatorProjectApproval",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "tokenId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "creator",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "projectHash",
+        "type": "bytes32"
+      }
+    ],
+    "name": "CreatorProjectLinked",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "creator",
+        "type": "address"
       }
     ],
     "name": "CreatorRevoked",
@@ -498,6 +637,19 @@
       }
     ],
     "name": "CreatorRoyaltyCapUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "recipient",
+        "type": "address"
+      }
+    ],
+    "name": "EditionGiftRecipientUpdated",
     "type": "event"
   },
   {
@@ -861,11 +1013,6 @@
       },
       {
         "internalType": "uint64",
-        "name": "maxProducts",
-        "type": "uint64"
-      },
-      {
-        "internalType": "uint64",
         "name": "maxEditionsPerProduct",
         "type": "uint64"
       }
@@ -940,25 +1087,15 @@
     "inputs": [
       {
         "internalType": "address",
-        "name": "creator",
+        "name": "",
         "type": "address"
       }
     ],
-    "name": "creatorLimits",
+    "name": "creatorEditionLimit",
     "outputs": [
       {
         "internalType": "uint64",
-        "name": "maxProducts",
-        "type": "uint64"
-      },
-      {
-        "internalType": "uint64",
-        "name": "maxEditionsPerProduct",
-        "type": "uint64"
-      },
-      {
-        "internalType": "uint64",
-        "name": "productsRegistered",
+        "name": "",
         "type": "uint64"
       }
     ],
@@ -992,6 +1129,19 @@
         "internalType": "uint96",
         "name": "",
         "type": "uint96"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "editionGiftRecipient",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
       }
     ],
     "stateMutability": "view",
@@ -1085,6 +1235,30 @@
   {
     "inputs": [
       {
+        "internalType": "address",
+        "name": "creator",
+        "type": "address"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "projectHash",
+        "type": "bytes32"
+      }
+    ],
+    "name": "isCreatorProjectApproved",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "uint256",
         "name": "tokenId",
         "type": "uint256"
@@ -1157,6 +1331,29 @@
       }
     ],
     "name": "mintCreatorProduct",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "tokenId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "expectedRecipient",
+        "type": "address"
+      }
+    ],
+    "name": "mintCreatorProductWithGift",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -1258,6 +1455,25 @@
   {
     "inputs": [
       {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "productProject",
+    "outputs": [
+      {
+        "internalType": "bytes32",
+        "name": "",
+        "type": "bytes32"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "address",
         "name": "token",
         "type": "address"
@@ -1345,9 +1561,63 @@
         "internalType": "uint96",
         "name": "royaltyFeeBps",
         "type": "uint96"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "projectHash",
+        "type": "bytes32"
       }
     ],
     "name": "registerAndMintProduct",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "tokenId",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "maxSupply_",
+        "type": "uint256"
+      },
+      {
+        "internalType": "string",
+        "name": "tokenURI_",
+        "type": "string"
+      },
+      {
+        "internalType": "address",
+        "name": "royaltyReceiver",
+        "type": "address"
+      },
+      {
+        "internalType": "uint96",
+        "name": "royaltyFeeBps",
+        "type": "uint96"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "projectHash",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "address",
+        "name": "expectedRecipient",
+        "type": "address"
+      }
+    ],
+    "name": "registerAndMintProductWithGift",
     "outputs": [
       {
         "internalType": "uint256",
@@ -1662,6 +1932,29 @@
   {
     "inputs": [
       {
+        "internalType": "address",
+        "name": "creator",
+        "type": "address"
+      },
+      {
+        "internalType": "string",
+        "name": "projectId",
+        "type": "string"
+      },
+      {
+        "internalType": "bool",
+        "name": "approved",
+        "type": "bool"
+      }
+    ],
+    "name": "setCreatorProjectApproval",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "uint96",
         "name": "capBps",
         "type": "uint96"
@@ -1686,6 +1979,19 @@
       }
     ],
     "name": "setDefaultRoyalty",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "recipient",
+        "type": "address"
+      }
+    ],
+    "name": "setEditionGiftRecipient",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"

@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import "./DecentNFT_v0.3.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/utils/TransientSlot.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -16,8 +17,8 @@ import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
  *
  * Creator lane
  * ------------
- *   CREATOR_ROLE wallets, authorized by the admin with per-creator limits, can
- *   register and mint their OWN Product tokens. Each creator product:
+ *   CREATOR_ROLE wallets can register and mint their OWN Product tokens for
+ *   Canopy projects approved by the admin. Each creator product:
  *     - records the creator in `creatorOf`, `TokenRegistered.creator` and
  *       `EditionMinted.minter`;
  *     - is minted to the creator, except for an explicitly selected gift to
@@ -54,23 +55,28 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
     bytes32 private constant MINTING_CREATOR_SLOT =
         keccak256("decentnft.v0_4.mintingCreator");
 
-    struct CreatorLimits {
-        uint64 maxProducts;           // Products this creator may register
-        uint64 maxEditionsPerProduct; // Upper bound for each product's maxSupply
-        uint64 productsRegistered;    // Lifetime count (not refunded on revoke)
-    }
-
     /// @notice Royalty cap (basis points) applied to new creator products.
     uint96 public creatorRoyaltyCapBps;
 
     /// @notice Approved recipient for optional edition gifts; zero disables gifts.
     address public editionGiftRecipient;
 
-    mapping(address => CreatorLimits) private _creatorLimits;
+    /// @notice Maximum supply per creator product; zero prevents new registration.
+    mapping(address => uint64) public creatorEditionLimit;
     mapping(uint256 => address) private _productCreator;
+    mapping(uint256 => bytes32) public productProject;
+    mapping(address => uint256) private _creatorEpoch;
+    mapping(address => mapping(bytes32 => uint256)) private _projectApprovalEpoch;
 
-    event CreatorAuthorized(address indexed creator, uint64 maxProducts, uint64 maxEditionsPerProduct);
+    event CreatorAuthorized(address indexed creator, uint64 maxEditionsPerProduct);
     event CreatorRevoked(address indexed creator);
+    event CreatorProjectApproval(
+        address indexed creator,
+        bytes32 indexed projectHash,
+        string projectId,
+        bool approved
+    );
+    event CreatorProjectLinked(uint256 indexed tokenId, address indexed creator, bytes32 indexed projectHash);
     event CreatorProductRegistered(
         uint256 indexed tokenId,
         address indexed creator,
@@ -90,7 +96,9 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
 
     error CreatorProductLocked(uint256 tokenId);
     error NotProductCreator(uint256 tokenId, address account);
-    error CreatorLimitReached(address creator);
+    error CreatorNotAuthorized(address creator);
+    error CreatorProjectNotApproved(address creator, bytes32 projectHash);
+    error InvalidCanopyProjectId();
     error InvalidCreatorSupply(uint256 maxSupply, uint256 limit);
     error InvalidCreatorRoyalty(address receiver, uint96 feeBps, uint96 capBps);
     error RoyaltyCapTooHigh(uint96 capBps);
@@ -116,27 +124,36 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
     // -------------------------------------------------------------------------
 
     /**
-     * @notice Grant CREATOR_ROLE and set per-creator limits. Calling again updates
-     *         the limits; the lifetime registered count is preserved.
-     *         A creator granted the role via `grantRole` alone has zero limits.
+     * @notice Grant CREATOR_ROLE and set the per-series supply limit. Each
+     *         Canopy project also needs a separate steward approval.
      */
-    function authorizeCreator(address creator, uint64 maxProducts, uint64 maxEditionsPerProduct)
+    function authorizeCreator(address creator, uint64 maxEditionsPerProduct)
         external
         onlyRole(DEFAULT_ADMIN_ROLE)
     {
         if (creator == address(0)) revert ZeroAddress();
-        CreatorLimits storage limits = _creatorLimits[creator];
-        limits.maxProducts = maxProducts;
-        limits.maxEditionsPerProduct = maxEditionsPerProduct;
+        creatorEditionLimit[creator] = maxEditionsPerProduct;
         _grantRole(CREATOR_ROLE, creator);
-        emit CreatorAuthorized(creator, maxProducts, maxEditionsPerProduct);
+        emit CreatorAuthorized(creator, maxEditionsPerProduct);
+    }
+
+    /**
+     * @notice Record or revoke a steward-reviewed Canopy wallet/project association.
+     *         The steward must verify the public signed record before approval.
+     */
+    function setCreatorProjectApproval(address creator, string calldata projectId, bool approved)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
+        if (creator == address(0)) revert ZeroAddress();
+        bytes32 projectHash = _canopyProjectHash(creator, projectId);
+        if (approved && !hasRole(CREATOR_ROLE, creator)) revert CreatorNotAuthorized(creator);
+        _projectApprovalEpoch[creator][projectHash] = approved ? _creatorEpoch[creator] + 1 : 0;
+        emit CreatorProjectApproval(creator, projectHash, projectId, approved);
     }
 
     /// @notice Revoke a creator. Their existing products stay theirs and stay locked.
     function revokeCreator(address creator) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        CreatorLimits storage limits = _creatorLimits[creator];
-        limits.maxProducts = 0;
-        limits.maxEditionsPerProduct = 0;
         _revokeRole(CREATOR_ROLE, creator);
         emit CreatorRevoked(creator);
     }
@@ -173,15 +190,17 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
      * @param tokenURI_       Required per-token metadata URI (e.g. `ipfs://<CID>`).
      * @param royaltyReceiver Non-zero ERC-2981 receiver (wallet or split contract).
      * @param royaltyFeeBps   Royalty, at most `creatorRoyaltyCapBps`.
+     * @param projectHash     Keccak-256 of the approved canonical Canopy project ID.
      */
     function registerAndMintProduct(
         uint256 amount,
         uint256 maxSupply_,
         string calldata tokenURI_,
         address royaltyReceiver,
-        uint96 royaltyFeeBps
+        uint96 royaltyFeeBps,
+        bytes32 projectHash
     ) external whenNotPaused nonReentrant onlyRole(CREATOR_ROLE) returns (uint256 tokenId) {
-        return _registerAndMintProduct(amount, maxSupply_, tokenURI_, royaltyReceiver, royaltyFeeBps, address(0));
+        return _registerAndMintProduct(amount, maxSupply_, tokenURI_, royaltyReceiver, royaltyFeeBps, projectHash, address(0));
     }
 
     /**
@@ -196,10 +215,11 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
         string calldata tokenURI_,
         address royaltyReceiver,
         uint96 royaltyFeeBps,
+        bytes32 projectHash,
         address expectedRecipient
     ) external whenNotPaused nonReentrant onlyRole(CREATOR_ROLE) returns (uint256 tokenId) {
         _checkGiftRecipient(expectedRecipient);
-        return _registerAndMintProduct(amount, maxSupply_, tokenURI_, royaltyReceiver, royaltyFeeBps, expectedRecipient);
+        return _registerAndMintProduct(amount, maxSupply_, tokenURI_, royaltyReceiver, royaltyFeeBps, projectHash, expectedRecipient);
     }
 
     function _registerAndMintProduct(
@@ -208,19 +228,19 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
         string calldata tokenURI_,
         address royaltyReceiver,
         uint96 royaltyFeeBps,
+        bytes32 projectHash,
         address giftRecipient
     ) private returns (uint256 tokenId) {
         address creator = _msgSender();
         if (amount == 0) revert ZeroAmount();
         if (bytes(tokenURI_).length == 0) revert MetadataURIRequired();
         _checkCreatorRoyalty(royaltyReceiver, royaltyFeeBps);
+        _checkCreatorProject(creator, projectHash);
 
-        CreatorLimits storage limits = _creatorLimits[creator];
-        if (limits.productsRegistered >= limits.maxProducts) revert CreatorLimitReached(creator);
-        if (maxSupply_ == 0 || maxSupply_ > limits.maxEditionsPerProduct) {
-            revert InvalidCreatorSupply(maxSupply_, limits.maxEditionsPerProduct);
+        uint64 limit = creatorEditionLimit[creator];
+        if (maxSupply_ == 0 || maxSupply_ > limit) {
+            revert InvalidCreatorSupply(maxSupply_, limit);
         }
-        limits.productsRegistered += 1;
 
         // Delegatecall preserves msg.sender, so v0.2's registerToken records the
         // creator in storage and in TokenRegistered. The admin check is bypassed
@@ -235,7 +255,9 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
         REGISTERING_CREATOR_SLOT.asAddress().tstore(address(0));
         tokenId = abi.decode(registration, (uint256));
         _productCreator[tokenId] = creator;
+        productProject[tokenId] = projectHash;
         emit CreatorProductRegistered(tokenId, creator, royaltyReceiver, royaltyFeeBps, maxSupply_);
+        emit CreatorProjectLinked(tokenId, creator, projectHash);
 
         _creatorMint(creator, tokenId, amount, giftRecipient);
     }
@@ -249,6 +271,7 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
     {
         address creator = _msgSender();
         if (_productCreator[tokenId] != creator) revert NotProductCreator(tokenId, creator);
+        _checkCreatorProject(creator, productProject[tokenId]);
         _creatorMint(creator, tokenId, amount, address(0));
     }
 
@@ -261,6 +284,7 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
     {
         address creator = _msgSender();
         if (_productCreator[tokenId] != creator) revert NotProductCreator(tokenId, creator);
+        _checkCreatorProject(creator, productProject[tokenId]);
         _checkGiftRecipient(expectedRecipient);
         _creatorMint(creator, tokenId, amount, expectedRecipient);
     }
@@ -323,18 +347,34 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
         return _productCreator[tokenId];
     }
 
-    function creatorLimits(address creator)
-        external
-        view
-        returns (uint64 maxProducts, uint64 maxEditionsPerProduct, uint64 productsRegistered)
-    {
-        CreatorLimits memory limits = _creatorLimits[creator];
-        return (limits.maxProducts, limits.maxEditionsPerProduct, limits.productsRegistered);
+    /// @notice Whether the current creator authorization includes this project.
+    function isCreatorProjectApproved(address creator, bytes32 projectHash) public view returns (bool) {
+        uint256 approval = _projectApprovalEpoch[creator][projectHash];
+        return hasRole(CREATOR_ROLE, creator) && approval != 0 && approval == _creatorEpoch[creator] + 1;
     }
 
     // -------------------------------------------------------------------------
     // Internal
     // -------------------------------------------------------------------------
+
+    function _canopyProjectHash(address creator, string calldata projectId) private pure returns (bytes32) {
+        bytes memory value = bytes(projectId);
+        bytes memory prefix = bytes(string.concat("decent-project:", Strings.toHexString(creator), ":"));
+        if (value.length <= prefix.length || value.length > prefix.length + 50) revert InvalidCanopyProjectId();
+        for (uint256 i = 0; i < prefix.length; i++) {
+            if (value[i] != prefix[i]) revert InvalidCanopyProjectId();
+        }
+        for (uint256 i = prefix.length; i < value.length; i++) {
+            bytes1 c = value[i];
+            if (!((c >= 0x30 && c <= 0x39) || (c >= 0x41 && c <= 0x5a) ||
+                  (c >= 0x61 && c <= 0x7a) || c == 0x5f || c == 0x2d)) revert InvalidCanopyProjectId();
+        }
+        return keccak256(value);
+    }
+
+    function _checkCreatorProject(address creator, bytes32 projectHash) private view {
+        if (!isCreatorProjectApproved(creator, projectHash)) revert CreatorProjectNotApproved(creator, projectHash);
+    }
 
     function _creatorMint(address creator, uint256 tokenId, uint256 amount, address giftRecipient) private {
         uint256 gifted = giftRecipient == address(0) ? 0 : amount / 10;
@@ -369,6 +409,15 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
         if (capBps > MAX_CREATOR_ROYALTY_BPS) revert RoyaltyCapTooHigh(capBps);
         creatorRoyaltyCapBps = capBps;
         emit CreatorRoyaltyCapUpdated(capBps);
+    }
+
+    function _revokeRole(bytes32 role, address account) internal override returns (bool) {
+        bool revoked = super._revokeRole(role, account);
+        if (revoked && role == CREATOR_ROLE) {
+            delete creatorEditionLimit[account];
+            _creatorEpoch[account] += 1;
+        }
+        return revoked;
     }
 
     /// @dev Admin-gated v0.2 functions are not virtual, so creator locks live in hooks.

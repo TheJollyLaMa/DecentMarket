@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 
 interface IDecentNFTCreatorLane {
     enum TokenKind { Product, Achievement }
-    function registerAndMintProduct(uint256, uint256, string calldata, address, uint96) external returns (uint256);
+    function registerAndMintProduct(uint256, uint256, string calldata, address, uint96, bytes32) external returns (uint256);
     function registerToken(uint256, string calldata, TokenKind, address, uint96) external returns (uint256);
     function mintProduct(address, uint256, uint256) external;
     function mintCreatorProduct(uint256, uint256) external;
@@ -23,8 +23,8 @@ contract MockReentrantCreator is ERC1155Holder {
 
     function setMode(uint8 mode_) external { mode = mode_; attempted = false; reentrySucceeded = false; }
 
-    function create(uint256 amount, uint256 maxSupply) external returns (uint256) {
-        return nft.registerAndMintProduct(amount, maxSupply, "ipfs://reentrant", address(this), 100);
+    function create(uint256 amount, uint256 maxSupply, bytes32 projectHash) external returns (uint256) {
+        return nft.registerAndMintProduct(amount, maxSupply, "ipfs://reentrant", address(this), 100, projectHash);
     }
 
     function onERC1155Received(address, address, uint256 id, uint256, bytes memory)

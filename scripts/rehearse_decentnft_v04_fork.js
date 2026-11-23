@@ -44,8 +44,15 @@ async function fundUsdc(holder, amount) {
   throw new Error("Could not locate the fork USDC balance slot");
 }
 
-async function expectRevert(promise, label) {
-  try { await (await promise).wait(); } catch { return; }
+async function expectRevert(promise, label, expectedError) {
+  try {
+    await (await promise).wait();
+  } catch (error) {
+    if (!/\brevert(ed)?\b/i.test(error.message) || (expectedError && !error.message.includes(expectedError))) {
+      throw new Error(`Unexpected failure for ${label}: ${error.message}`, { cause: error });
+    }
+    return;
+  }
   throw new Error(`Expected revert: ${label}`);
 }
 
@@ -60,16 +67,22 @@ async function main() {
   const [admin, alice, bob, collector, splitter] = await ethers.getSigners();
   const nft = await (await ethers.getContractFactory("DecentNFT_v0_4")).deploy("", admin.address, 500, 1000);
   await nft.waitForDeployment();
-  await (await nft.authorizeCreator(alice.address, 2, 50)).wait();
-  await (await nft.authorizeCreator(bob.address, 2, 50)).wait();
+  await (await nft.authorizeCreator(alice.address, 50)).wait();
+  await (await nft.authorizeCreator(bob.address, 50)).wait();
+  const aliceProject = `decent-project:${alice.address.toLowerCase()}:rehearsal`;
+  const bobProject = `decent-project:${bob.address.toLowerCase()}:rehearsal`;
+  const aliceProjectHash = ethers.id(aliceProject), bobProjectHash = ethers.id(bobProject);
+  await (await nft.setCreatorProjectApproval(alice.address, aliceProject, true)).wait();
+  await (await nft.setCreatorProjectApproval(bob.address, bobProject, true)).wait();
   await (await nft.setEditionGiftRecipient(collector.address)).wait();
 
   const aliceTx = await (await nft.connect(alice).registerAndMintProductWithGift(
-    19, 50, "ipfs://rehearsal-alice", splitter.address, 750, collector.address)).wait();
+    19, 50, "ipfs://rehearsal-alice", splitter.address, 750, aliceProjectHash, collector.address)).wait();
   const bobTx = await (await nft.connect(bob).registerAndMintProduct(
-    1, 1, "ipfs://rehearsal-bob", bob.address, 0)).wait();
+    1, 1, "ipfs://rehearsal-bob", bob.address, 0, bobProjectHash)).wait();
   if (await nft.balanceOf(alice.address, 0) !== 18n || await nft.balanceOf(collector.address, 0) !== 1n ||
-      await nft.totalMinted(0) !== 19n) throw new Error("Optional gift split or supply mismatch");
+      await nft.totalMinted(0) !== 19n || await nft.productProject(0) !== aliceProjectHash)
+    throw new Error("Optional gift split, supply or Canopy project mismatch");
   await (await nft.registerAndMintProductsBatch([{ recipient: collector.address, amount: 1, maxSupply: 1,
     tokenURI: "ipfs://rehearsal-agency", royaltyReceiver: admin.address, royaltyFeeBps: 500 }])).wait();
 
@@ -81,12 +94,18 @@ async function main() {
   await expectRevert(nft.mintProduct(admin.address, 0, 1), "admin minting alice's product");
   await expectRevert(nft.setTokenRoyalty(0, admin.address, 500), "admin re-royaltying alice's product");
   await expectRevert(nft.connect(alice).grantRole(await nft.CREATOR_ROLE(), collector.address), "creator granting roles");
-  await expectRevert(nft.connect(alice).registerAndMintProduct(1, 10, "ipfs://x", alice.address, 1001), "royalty over cap");
+  await expectRevert(nft.connect(alice).registerAndMintProduct(1, 10, "ipfs://x", alice.address, 1001, aliceProjectHash), "royalty over cap");
+  await expectRevert(nft.connect(alice).registerAndMintProduct(1, 10, "ipfs://x", alice.address, 0, bobProjectHash),
+    "unapproved project", "CreatorProjectNotApproved");
+  await (await nft.setCreatorProjectApproval(alice.address, aliceProject, false)).wait();
+  await expectRevert(nft.connect(alice).mintCreatorProduct(0, 1), "revoked project", "CreatorProjectNotApproved");
+  await (await nft.setCreatorProjectApproval(alice.address, aliceProject, true)).wait();
+  await (await nft.connect(alice).mintCreatorProduct(0, 1)).wait();
   await (await nft.pause()).wait();
   await expectRevert(nft.connect(alice).mintCreatorProduct(0, 1), "mint while paused");
   await (await nft.unpause()).wait();
   await (await nft.revokeCreator(bob.address)).wait();
-  await expectRevert(nft.connect(bob).registerAndMintProduct(1, 1, "ipfs://y", bob.address, 0), "revoked creator");
+  await expectRevert(nft.connect(bob).registerAndMintProduct(1, 1, "ipfs://y", bob.address, 0, bobProjectHash), "revoked creator");
 
   const nftAddress = await nft.getAddress();
   const usdc = await fundUsdc(nftAddress, 1_000_000n);
