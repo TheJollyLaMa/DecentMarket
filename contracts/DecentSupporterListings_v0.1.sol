@@ -37,8 +37,8 @@ contract DecentSupporterListings_v0_1 is Ownable, ERC1155Holder, Pausable, Reent
     // =========================================================================
 
     uint256 public constant BPS_DENOMINATOR = 10_000;
-    /// @notice Hard cap on the platform fee (5 %).
-    uint256 public constant MAX_PLATFORM_FEE_BPS = 500;
+    /// @notice Hard cap on the adjustable platform fee (10 %).
+    uint256 public constant MAX_PLATFORM_FEE_BPS = 1_000;
     /// @notice Hard cap on the ERC-2981 royalty honoured per sale (10 %). Larger quotes are clipped.
     uint256 public constant MAX_ROYALTY_BPS = 1_000;
 

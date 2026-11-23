@@ -15,10 +15,12 @@ Agency's own shop. Existing escrow listings are not migrated or changed.
    every unsold edition. Delisting and withdrawals keep working while paused.
 4. Buyers call `purchaseWithETH(listingId, quantity)` (exact value) or
    `purchaseWithToken(listingId, quantity, maxTotal)`.
-5. Each sale credits the seller, the ERC-2981 royalty (clipped to 10 %) and the platform fee (default 0,
-   capped at 5 %, and never above the fee in force when the listing was created). Rounding stays with
-   the seller. Creditors call `withdraw(token)`; anyone may call `withdrawFor(account, token)`, which pays
-   only `account` (for royalty splitters).
+5. Each sale credits the seller, the ERC-2981 royalty (clipped to 10 %) and the adjustable platform fee
+   (default 0, capped at 10 %, and never above the fee in force when the listing was created). The owner
+   can change the fee at any time up to that cap; a lower current fee applies to existing listings, while
+   a higher fee only applies to listings created after the change. Rounding stays with the seller.
+   Creditors call `withdraw(token)`; anyone may call `withdrawFor(account, token)`, which pays only
+   `account` (for royalty splitters).
 
 `quote(listingId, quantity)` returns the total, seller proceeds, royalty receiver and amount, and fee for
 the Sell and Buy previews.

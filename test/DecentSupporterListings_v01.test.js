@@ -190,21 +190,25 @@ describe("DecentSupporterListings_v0_1", function () {
       expect(await listings.owed(creator.address, ZERO)).to.equal(2000n);
     });
 
-    it("caps the platform fee and never charges more than a listing's snapshot", async function () {
-      await expect(listings.setPlatformFee(501, feeTo.address)).to.be.revertedWithCustomError(listings, "FeeTooHigh");
+    it("allows an adjustable fee up to 10% and never charges more than a listing's snapshot", async function () {
+      await expect(listings.setPlatformFee(1001, feeTo.address)).to.be.revertedWithCustomError(listings, "FeeTooHigh");
       await expect(listings.setPlatformFee(100, ZERO)).to.be.revertedWithCustomError(listings, "ZeroAddress");
       await expect(listings.connect(stranger).setPlatformFee(100, feeTo.address)).to.be.revertedWithCustomError(listings, "OwnableUnauthorizedAccount");
       expect(await listings.platformFeeBps()).to.equal(0n);
 
       const zeroFee = await listETH(alice, 2, 10_000n);
-      await listings.setPlatformFee(500, feeTo.address);
+      await listings.setPlatformFee(1000, feeTo.address);
       await listings.connect(buyer).purchaseWithETH(zeroFee, 1, { value: 10_000n });
       expect(await listings.owed(feeTo.address, ZERO)).to.equal(0n); // listed at 0 bps
 
-      const fivePct = await listETH(bob, 2, 10_000n);
+      const tenPct = await listETH(alice, 2, 10_000n);
+      await listings.connect(buyer).purchaseWithETH(tenPct, 1, { value: 10_000n });
+      expect(await listings.owed(feeTo.address, ZERO)).to.equal(1000n); // 10% of 10,000
+
+      const listingAtTenPct = await listETH(bob, 2, 10_000n);
       await listings.setPlatformFee(100, feeTo.address);
-      await listings.connect(buyer).purchaseWithETH(fivePct, 1, { value: 10_000n });
-      expect(await listings.owed(feeTo.address, ZERO)).to.equal(100n); // lowered fee applies
+      await listings.connect(buyer).purchaseWithETH(listingAtTenPct, 1, { value: 10_000n });
+      expect(await listings.owed(feeTo.address, ZERO)).to.equal(1100n); // lowered fee applies
       expect(await listings.owed(bob.address, ZERO)).to.equal(10_000n - 1000n - 100n);
     });
   });
