@@ -9,7 +9,11 @@ import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
+
+interface ICreatorProducts {
+    function productCreator(uint256 tokenId) external view returns (address);
+}
 
 /**
  * @title DecentSupporterListings v0.1
@@ -21,8 +25,8 @@ import "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
  *     custody and the listing records its seller. Only that seller can update or delist;
  *     delisting returns unsold editions to the seller.
  *   - Buyers pay in ETH (payToken = address(0)) or an allowlisted ERC-20 such as USDC.
- *     Each sale credits the seller, the collection's ERC-2981 royalty (capped) and an optional
- *     platform fee (default 0, capped). Credits are withdrawn by pull payment.
+ *     Creator sales pay an Agency fee; other sales pay the creator's ERC-2981 royalty and a
+ *     separate Agency fee, subject to a combined 10% cap. Credits use pull payments.
  *   - The owner can pause, curate allowlists and run administrator recovery. Recovery can only
  *     return a listing's editions to its recorded seller, or move tokens and funds that no
  *     listing or owed balance accounts for. It can never take seller stock or owed credits.
@@ -39,8 +43,8 @@ contract DecentSupporterListings_v0_1 is Ownable, ERC1155Holder, Pausable, Reent
     uint256 public constant BPS_DENOMINATOR = 10_000;
     /// @notice Hard cap on the adjustable platform fee (10 %).
     uint256 public constant MAX_PLATFORM_FEE_BPS = 1_000;
-    /// @notice Hard cap on the ERC-2981 royalty honoured per sale (10 %). Larger quotes are clipped.
-    uint256 public constant MAX_ROYALTY_BPS = 1_000;
+    /// @notice Maximum combined Agency fee and creator royalty on resale (10%).
+    uint256 public constant MAX_RESALE_DEDUCTION_BPS = 1_000;
 
     // =========================================================================
     // Data structures
@@ -48,12 +52,14 @@ contract DecentSupporterListings_v0_1 is Ownable, ERC1155Holder, Pausable, Reent
 
     struct Listing {
         address seller;      // receives proceeds and any unsold editions
+        address creator;     // verified creator at listing time
         address collection;  // allowlisted ERC-1155 contract
         uint256 tokenId;
         address payToken;    // address(0) = ETH
         uint256 unitPrice;   // per edition, in payToken units (wei for ETH)
         uint256 quantity;    // editions currently held in custody for this listing
         uint16  feeBps;      // platform fee snapshot at listing time; sales use min(snapshot, current)
+        uint16  royaltyBps;  // maximum creator royalty accepted at listing time
         bool    active;
     }
 
@@ -69,9 +75,13 @@ contract DecentSupporterListings_v0_1 is Ownable, ERC1155Holder, Pausable, Reent
 
     mapping(address => bool) public allowedCollection;
     mapping(address => bool) public allowedPayToken;
+    mapping(address => bool) public useProductCreator;
+    mapping(address => mapping(uint256 => address)) public verifiedCreator;
 
-    uint16  public platformFeeBps;
+    uint16 public creatorSaleFeeBps;
+    uint16 public resaleFeeBps;
     address public feeRecipient;
+    bool public feesConfigured;
 
     /// @notice Editions held for active listings: collection => tokenId => quantity.
     mapping(address => mapping(uint256 => uint256)) public custodied;
@@ -116,7 +126,9 @@ contract DecentSupporterListings_v0_1 is Ownable, ERC1155Holder, Pausable, Reent
     event Withdrawn(address indexed account, address indexed token, uint256 amount);
     event CollectionAllowed(address indexed collection, bool allowed);
     event PayTokenAllowed(address indexed token, bool allowed);
-    event PlatformFeeUpdated(uint16 feeBps, address indexed feeRecipient);
+    event PlatformFeesUpdated(uint16 creatorSaleFeeBps, uint16 resaleFeeBps, address indexed feeRecipient);
+    event CreatorSourceUpdated(address indexed collection, bool useProductCreator);
+    event VerifiedCreatorUpdated(address indexed collection, uint256 indexed tokenId, address indexed creator);
     event EmergencyReturnFailed(uint256 indexed listingId, address indexed seller);
     event StrayERC1155Recovered(address indexed collection, uint256 indexed tokenId, address indexed to, uint256 amount);
     event StrayFundsRecovered(address indexed token, address indexed to, uint256 amount);
@@ -136,6 +148,12 @@ contract DecentSupporterListings_v0_1 is Ownable, ERC1155Holder, Pausable, Reent
     error IncorrectPayment();
     error PriceAboveMax();
     error FeeTooHigh();
+    error FeesNotConfigured();
+    error CreatorUnavailable(address collection, uint256 tokenId);
+    error RoyaltyUnavailable(address collection, uint256 tokenId);
+    error RoyaltyReceiverMismatch(address expected, address actual);
+    error RoyaltyChanged(uint256 listingId);
+    error CombinedFeeTooHigh();
     error DepositMismatch();
     error UnsolicitedTransfer();
     error NothingOwed();
@@ -152,7 +170,6 @@ contract DecentSupporterListings_v0_1 is Ownable, ERC1155Holder, Pausable, Reent
      * @param collections  ERC-1155 collections allowed at deployment (Decent supporter collections).
      */
     constructor(address initialOwner, address[] memory payTokens, address[] memory collections) Ownable(initialOwner) {
-        feeRecipient = initialOwner;
         allowedPayToken[address(0)] = true;
         emit PayTokenAllowed(address(0), true);
         for (uint256 i = 0; i < payTokens.length; i++) _setPayToken(payTokens[i], true);
@@ -201,22 +218,29 @@ contract DecentSupporterListings_v0_1 is Ownable, ERC1155Holder, Pausable, Reent
         if (!allowedPayToken[payToken]) revert PayTokenNotAllowed();
         if (quantity == 0) revert ZeroQuantity();
         if (unitPrice == 0) revert ZeroPrice();
+        if (!feesConfigured) revert FeesNotConfigured();
+        address creator = _creatorFor(collection, tokenId);
+        uint256 royaltyBps = _royaltyRate(collection, tokenId, creator);
+        uint16 feeBps = msg.sender == creator ? creatorSaleFeeBps : resaleFeeBps;
+        if (msg.sender != creator && royaltyBps + feeBps > MAX_RESALE_DEDUCTION_BPS) revert CombinedFeeTooHigh();
 
         listingId = nextListingId++;
         _listings[listingId] = Listing({
             seller: msg.sender,
+            creator: creator,
             collection: collection,
             tokenId: tokenId,
             payToken: payToken,
             unitPrice: unitPrice,
             quantity: quantity,
-            feeBps: platformFeeBps,
+            feeBps: feeBps,
+            royaltyBps: uint16(royaltyBps),
             active: true
         });
         _sellerListingIds[msg.sender].push(listingId);
         custodied[collection][tokenId] += quantity;
 
-        emit ListingCreated(listingId, msg.sender, collection, tokenId, payToken, unitPrice, quantity, platformFeeBps);
+        emit ListingCreated(listingId, msg.sender, collection, tokenId, payToken, unitPrice, quantity, feeBps);
         _pullEditions(collection, tokenId, msg.sender, quantity);
     }
 
@@ -315,13 +339,29 @@ contract DecentSupporterListings_v0_1 is Ownable, ERC1155Holder, Pausable, Reent
         _setPayToken(token, allowed);
     }
 
-    /// @notice New listings snapshot this fee. A sale never charges more than its listing's snapshot.
-    function setPlatformFee(uint16 feeBps, address recipient) external onlyOwner {
-        if (feeBps > MAX_PLATFORM_FEE_BPS) revert FeeTooHigh();
+    /// @notice New listings snapshot the applicable fee; increases never affect existing listings.
+    function setPlatformFees(uint16 creatorFee, uint16 resaleFee, address recipient) external onlyOwner {
+        if (creatorFee > MAX_PLATFORM_FEE_BPS || resaleFee > MAX_PLATFORM_FEE_BPS) revert FeeTooHigh();
         if (recipient == address(0)) revert ZeroAddress();
-        platformFeeBps = feeBps;
+        creatorSaleFeeBps = creatorFee;
+        resaleFeeBps = resaleFee;
         feeRecipient = recipient;
-        emit PlatformFeeUpdated(feeBps, recipient);
+        feesConfigured = true;
+        emit PlatformFeesUpdated(creatorFee, resaleFee, recipient);
+    }
+
+    /// @notice Use creator-lane product provenance for this curated collection.
+    function setCreatorSource(address collection, bool useOnchainCreator) external onlyOwner {
+        if (collection == address(0)) revert ZeroAddress();
+        useProductCreator[collection] = useOnchainCreator;
+        emit CreatorSourceUpdated(collection, useOnchainCreator);
+    }
+
+    /// @notice Record a steward-verified creator for a legacy or Agency-registered token.
+    function setVerifiedCreator(address collection, uint256 tokenId, address creator) external onlyOwner {
+        if (collection == address(0) || creator == address(0)) revert ZeroAddress();
+        verifiedCreator[collection][tokenId] = creator;
+        emit VerifiedCreatorUpdated(collection, tokenId, creator);
     }
 
     function pause() external onlyOwner {
@@ -395,23 +435,7 @@ contract DecentSupporterListings_v0_1 is Ownable, ERC1155Holder, Pausable, Reent
     {
         Listing storage l = _listings[listingId];
         total = l.unitPrice * quantity;
-        (sellerProceeds, royaltyReceiver, royaltyAmount, platformFee) = _split(l, total);
-    }
-
-    /// @notice ERC-2981 royalty honoured for a sale, clipped to MAX_ROYALTY_BPS. Zero if unsupported.
-    function royaltyFor(address collection, uint256 tokenId, uint256 salePrice)
-        public
-        view
-        returns (address receiver, uint256 amount)
-    {
-        if (!ERC165Checker.supportsInterface(collection, type(IERC2981).interfaceId)) return (address(0), 0);
-        try IERC2981(collection).royaltyInfo(tokenId, salePrice) returns (address r, uint256 a) {
-            if (r == address(0) || a == 0) return (address(0), 0);
-            uint256 cap = (salePrice * MAX_ROYALTY_BPS) / BPS_DENOMINATOR;
-            return (r, a > cap ? cap : a);
-        } catch {
-            return (address(0), 0);
-        }
+        (sellerProceeds, royaltyReceiver, royaltyAmount, platformFee) = _split(listingId, l, total);
     }
 
     function strayERC1155(address collection, uint256 tokenId) public view returns (uint256) {
@@ -467,7 +491,7 @@ contract DecentSupporterListings_v0_1 is Ownable, ERC1155Holder, Pausable, Reent
 
     function _finishPurchase(uint256 listingId, Listing storage l, uint256 quantity, uint256 total) private {
         (uint256 sellerProceeds, address royaltyReceiver, uint256 royaltyAmount, uint256 platformFee) =
-            _split(l, total);
+            _split(listingId, l, total);
         address payToken = l.payToken;
         address fees = feeRecipient;
 
@@ -481,14 +505,51 @@ contract DecentSupporterListings_v0_1 is Ownable, ERC1155Holder, Pausable, Reent
         IERC1155(l.collection).safeTransferFrom(address(this), msg.sender, l.tokenId, quantity, "");
     }
 
-    function _split(Listing storage l, uint256 total)
+    function _creatorFor(address collection, uint256 tokenId) private view returns (address creator) {
+        if (useProductCreator[collection]) {
+            try ICreatorProducts(collection).productCreator(tokenId) returns (address onchainCreator) {
+                creator = onchainCreator;
+            } catch {
+                revert CreatorUnavailable(collection, tokenId);
+            }
+        }
+        if (creator == address(0)) creator = verifiedCreator[collection][tokenId];
+        if (creator == address(0)) revert CreatorUnavailable(collection, tokenId);
+    }
+
+    function _royaltyRate(address collection, uint256 tokenId, address creator) private view returns (uint256 rate) {
+        address receiver;
+        try IERC2981(collection).royaltyInfo(tokenId, BPS_DENOMINATOR) returns (address r, uint256 amount) {
+            receiver = r;
+            rate = amount;
+        } catch {
+            revert RoyaltyUnavailable(collection, tokenId);
+        }
+        if (receiver != creator) revert RoyaltyReceiverMismatch(creator, receiver);
+        if (rate > MAX_RESALE_DEDUCTION_BPS) revert CombinedFeeTooHigh();
+    }
+
+    function _split(uint256 listingId, Listing storage l, uint256 total)
         private
         view
         returns (uint256 sellerProceeds, address royaltyReceiver, uint256 royaltyAmount, uint256 platformFee)
     {
-        (royaltyReceiver, royaltyAmount) = royaltyFor(l.collection, l.tokenId, total);
-        uint256 feeBps = l.feeBps < platformFeeBps ? l.feeBps : platformFeeBps;
-        platformFee = (total * feeBps) / BPS_DENOMINATOR;
+        bool creatorSale = l.seller == l.creator;
+        uint256 currentFee = creatorSale ? creatorSaleFeeBps : resaleFeeBps;
+        uint256 feeBps = l.feeBps < currentFee ? l.feeBps : currentFee;
+        platformFee = Math.mulDiv(total, feeBps, BPS_DENOMINATOR);
+        if (!creatorSale) {
+            uint256 royaltyBps = _royaltyRate(l.collection, l.tokenId, l.creator);
+            if (royaltyBps > l.royaltyBps) revert RoyaltyChanged(listingId);
+            if (royaltyBps + feeBps > MAX_RESALE_DEDUCTION_BPS) revert CombinedFeeTooHigh();
+            royaltyReceiver = l.creator;
+            royaltyAmount = Math.mulDiv(total, royaltyBps, BPS_DENOMINATOR);
+            try IERC2981(l.collection).royaltyInfo(l.tokenId, total) returns (address r, uint256 a) {
+                if (r != royaltyReceiver || a != royaltyAmount) revert RoyaltyUnavailable(l.collection, l.tokenId);
+            } catch {
+                revert RoyaltyUnavailable(l.collection, l.tokenId);
+            }
+        }
         // Rounding remainders always stay with the seller.
         sellerProceeds = total - royaltyAmount - platformFee;
     }

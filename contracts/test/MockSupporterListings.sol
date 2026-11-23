@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
+import "@openzeppelin/contracts/token/common/ERC2981.sol";
 
 /// Test-only helpers for DecentSupporterListings_v0_1. Never deployed outside tests.
 
@@ -59,6 +60,41 @@ contract MockBrokenRoyalty1155 is ERC1155 {
 
     function supportsInterface(bytes4 id) public view override returns (bool) {
         return id == 0x2a55205a || super.supportsInterface(id);
+    }
+}
+
+contract MockCreatorRoyalty1155 is ERC1155, ERC2981 {
+    address public immutable creator;
+
+    constructor(address creator_) ERC1155("") {
+        creator = creator_;
+        _setTokenRoyalty(0, creator_, 500);
+    }
+
+    function productCreator(uint256 tokenId) external view returns (address) {
+        return tokenId == 0 ? creator : address(0);
+    }
+
+    function mint(address to, uint256 amount) external {
+        _mint(to, 0, amount, "");
+    }
+
+    function setRoyalty(uint96 bps) external {
+        require(msg.sender == creator, "not creator");
+        _setTokenRoyalty(0, creator, bps);
+    }
+
+    function supportsInterface(bytes4 id) public view override(ERC1155, ERC2981) returns (bool) {
+        return super.supportsInterface(id);
+    }
+}
+
+contract MockNonlinearRoyalty1155 is MockCreatorRoyalty1155 {
+    constructor(address creator_) MockCreatorRoyalty1155(creator_) {}
+
+    function royaltyInfo(uint256 tokenId, uint256 salePrice) public view override returns (address, uint256) {
+        (address receiver, uint256 amount) = super.royaltyInfo(tokenId, salePrice);
+        return (receiver, salePrice == 10_000 ? amount : amount + 1);
     }
 }
 

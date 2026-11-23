@@ -23,6 +23,8 @@ describe("DecentSupporterListings_v0_1", function () {
     N = await nft.getAddress();
     listings = await (await ethers.getContractFactory("DecentSupporterListings_v0_1")).deploy(owner.address, [U], [N]);
     L = await listings.getAddress();
+    await listings.setPlatformFees(0, 0, feeTo.address);
+    await listings.setVerifiedCreator(N, 0, creator.address);
     for (const s of [alice, bob]) await nft.connect(s).setApprovalForAll(L, true);
     await usdc.mint(buyer.address, 1_000_000_000n);
     await usdc.connect(buyer).approve(L, ethers.MaxUint256);
@@ -93,7 +95,8 @@ describe("DecentSupporterListings_v0_1", function () {
       await expect(listings.connect(stranger).list(N, 0, 1, ZERO, 1n)).to.be.reverted;
       await expect(listings.connect(alice).setCollectionAllowed(P, true)).to.be.revertedWithCustomError(listings, "OwnableUnauthorizedAccount");
       await expect(listings.setCollectionAllowed(P, true)).to.emit(listings, "CollectionAllowed").withArgs(P, true);
-      await listings.connect(alice).list(P, 1, 1, ZERO, 1n);
+      await expect(listings.connect(alice).list(P, 1, 1, ZERO, 1n))
+        .to.be.revertedWithCustomError(listings, "CreatorUnavailable");
     });
 
     it("blocks sales from a de-allowlisted collection but still lets the seller delist", async function () {
@@ -143,73 +146,157 @@ describe("DecentSupporterListings_v0_1", function () {
   });
 
   describe("royalty and platform fee math", function () {
-    it("splits seller proceeds, capped royalty and fee with rounding left to the seller", async function () {
-      await listings.setPlatformFee(250, feeTo.address);
+    it("splits resale proceeds with rounding left to the seller", async function () {
+      await nft.setTokenRoyalty(0, creator.address, 500);
+      await listings.setPlatformFees(1000, 250, feeTo.address);
       const id = await listETH(alice, 5, 333n);
-      // total 999: royalty floor(999 * 10%) = 99, fee floor(999 * 2.5%) = 24, seller 876
       const q = await listings.quote(id, 3);
       expect([q.total, q.sellerProceeds, q.royaltyReceiver, q.royaltyAmount, q.platformFee])
-        .to.deep.equal([999n, 876n, creator.address, 99n, 24n]);
+        .to.deep.equal([999n, 926n, creator.address, 49n, 24n]);
       await expect(listings.connect(buyer).purchaseWithETH(id, 3, { value: 999n }))
-        .to.emit(listings, "SaleSettled").withArgs(id, 876n, creator.address, 99n, feeTo.address, 24n)
+        .to.emit(listings, "SaleSettled").withArgs(id, 926n, creator.address, 49n, feeTo.address, 24n)
         .and.to.emit(listings, "Purchased").withArgs(id, buyer.address, alice.address, 3, ZERO, 999n);
-      expect(await listings.owed(alice.address, ZERO)).to.equal(876n);
-      expect(await listings.owed(creator.address, ZERO)).to.equal(99n);
+      expect(await listings.owed(alice.address, ZERO)).to.equal(926n);
+      expect(await listings.owed(creator.address, ZERO)).to.equal(49n);
       expect(await listings.owed(feeTo.address, ZERO)).to.equal(24n);
       expect(await listings.totalOwed(ZERO)).to.equal(999n);
       expect(await ethers.provider.getBalance(L)).to.equal(999n);
     });
 
-    it("clips royalty quotes above the cap", async function () {
+    it("refuses royalties above the cap rather than silently clipping them", async function () {
       await nft.setTokenRoyalty(0, creator.address, 5000);
-      const id = await listUSDC(alice, 1, 10_000_001n);
-      await listings.connect(buyer).purchaseWithToken(id, 1, 10_000_001n);
-      expect(await listings.owed(creator.address, U)).to.equal(1_000_000n); // floor(10 % of 10_000_001)
-      expect(await listings.owed(alice.address, U)).to.equal(9_000_001n);
+      await expect(listUSDC(alice, 1, 10_000_001n))
+        .to.be.revertedWithCustomError(listings, "CombinedFeeTooHigh");
     });
 
-    it("pays no royalty for collections without ERC-2981 or with a reverting royaltyInfo", async function () {
+    it("rejects collections without usable ERC-2981 instead of skipping the creator share", async function () {
       const broken = await (await ethers.getContractFactory("MockBrokenRoyalty1155")).deploy();
       for (const c of [plain, broken]) {
         const C = await c.getAddress();
         await c.mint(alice.address, 7, 1);
         await c.connect(alice).setApprovalForAll(L, true);
         await listings.setCollectionAllowed(C, true);
-        const id = await listETH(alice, 1, 1000n, C, 7);
-        await listings.connect(buyer).purchaseWithETH(id, 1, { value: 1000n });
+        await listings.setVerifiedCreator(C, 7, creator.address);
+        await expect(listETH(alice, 1, 1000n, C, 7))
+          .to.be.revertedWithCustomError(listings, "RoyaltyUnavailable");
       }
-      expect(await listings.owed(alice.address, ZERO)).to.equal(2000n);
-      expect(await listings.totalOwed(ZERO)).to.equal(2000n);
     });
 
-    it("credits a creator selling its own editions as both seller and royalty receiver", async function () {
+    it("charges creator sales 10% and other sellers 5% plus the creator's 5%", async function () {
+      await nft.setTokenRoyalty(0, creator.address, 500);
+      await listings.setPlatformFees(1000, 500, feeTo.address);
       await nft.mintProduct(creator.address, 0, 2);
       await nft.connect(creator).setApprovalForAll(L, true);
-      const id = await listETH(creator, 2, 1000n);
-      await listings.connect(buyer).purchaseWithETH(id, 2, { value: 2000n });
-      expect(await listings.owed(creator.address, ZERO)).to.equal(2000n);
+      const primary = await listETH(creator, 1, 10_000n);
+      const resale = await listUSDC(alice, 1, 10_000n);
+      await listings.connect(buyer).purchaseWithETH(primary, 1, { value: 10_000n });
+      await listings.connect(buyer).purchaseWithToken(resale, 1, 10_000n);
+      expect(await listings.owed(creator.address, ZERO)).to.equal(9000n);
+      expect(await listings.owed(feeTo.address, ZERO)).to.equal(1000n);
+      expect(await listings.owed(alice.address, U)).to.equal(9000n);
+      expect(await listings.owed(creator.address, U)).to.equal(500n);
+      expect(await listings.owed(feeTo.address, U)).to.equal(500n);
     });
 
-    it("allows an adjustable fee up to 10% and never charges more than a listing's snapshot", async function () {
-      await expect(listings.setPlatformFee(1001, feeTo.address)).to.be.revertedWithCustomError(listings, "FeeTooHigh");
-      await expect(listings.setPlatformFee(100, ZERO)).to.be.revertedWithCustomError(listings, "ZeroAddress");
-      await expect(listings.connect(stranger).setPlatformFee(100, feeTo.address)).to.be.revertedWithCustomError(listings, "OwnableUnauthorizedAccount");
-      expect(await listings.platformFeeBps()).to.equal(0n);
+    it("caps both Agency rates, enforces the combined cap, and snapshots fees", async function () {
+      await nft.setTokenRoyalty(0, creator.address, 500);
+      await expect(listings.setPlatformFees(1001, 0, feeTo.address)).to.be.revertedWithCustomError(listings, "FeeTooHigh");
+      await expect(listings.setPlatformFees(0, 1001, feeTo.address)).to.be.revertedWithCustomError(listings, "FeeTooHigh");
+      await expect(listings.setPlatformFees(100, 100, ZERO)).to.be.revertedWithCustomError(listings, "ZeroAddress");
+      await expect(listings.connect(stranger).setPlatformFees(100, 100, feeTo.address)).to.be.revertedWithCustomError(listings, "OwnableUnauthorizedAccount");
+      await listings.setPlatformFees(1000, 500, feeTo.address);
+      const original = await listETH(alice, 3, 10_000n);
+      await listings.setPlatformFees(1000, 700, feeTo.address);
+      await expect(listETH(bob, 1, 10_000n)).to.be.revertedWithCustomError(listings, "CombinedFeeTooHigh");
+      await listings.connect(buyer).purchaseWithETH(original, 1, { value: 10_000n });
+      expect(await listings.owed(feeTo.address, ZERO)).to.equal(500n);
+      await listings.setPlatformFees(1000, 100, feeTo.address);
+      await listings.connect(buyer).purchaseWithETH(original, 1, { value: 10_000n });
+      expect(await listings.owed(feeTo.address, ZERO)).to.equal(600n);
+      expect(await listings.owed(creator.address, ZERO)).to.equal(1000n);
+    });
 
-      const zeroFee = await listETH(alice, 2, 10_000n);
-      await listings.setPlatformFee(1000, feeTo.address);
-      await listings.connect(buyer).purchaseWithETH(zeroFee, 1, { value: 10_000n });
-      expect(await listings.owed(feeTo.address, ZERO)).to.equal(0n); // listed at 0 bps
+    it("protects the listing when the creator raises royalty and permits a lower royalty", async function () {
+      await nft.setTokenRoyalty(0, creator.address, 500);
+      await listings.setPlatformFees(1000, 500, feeTo.address);
+      const id = await listETH(alice, 2, 10_000n);
+      await nft.setTokenRoyalty(0, creator.address, 600);
+      await expect(listings.connect(buyer).purchaseWithETH(id, 1, { value: 10_000n }))
+        .to.be.revertedWithCustomError(listings, "RoyaltyChanged").withArgs(id);
+      await nft.setTokenRoyalty(0, creator.address, 400);
+      await listings.connect(buyer).purchaseWithETH(id, 1, { value: 10_000n });
+      expect(await listings.owed(creator.address, ZERO)).to.equal(400n);
+    });
 
-      const tenPct = await listETH(alice, 2, 10_000n);
-      await listings.connect(buyer).purchaseWithETH(tenPct, 1, { value: 10_000n });
-      expect(await listings.owed(feeTo.address, ZERO)).to.equal(1000n); // 10% of 10,000
+    it("requires a verified creator and matching royalty receiver", async function () {
+      const other = await (await ethers.getContractFactory("DecentSupporterListings_v0_1")).deploy(owner.address, [U], [N]);
+      await expect(other.connect(alice).list(N, 0, 1, ZERO, 1000n)).to.be.revertedWithCustomError(other, "FeesNotConfigured");
+      await other.setPlatformFees(1000, 500, feeTo.address);
+      await expect(other.connect(alice).list(N, 0, 1, ZERO, 1000n)).to.be.revertedWithCustomError(other, "CreatorUnavailable");
+      await other.setVerifiedCreator(N, 0, alice.address);
+      await expect(other.connect(alice).list(N, 0, 1, ZERO, 1000n)).to.be.revertedWithCustomError(other, "RoyaltyReceiverMismatch");
+    });
 
-      const listingAtTenPct = await listETH(bob, 2, 10_000n);
-      await listings.setPlatformFee(100, feeTo.address);
-      await listings.connect(buyer).purchaseWithETH(listingAtTenPct, 1, { value: 10_000n });
-      expect(await listings.owed(feeTo.address, ZERO)).to.equal(1100n); // lowered fee applies
-      expect(await listings.owed(bob.address, ZERO)).to.equal(10_000n - 1000n - 100n);
+    it("keeps a listing's verified creator when the steward changes the association", async function () {
+      await nft.setTokenRoyalty(0, creator.address, 500);
+      await listings.setPlatformFees(1000, 500, feeTo.address);
+      const id = await listETH(alice, 1, 10_000n);
+      await listings.setVerifiedCreator(N, 0, bob.address);
+      await expect(listETH(bob, 1, 10_000n)).to.be.revertedWithCustomError(listings, "RoyaltyReceiverMismatch");
+      await listings.connect(buyer).purchaseWithETH(id, 1, { value: 10_000n });
+      expect(await listings.owed(creator.address, ZERO)).to.equal(500n);
+      expect(await listings.owed(bob.address, ZERO)).to.equal(0n);
+    });
+
+    it("rejects a nonlinear royalty quote rather than paying a different amount", async function () {
+      const collection = await (await ethers.getContractFactory("MockNonlinearRoyalty1155")).deploy(creator.address);
+      const C = await collection.getAddress();
+      await collection.mint(alice.address, 1);
+      await collection.connect(alice).setApprovalForAll(L, true);
+      await listings.setCollectionAllowed(C, true);
+      await listings.setCreatorSource(C, true);
+      await listings.setPlatformFees(1000, 500, feeTo.address);
+      const id = await listETH(alice, 1, 9999n, C, 0);
+      await expect(listings.connect(buyer).purchaseWithETH(id, 1, { value: 9999n }))
+        .to.be.revertedWithCustomError(listings, "RoyaltyUnavailable");
+      expect((await listings.getListing(id)).active).to.equal(true);
+      expect(await listings.owed(creator.address, ZERO)).to.equal(0n);
+    });
+
+    it("uses creator-lane provenance and creator-controlled royalties", async function () {
+      const community = await (await ethers.getContractFactory("MockCreatorRoyalty1155")).deploy(creator.address);
+      const C = await community.getAddress();
+      await community.mint(alice.address, 2);
+      await community.connect(alice).setApprovalForAll(L, true);
+      await listings.setCollectionAllowed(C, true);
+      await listings.setCreatorSource(C, true);
+      await listings.setPlatformFees(1000, 500, feeTo.address);
+      const id = await listETH(alice, 2, 10_000n, C, 0);
+      await community.connect(creator).setRoyalty(600);
+      await expect(listings.quote(id, 1)).to.be.revertedWithCustomError(listings, "RoyaltyChanged");
+      await community.connect(creator).setRoyalty(400);
+      await listings.connect(buyer).purchaseWithETH(id, 1, { value: 10_000n });
+      expect(await listings.owed(creator.address, ZERO)).to.equal(400n);
+    });
+
+    it("classifies a gifted edition and a creator buyback by the seller wallet", async function () {
+      const community = await (await ethers.getContractFactory("MockCreatorRoyalty1155")).deploy(creator.address);
+      const C = await community.getAddress();
+      await community.mint(creator.address, 1);
+      await community.connect(creator).safeTransferFrom(creator.address, alice.address, 0, 1, "0x");
+      await community.connect(alice).setApprovalForAll(L, true);
+      await community.connect(creator).setApprovalForAll(L, true);
+      await listings.setCollectionAllowed(C, true);
+      await listings.setCreatorSource(C, true);
+      await listings.setPlatformFees(1000, 500, feeTo.address);
+      const gift = await listETH(alice, 1, 10_000n, C, 0);
+      await listings.connect(buyer).purchaseWithETH(gift, 1, { value: 10_000n });
+      expect(await listings.owed(creator.address, ZERO)).to.equal(500n);
+      await community.connect(buyer).safeTransferFrom(buyer.address, creator.address, 0, 1, "0x");
+      const buyback = await listETH(creator, 1, 10_000n, C, 0);
+      await listings.connect(buyer).purchaseWithETH(buyback, 1, { value: 10_000n });
+      expect(await listings.owed(creator.address, ZERO)).to.equal(9500n);
+      expect(await listings.owed(feeTo.address, ZERO)).to.equal(1500n);
     });
   });
 
@@ -311,10 +398,7 @@ describe("DecentSupporterListings_v0_1", function () {
 
     it("recovers stray editions but never listed stock", async function () {
       const P = await plain.getAddress();
-      await listings.setCollectionAllowed(P, true);
       await plain.mint(alice.address, 1, 2);
-      await plain.connect(alice).setApprovalForAll(L, true);
-      await listETH(alice, 2, 10n, P, 1);
       await listETH(alice, 4, 10n);
 
       await expect(listings.recoverStrayERC1155(N, 0, 1, owner.address)).to.be.revertedWithCustomError(listings, "ExceedsStray");
@@ -324,7 +408,7 @@ describe("DecentSupporterListings_v0_1", function () {
       await expect(listings.connect(stranger).recoverStrayERC1155(P, 1, 3, stranger.address)).to.be.revertedWithCustomError(listings, "OwnableUnauthorizedAccount");
       await expect(listings.recoverStrayERC1155(P, 1, 3, owner.address))
         .to.emit(listings, "StrayERC1155Recovered").withArgs(P, 1, owner.address, 3);
-      expect(await plain.balanceOf(L, 1)).to.equal(2n);
+      expect(await plain.balanceOf(L, 1)).to.equal(0n);
       await expect(listings.recoverStrayERC1155(P, 1, 1, owner.address)).to.be.revertedWithCustomError(listings, "ExceedsStray");
     });
 

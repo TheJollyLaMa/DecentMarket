@@ -1,7 +1,7 @@
 // Rehearses DecentSupporterListings v0.1 against real Base Supporter DNFTs on a LOCAL fork. Broadcasts nothing.
 //   npm run rehearse:listings:fork
-// Fork-only state changes: the Agency escrow owner is impersonated to hand two DecentHead editions to a test
-// seller, and test buyers receive USDC via a storage write. No key is read and no live network is touched.
+// Fork-only state changes: authorized accounts are impersonated to provide editions and rehearse a
+// 5% royalty update; test buyers receive USDC via a storage write. No key is read and nothing is broadcast.
 const { ethers, network } = require("hardhat");
 
 const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
@@ -24,6 +24,8 @@ const NFT_ABI = [
   "function balanceOf(address,uint256) view returns (uint256)",
   "function setApprovalForAll(address,bool)",
   "function royaltyInfo(uint256,uint256) view returns (address,uint256)",
+  "function hasRole(bytes32,address) view returns (bool)",
+  "function setTokenRoyalty(uint256,address,uint96)",
   "function supportsInterface(bytes4) view returns (bool)",
 ];
 const USDC_ABI = [
@@ -53,7 +55,7 @@ async function main() {
     throw new Error("Run with BASE_FORK_RPC on the local hardhat network only");
   }
   await network.provider.send("hardhat_mine", ["0x1"]);
-  const [admin, seller, buyer, escrowBuyer] = await ethers.getSigners();
+  const [admin, seller, buyer, escrowBuyer, feeTo] = await ethers.getSigners();
   const checks = {};
 
   const nft = new ethers.Contract(SUPPORTER_NFT, NFT_ABI, ethers.provider);
@@ -76,15 +78,26 @@ async function main() {
     .deploy(admin.address, [BASE_USDC], [SUPPORTER_NFT]);
   const L = await listings.getAddress();
 
+  // This is a fork-only stand-in, not verification of the live project's creator.
+  const [royaltyReceiver, royaltyRateBefore] = await nft.royaltyInfo(TOKEN_ID, 10_000);
+  check(royaltyReceiver !== ethers.ZeroAddress && await nft.hasRole(ethers.ZeroHash, royaltyReceiver),
+    "forkRoyaltyReceiverIsAdmin", checks);
+  await network.provider.send("hardhat_impersonateAccount", [royaltyReceiver]);
+  await network.provider.send("hardhat_setBalance", [royaltyReceiver, "0x8AC7230489E80000"]);
+  await (await nft.connect(await ethers.getSigner(royaltyReceiver)).setTokenRoyalty(TOKEN_ID, royaltyReceiver, 500)).wait();
+  await network.provider.send("hardhat_stopImpersonatingAccount", [royaltyReceiver]);
+  const [, royaltyRateAfter] = await nft.royaltyInfo(TOKEN_ID, 10_000);
+  check(royaltyRateAfter === 500n, "forkRoyaltyUpdatedToFivePercent", checks);
+  await (await listings.setVerifiedCreator(SUPPORTER_NFT, TOKEN_ID, royaltyReceiver)).wait();
+  await (await listings.setPlatformFees(1000, 500, feeTo.address)).wait();
   await (await nft.connect(seller).setApprovalForAll(L, true)).wait();
   await (await listings.connect(seller).list(SUPPORTER_NFT, TOKEN_ID, 2, BASE_USDC, PRICE)).wait();
   check(await listings.custodied(SUPPORTER_NFT, TOKEN_ID) === 2n, "custodyRecorded", checks);
 
-  const [royaltyReceiver, royaltyQuoted] = await nft.royaltyInfo(TOKEN_ID, PRICE);
+  const [, royaltyQuoted] = await nft.royaltyInfo(TOKEN_ID, PRICE);
   const q = await listings.quote(0, 1);
-  const cap = PRICE * 1000n / 10000n;
-  check(q.royaltyAmount === (royaltyQuoted > cap ? cap : royaltyQuoted) && q.platformFee === 0n
-    && q.sellerProceeds === PRICE - q.royaltyAmount, "quoteMatchesRealRoyalty", checks);
+  check(q.royaltyReceiver === royaltyReceiver && q.royaltyAmount === royaltyQuoted && q.platformFee === PRICE / 20n
+    && q.sellerProceeds === PRICE - q.royaltyAmount - q.platformFee, "quoteMatchesForkRoyaltyAndFee", checks);
 
   await fundUsdc(usdc, buyer.address, 100_000_000n);
   await (await usdc.connect(buyer).approve(L, PRICE)).wait();
@@ -98,6 +111,7 @@ async function main() {
   if (q.royaltyAmount > 0n) {
     await (await listings.withdrawFor(royaltyReceiver, BASE_USDC)).wait();
   }
+  await (await listings.withdrawFor(feeTo.address, BASE_USDC)).wait();
   check(await usdc.balanceOf(L) === 0n && await listings.totalOwed(BASE_USDC) === 0n, "noFundsLeftBehind", checks);
 
   check(await listings.strayERC1155(SUPPORTER_NFT, TOKEN_ID) === 0n, "noStrayEditions", checks);
@@ -123,7 +137,8 @@ async function main() {
     collection: SUPPORTER_NFT,
     tokenId: TOKEN_ID.toString(),
     listingsContractOnFork: L,
-    royalty: { receiver: royaltyReceiver, quotedOn10Usdc: royaltyQuoted.toString(), honoured: q.royaltyAmount.toString() },
+    royalty: { receiver: royaltyReceiver, rateBeforeBps: royaltyRateBefore.toString(),
+      rateAfterBpsOnFork: royaltyRateAfter.toString(), honoured: q.royaltyAmount.toString() },
     sellerProceeds: q.sellerProceeds.toString(),
     checks,
   }, null, 2));
