@@ -10,7 +10,7 @@ export const LOCAL_SCOPE = Object.freeze({ kind: 'browser-local', account: null,
 export const FIELDS = ['name', 'description', 'image', 'backImage', 'externalUrl', 'editionSize', 'priceUSDC', 'royaltyBps', 'payoutAddress'];
 const REQUIRED = ['name', 'description', 'image', 'editionSize', 'priceUSDC', 'royaltyBps'];
 const LIMITS = { name: 100, description: 1000, image: 500, backImage: 500, externalUrl: 500, payoutAddress: 42 };
-export const DEFAULT_TERMS = Object.freeze({ editionSize: '1000', priceUSDC: '10', royaltyBps: '1000' });
+export const DEFAULT_TERMS = Object.freeze({ editionSize: '1000', priceUSDC: '10', royaltyBps: '500' });
 const PROVENANCE_KINDS = ['source', 'default', 'edited', 'unknown'];
 const CID = /^(Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{20,})(\/[^?#\s]*)?$/;
 
@@ -259,9 +259,10 @@ export function termsSummary(fields) {
     { term: 'Edition', value: edition ? `${edition} editions` : 'Unknown — choose an edition size', known: !!edition },
     { term: 'Price', value: price ? `${price} each. Buyers also pay Base network gas.` : 'Unknown — choose a price', known: !!price },
     { term: 'Network', value: 'Base (chain 8453)', known: true },
-    { term: 'Primary sales', value: payout ? `Intended for ${payout} — unverified placeholder until the authorized listing flow (#84) checks it`
-      : 'Not set — chosen and verified later in the authorized listing flow (#84)', known: false },
-    { term: 'Resale royalty', value: royalty ? `${royalty} royalty signal to the creator. Marketplaces may not honour it.` : 'Unknown — choose a royalty', known: !!royalty },
+    { term: 'Sales proceeds', value: payout ? `${payout} is a note only, not a payout instruction. The planned Market flow pays the seller wallet.`
+      : 'The planned Market flow pays the seller wallet. No wallet is connected in this preview.', known: false },
+    { term: 'Resale royalty', value: royalty ? `${royalty} for the creator wallet. The planned Market flow enforces it; other marketplaces may not honour it.` : 'Unknown — choose a royalty', known: !!royalty },
+    { term: 'Market fees', value: 'Planned: creator sales have an Agency fee; on resale, the Agency fee and creator royalty total at most 10%. If they exceed that cap, resale is blocked. Rates are not connected in this preview.', known: false },
     { term: 'What supporters get', value: 'A collectible that shows support. It is not an investment, a share, a treasury claim, a redemption right, yield or a promise of resale value.', known: true },
     { term: 'Status', value: 'Local draft only. Not uploaded, minted, listed or announced. Those steps need a later authorized flow.', known: true },
   ];

@@ -75,6 +75,7 @@ try {
     await page.check('input[value="new"]');
     await page.click('#start-draft');
     assert.equal(await page.inputValue('#f-name'), '');
+    assert.equal(await page.inputValue('#f-royaltyBps'), '500');
     assert.equal(await page.locator('[data-field="priceUSDC"] .badge').textContent(), 'default');
     assert.match(await page.locator('#dirty-state').textContent(), /Still unknown: Edition name, Description, Front artwork/);
     await page.fill('#f-name', 'Moonlit Album Supporter');

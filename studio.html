@@ -93,13 +93,13 @@
           <div class="field" data-field="royaltyBps">
             <label for="f-royaltyBps">Resale royalty <span class="badge" aria-hidden="true"></span></label>
             <select id="f-royaltyBps" name="royaltyBps" aria-describedby="f-royaltyBps-help f-royaltyBps-source f-royaltyBps-error"></select>
-            <span class="help" id="f-royaltyBps-help">A share of later resales, if the marketplace honours it.</span>
+            <span class="help" id="f-royaltyBps-help">You choose the creator-wallet share of resales. The planned Market flow enforces it; other marketplaces may not honour it.</span>
           </div>
         </div>
         <div class="field" data-field="payoutAddress">
-          <label for="f-payoutAddress">Sales payout address (placeholder, optional) <span class="badge" aria-hidden="true"></span></label>
+          <label for="f-payoutAddress">Address note (optional) <span class="badge" aria-hidden="true"></span></label>
           <input id="f-payoutAddress" name="payoutAddress" autocomplete="off" spellcheck="false" placeholder="0x…" aria-describedby="f-payoutAddress-help f-payoutAddress-source f-payoutAddress-error">
-          <span class="help" id="f-payoutAddress-help">Where first-sale USDC should go. It is only a note for now: the later listing flow will verify it. No wallet is connected here.</span>
+          <span class="help" id="f-payoutAddress-help">A note only, not a payout instruction. The planned Market flow pays sale proceeds to the seller wallet and royalties to the creator wallet. No wallet is connected here.</span>
         </div>
 
         <div class="draft-actions">

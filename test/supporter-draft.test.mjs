@@ -37,10 +37,17 @@ test('unsupported or unsafe source values become unknown instead of being copied
 
 test('new projects start from supported default terms and unknown details', () => {
   const project = newProject();
-  assert.deepEqual([project.fields.editionSize, project.fields.priceUSDC, project.fields.royaltyBps], ['1000', '10', '1000']);
+  assert.deepEqual([project.fields.editionSize, project.fields.priceUSDC, project.fields.royaltyBps], ['1000', '10', '500']);
   assert.equal(project.provenance.priceUSDC.kind, 'default');
   assert.equal(project.provenance.name.kind, 'unknown');
   assert.deepEqual(validateFields(project.fields).missing, ['name', 'description', 'image']);
+});
+
+test('sale terms distinguish an address note from the planned creator-wallet royalty', () => {
+  const terms = termsSummary({ ...valid, payoutAddress: `0x${'1'.repeat(40)}` });
+  assert.match(terms.find(term => term.term === 'Sales proceeds').value, /note only.*seller wallet/);
+  assert.match(terms.find(term => term.term === 'Resale royalty').value, /5%.*creator wallet.*other marketplaces/);
+  assert.match(terms.find(term => term.term === 'Market fees').value, /at most 10%/);
 });
 
 test('field validation reports format errors separately from missing values', () => {
@@ -149,8 +156,8 @@ test('previews mirror published metadata shape and state the supporter terms hon
   const text = terms.map(t => `${t.term}: ${t.value}`).join('\n');
   assert.match(text, /not an investment, a share, a treasury claim/);
   assert.match(text, /Base \(chain 8453\)/);
-  assert.match(text, /5% royalty/);
-  assert.match(text, /Not set/);
-  assert.equal(terms.find(t => t.term === 'Primary sales').known, false);
+  assert.match(text, /5% for the creator wallet/);
+  assert.match(text, /No wallet is connected/);
+  assert.equal(terms.find(t => t.term === 'Sales proceeds').known, false);
   assert.match(termsSummary({ ...valid, editionSize: '' }).find(t => t.term === 'Edition').value, /Unknown/);
 });
