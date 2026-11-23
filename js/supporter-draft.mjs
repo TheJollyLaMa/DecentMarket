@@ -4,7 +4,6 @@ export const DRAFT_STORE_SCHEMA = 'decent-market.supporter-studio.drafts';
 export const DRAFT_VERSION = 1;
 export const MAX_DRAFTS = 20;
 export const STALE_AFTER_MS = 90 * 24 * 60 * 60 * 1000;
-export const EDITION_SIZES = ['100', '1000'];
 export const PRICES_USDC = ['10', '100'];
 export const MAX_ROYALTY_BPS = 1000;
 export const LOCAL_SCOPE = Object.freeze({ kind: 'browser-local', account: null, chainId: 8453 });
@@ -18,6 +17,19 @@ const CID = /^(Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{20,})(\/[^?#\s]*)?$/;
 const text = value => typeof value === 'string' ? value.trim() : '';
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const isTime = value => typeof value === 'string' && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
+const editionCount = value => {
+  if (typeof value !== 'string' || !/^[1-9]\d*$/.test(value.trim())) return null;
+  const count = Number(value.trim());
+  return Number.isSafeInteger(count) ? count : null;
+};
+
+/** Preview the optional gift for this mint, not the series' maximum supply. */
+export function editionGiftPreview(value) {
+  const amount = editionCount(value);
+  if (amount === null) return null;
+  const gifted = Math.floor(amount / 10);
+  return { amount, gifted, kept: amount - gifted };
+}
 
 export function isArtworkUri(value) {
   if (value.startsWith('ipfs://')) return CID.test(value.slice(7).replace(/^ipfs\//, ''));
@@ -54,7 +66,8 @@ export function validateFields(fields) {
   for (const field of ['image', 'backImage'])
     if (!errors[field] && get(field) && !isArtworkUri(get(field))) errors[field] = 'Use an https:// link or an ipfs://CID you already have';
   if (!errors.externalUrl && get('externalUrl') && !isHttpsUrl(get('externalUrl'))) errors.externalUrl = 'Use a full https:// link';
-  if (!errors.editionSize && get('editionSize') && !EDITION_SIZES.includes(get('editionSize'))) errors.editionSize = 'Choose 100 or 1,000 editions';
+  if (!errors.editionSize && get('editionSize') && editionCount(get('editionSize')) === null)
+    errors.editionSize = 'Enter a positive whole number of editions';
   if (!errors.priceUSDC && get('priceUSDC') && !PRICES_USDC.includes(get('priceUSDC'))) errors.priceUSDC = 'Choose 10 or 100 USDC';
   if (!errors.royaltyBps && get('royaltyBps')) {
     const bps = get('royaltyBps');
@@ -194,7 +207,7 @@ export function projectFromReleaseMetadata(slug, metadata, sourceLabel) {
   take('image', metadata.image, typeof metadata.image === 'string' && isArtworkUri(metadata.image));
   take('backImage', p.back_image, typeof p.back_image === 'string' && isArtworkUri(p.back_image));
   take('externalUrl', metadata.external_url, typeof metadata.external_url === 'string' && isHttpsUrl(metadata.external_url));
-  take('editionSize', String(p.supply ?? ''), EDITION_SIZES.includes(String(p.supply)));
+  take('editionSize', String(p.supply ?? ''), editionCount(String(p.supply ?? '')) !== null);
   const price = /^(\d+) USDC$/.exec(String(p.price ?? ''))?.[1];
   take('priceUSDC', price, PRICES_USDC.includes(price));
   take('royaltyBps', String(p.royalty_bps ?? ''), Number.isInteger(p.royalty_bps) && p.royalty_bps >= 0 && p.royalty_bps <= MAX_ROYALTY_BPS && p.royalty_bps % 50 === 0);
@@ -227,7 +240,8 @@ export function previewMetadata(fields) {
   };
   if (isArtworkUri(text(fields.backImage))) metadata.properties.back_image = text(fields.backImage);
   const add = (trait, value) => { metadata.attributes.push({ trait_type: trait, value }); };
-  if (EDITION_SIZES.includes(fields.editionSize)) { metadata.properties.supply = Number(fields.editionSize); add('supply', Number(fields.editionSize)); }
+  const supply = editionCount(fields.editionSize);
+  if (supply !== null) { metadata.properties.supply = supply; add('supply', supply); }
   if (PRICES_USDC.includes(fields.priceUSDC)) { metadata.properties.price = `${fields.priceUSDC} USDC`; add('price', `${fields.priceUSDC} USDC`); }
   add('chain', 'Base');
   if (/^\d+$/.test(fields.royaltyBps || '')) { metadata.properties.royalty_bps = Number(fields.royaltyBps); add('royalty_bps', Number(fields.royaltyBps)); }
@@ -236,7 +250,8 @@ export function previewMetadata(fields) {
 }
 
 export function termsSummary(fields) {
-  const edition = EDITION_SIZES.includes(fields.editionSize) ? Number(fields.editionSize).toLocaleString('en-US') : null;
+  const count = editionCount(fields.editionSize);
+  const edition = count === null ? null : count.toLocaleString('en-US');
   const price = PRICES_USDC.includes(fields.priceUSDC) ? `${fields.priceUSDC} USDC` : null;
   const royalty = /^\d+$/.test(fields.royaltyBps || '') ? `${Number(fields.royaltyBps) / 100}%` : null;
   const payout = /^0x[0-9a-fA-F]{40}$/.test(fields.payoutAddress || '') ? fields.payoutAddress : null;

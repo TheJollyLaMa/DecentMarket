@@ -379,9 +379,12 @@ edition, and see live previews of the Market card, listing row and supporter ter
 Every value is labelled as from source, default, edited or unknown. Drafts are saved
 only in this browser (`localStorage` key `decent-market:supporter-studio:drafts`,
 versioned and validated by `js/supporter-draft.mjs`); unreadable or newer stores are
-left untouched. The page never connects a wallet, uploads to IPFS, calls a contract
-or posts to ENS/Discord. Mint and list stay disabled until creator permissions
-(#47) and seller-scoped listings (#84) exist. Part of epic #85.
+left untouched. An optional, animated gift preview shows `floor(minted editions / 10)`
+and explicitly offers Give or Skip; editions below 10 gift zero. The example is not
+stored or sent, and the Agency recipient and gas estimate are not available here. The
+page never connects a wallet, uploads to IPFS, calls a contract or posts to ENS/Discord.
+Mint and list stay disabled until creator permissions, Canopy project verification
+(#47, #85), seller-scoped listings (#84) and the deployment approval gates are ready.
 
 Validate with `npm run test:supporter`; browser check:
 `BASE_URL=http://127.0.0.1:8792 npm run test:supporter:drafts:browser`

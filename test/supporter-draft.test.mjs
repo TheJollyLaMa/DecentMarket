@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  DRAFT_STORE_KEY, DRAFT_STORE_SCHEMA, LOCAL_SCOPE, MAX_DRAFTS, createDraft, draftsForScope, isStale, loadDrafts,
+  DRAFT_STORE_KEY, DRAFT_STORE_SCHEMA, LOCAL_SCOPE, MAX_DRAFTS, createDraft, draftsForScope, editionGiftPreview, isStale, loadDrafts,
   markEdited, newProject, parseDraftStore, previewMetadata, projectFromReleaseMetadata, removeDraft, saveDrafts,
   serializeDraftStore, termsSummary, upsertDraft, validateDraft, validateFields,
 } from '../js/supporter-draft.mjs';
@@ -28,10 +28,11 @@ test('existing release metadata prefills editable, source-labelled fields withou
 test('unsupported or unsafe source values become unknown instead of being copied', () => {
   const project = projectFromReleaseMetadata('odd', { name: 'Odd', image: 'javascript:alert(1)', external_url: 'http://insecure.example',
     properties: { supply: 7, price: '3 USDC', royalty_bps: 1234 } }, 'file');
-  for (const field of ['image', 'externalUrl', 'editionSize', 'priceUSDC', 'royaltyBps', 'description']) {
+  for (const field of ['image', 'externalUrl', 'priceUSDC', 'royaltyBps', 'description']) {
     assert.equal(project.fields[field], '', field);
     assert.equal(project.provenance[field].kind, 'unknown', field);
   }
+  assert.equal(project.fields.editionSize, '7');
 });
 
 test('new projects start from supported default terms and unknown details', () => {
@@ -45,12 +46,23 @@ test('new projects start from supported default terms and unknown details', () =
 test('field validation reports format errors separately from missing values', () => {
   assert.deepEqual(validateFields(valid), { errors: {}, missing: [] });
   const { errors } = validateFields({ ...valid, name: 'ab', image: 'http://example.com/a.png', backImage: 'ipfs://not-a-cid',
-    externalUrl: 'javascript:alert(1)', editionSize: '50', priceUSDC: '5', royaltyBps: '1001', payoutAddress: '0x123' });
+    externalUrl: 'javascript:alert(1)', editionSize: '0', priceUSDC: '5', royaltyBps: '1001', payoutAddress: '0x123' });
   assert.deepEqual(Object.keys(errors).sort(), ['backImage', 'editionSize', 'externalUrl', 'image', 'name', 'payoutAddress', 'priceUSDC', 'royaltyBps']);
   assert.match(validateFields({ ...valid, payoutAddress: `0x${'0'.repeat(40)}` }).errors.payoutAddress, /zero/);
   assert.match(validateFields({ ...valid, royaltyBps: '125' }).errors.royaltyBps, /half-percent/);
   assert.deepEqual(validateFields({ ...valid, image: 'ipfs://QmcuhKLo46hwSdUQJm93VoHeB1YrpjhzeySg6Q7D9srabS' }).errors, {});
   assert.match(validateFields({ ...valid, description: 'x'.repeat(1001) }).errors.description, /1000/);
+});
+
+test('edition gift preview rounds down per mint, including small editions', () => {
+  for (const [amount, gifted] of [[1, 0], [9, 0], [10, 1], [19, 1], [20, 2]]) {
+    assert.deepEqual(editionGiftPreview(String(amount)), { amount, gifted, kept: amount - gifted });
+    assert.deepEqual(validateFields({ ...valid, editionSize: String(amount) }).errors, {});
+    assert.equal(previewMetadata({ ...valid, editionSize: String(amount) }).properties.supply, amount);
+  }
+  for (const value of ['', '0', '-1', '1.5', '1e2', '9007199254740992']) {
+    assert.equal(editionGiftPreview(value), null);
+  }
 });
 
 test('drafts save, reopen, edit and delete through a versioned store', () => {

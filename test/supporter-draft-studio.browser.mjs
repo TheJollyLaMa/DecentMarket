@@ -82,6 +82,40 @@ try {
     await page.fill('#f-image', 'https://example.com/front.png');
     await page.fill('#f-externalUrl', 'https://example.com/canopy');
     await page.selectOption('#f-royaltyBps', '500');
+
+    // The gift is a per-mint example, requires a choice and never calls a wallet.
+    await page.fill('#f-editionSize', '9');
+    await page.waitForFunction(() => !document.querySelector('#gift-preview-open').disabled);
+    if (label === '375') await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.click('#gift-preview-open');
+    assert.ok(await page.locator('#gift-preview').evaluate(dialog => dialog.open));
+    assert.match(await page.locator('#gift-preview-result').textContent(), /No gift choice/);
+    assert.match(await page.locator('#gift-counts').textContent(), /keep 9;.*receives 0 of 9/);
+    assert.match(await page.locator('#gift-preview').textContent(), /recipient: not available in this preview/);
+    if (label === '375') {
+      assert.equal(await page.locator('.gift-comic span').first().evaluate(el => getComputedStyle(el).animationName), 'none');
+    }
+    if (shots && label !== '320') await page.screenshot({ path: `${shots}/studio-${label}-gift.png`, fullPage: true });
+    await page.click('#gift-give');
+    assert.match(await page.locator('#gift-preview-result').textContent(), /Give.*keep 9;.*receives 0.*Nothing was minted or saved/);
+
+    await page.fill('#f-editionSize', '19');
+    await page.click('#gift-preview-open');
+    assert.match(await page.locator('#gift-preview-result').textContent(), /No gift choice/);
+    assert.match(await page.locator('#gift-counts').textContent(), /keep 18;.*receives 1 of 19/);
+    await page.fill('#gift-example-amount', '20');
+    assert.ok(await page.locator('#gift-give').isDisabled());
+    assert.ok(await page.locator('#gift-skip').isDisabled());
+    assert.match(await page.locator('#gift-example-error').textContent(), /series maximum/);
+    await page.fill('#gift-example-amount', '10');
+    assert.match(await page.locator('#gift-counts').textContent(), /keep 9;.*receives 1 of 10/);
+    await page.click('#gift-skip');
+    assert.match(await page.locator('#gift-preview-result').textContent(), /Skip.*keep 10;.*receives 0/);
+    await page.click('#gift-preview-open');
+    await page.keyboard.press('Escape');
+    assert.match(await page.locator('#gift-preview-result').textContent(), /No gift choice/);
+    await page.waitForFunction(() => document.activeElement.id === 'gift-preview-open');
+
     await page.click('#save-draft');
     await page.waitForFunction(() => document.querySelectorAll('#draft-list button[aria-label^="Open"]').length === 2);
     if (shots && label !== '320') await page.screenshot({ path: `${shots}/studio-${label}-new-saved.png`, fullPage: true });

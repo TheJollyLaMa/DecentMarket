@@ -54,6 +54,23 @@ select:focus-visible,textarea:focus-visible,a:focus-visible,h2[tabindex]:focus-v
 .draft-list li { display:grid; gap:4px; padding:12px 0; border-bottom:1px solid #a99aff33; }
 .draft-buttons button { margin:6px 8px 0 0; }
 .mint-waiting button:disabled { border-style:dashed; }
+#gift-preview { box-sizing:border-box; width:min(680px, calc(100vw - 24px)); max-height:calc(100dvh - 24px); overflow:auto;
+  padding:clamp(16px,4vw,28px); border:1px solid #7af0c6; border-radius:18px; background:#0b1526; color:#eaf8ff; }
+#gift-preview::backdrop { background:#02070dcc; }
+#gift-preview h3 { margin-top:0; color:#c7ffe4; }
+.gift-comic { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin:16px 0; }
+.gift-comic article { padding:10px; border:1px solid #a99aff88; border-radius:12px; background:#1b2940; }
+.gift-comic span,.gift-comic strong { display:block; }
+.gift-comic span { font-size:1.6rem; }
+.gift-comic p { margin:4px 0 0; font-size:.86rem; }
+.gift-actions { display:flex; flex-wrap:wrap; gap:10px; margin:16px 0 8px; }
+.gift-actions button { flex:1 1 120px; min-height:44px; margin:0; }
+@media(prefers-reduced-motion:no-preference) {
+  .gift-comic span { animation:gift-bob 2.8s ease-in-out infinite alternate; }
+  .gift-comic article:nth-child(2) span { animation-delay:.35s; }
+  .gift-comic article:nth-child(3) span { animation-delay:.7s; }
+  @keyframes gift-bob { from { transform:translateY(0); } to { transform:translateY(-4px); } }
+}
 #status { z-index:5; }
 @media(max-width:960px) {
   .draft-studio-grid { grid-template-columns:1fr; gap:0; }

@@ -1,6 +1,6 @@
 import {
-  FIELDS, LOCAL_SCOPE, MAX_ROYALTY_BPS, createDraft, draftsForScope, isStale, loadDrafts, markEdited, newProject,
-  previewMetadata, projectFromReleaseMetadata, removeDraft, saveDrafts, termsSummary, upsertDraft, validateFields,
+  FIELDS, LOCAL_SCOPE, MAX_ROYALTY_BPS, createDraft, draftsForScope, editionGiftPreview, isStale, loadDrafts, markEdited,
+  newProject, previewMetadata, projectFromReleaseMetadata, removeDraft, saveDrafts, termsSummary, upsertDraft, validateFields,
 } from './supporter-draft.mjs';
 import { collectibleArtwork, collectibleEditionDetails } from './market-card-view.mjs';
 import { element, externalLink } from './market-dialog.mjs';
@@ -19,6 +19,7 @@ export function mountDraftStudio(root, { storage = globalThis.localStorage, fetc
   let touched = new Set(), frame = 0, storageReady = true;
 
   const status = (message, error = false) => { $('status').textContent = message; $('status').dataset.error = String(error); };
+  const resetGiftChoice = () => { $('gift-preview-result').textContent = 'Preview only. No gift choice has been made.'; };
 
   const royalty = $('f-royaltyBps');
   royalty.append(element('option', 'Choose…'));
@@ -108,6 +109,7 @@ export function mountDraftStudio(root, { storage = globalThis.localStorage, fetc
     const { missing } = validateFields(fields);
     const gaps = missing.map(field => FIELD_LABELS[field]);
     $('dirty-state').textContent = `${dirty ? 'Unsaved changes.' : draftId ? 'All changes saved.' : 'Not saved yet.'}${gaps.length ? ` Still unknown: ${gaps.join(', ')}.` : ''}`;
+    $('gift-preview-open').disabled = !editionGiftPreview(fields.editionSize);
   }
   const schedule = () => { if (!frame) frame = requestAnimationFrame(renderPreviews); };
 
@@ -129,6 +131,7 @@ export function mountDraftStudio(root, { storage = globalThis.localStorage, fetc
     provenance = structuredClone(saved?.provenance || nextProject.provenance);
     original = { fields: { ...fields }, provenance: structuredClone(provenance) };
     dirty = false; touched = new Set();
+    resetGiftChoice();
     fillForm();
     $('studio-form-heading').focus();
   }
@@ -219,6 +222,7 @@ export function mountDraftStudio(root, { storage = globalThis.localStorage, fetc
     const field = event.target.name;
     if (!fields || !FIELDS.includes(field)) return;
     fields[field] = event.target.value;
+    if (field === 'editionSize') resetGiftChoice();
     provenance = markEdited(provenance, field, fields, original);
     dirty = true;
     renderProvenance(); renderErrors(); schedule();
@@ -252,6 +256,8 @@ export function mountDraftStudio(root, { storage = globalThis.localStorage, fetc
     if (!confirmDiscard()) return;
     project = fields = provenance = original = null; draftId = null; dirty = false;
     form.hidden = true; $('previews').hidden = true;
+    $('gift-preview-open').disabled = true;
+    resetGiftChoice();
     $('start-draft').focus();
     status('Draft closed. Saved drafts are still listed below.');
   });
@@ -260,6 +266,46 @@ export function mountDraftStudio(root, { storage = globalThis.localStorage, fetc
       event.target.blur(); $('save-draft').focus();
     }
   });
+
+  const giftDialog = $('gift-preview');
+  const giftExample = $('gift-example-amount');
+  const formatCount = value => value.toLocaleString('en-US');
+  function renderGiftExample() {
+    const maximum = editionGiftPreview(fields?.editionSize);
+    const example = editionGiftPreview(giftExample.value);
+    const valid = maximum && example && example.amount <= maximum.amount;
+    $('gift-example-error').textContent = valid ? '' : 'Enter a whole number between 1 and the series maximum.';
+    giftExample.setAttribute('aria-invalid', String(!valid));
+    $('gift-counts').textContent = valid
+      ? `If you give: you keep ${formatCount(example.kept)}; the Agency receives ${formatCount(example.gifted)} of ${formatCount(example.amount)} minted editions. If you skip: you keep ${formatCount(example.amount)}; the Agency receives 0.`
+      : 'Gift amounts are unavailable until the example is valid.';
+    $('gift-give').disabled = $('gift-skip').disabled = !valid;
+    return valid ? example : null;
+  }
+  $('gift-preview-open').addEventListener('click', () => {
+    const maximum = editionGiftPreview(fields?.editionSize);
+    if (!maximum) { status('Enter a valid edition size before previewing the gift.', true); return; }
+    resetGiftChoice();
+    giftExample.value = String(maximum.amount);
+    giftExample.max = String(maximum.amount);
+    renderGiftExample();
+    giftDialog.showModal();
+  });
+  giftExample.addEventListener('input', renderGiftExample);
+  function chooseGift(give) {
+    const example = renderGiftExample();
+    if (!example) return;
+    const gifted = give ? example.gifted : 0;
+    const kept = give ? example.kept : example.amount;
+    $('gift-preview-result').textContent = `Preview only: ${give ? 'Give' : 'Skip'} — you keep ${formatCount(kept)}; the Agency receives ${formatCount(gifted)}. Nothing was minted or saved.`;
+    giftDialog.close();
+  }
+  $('gift-give').addEventListener('click', () => chooseGift(true));
+  $('gift-skip').addEventListener('click', () => chooseGift(false));
+  $('gift-cancel').addEventListener('click', () => { resetGiftChoice(); giftDialog.close(); });
+  giftDialog.addEventListener('cancel', resetGiftChoice);
+  giftDialog.addEventListener('close', () => $('gift-preview-open').focus());
+
   const onStorage = event => { if (event.key === null || event.key?.startsWith('decent-market:supporter-studio')) renderDrafts(); };
   const beforeUnload = event => { if (dirty) { event.preventDefault(); event.returnValue = ''; } };
   window.addEventListener('storage', onStorage);

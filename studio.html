@@ -79,10 +79,9 @@
         <div class="field-row">
           <div class="field" data-field="editionSize">
             <label for="f-editionSize">Edition size <span class="badge" aria-hidden="true"></span></label>
-            <select id="f-editionSize" name="editionSize" aria-describedby="f-editionSize-help f-editionSize-source f-editionSize-error">
-              <option value="">Choose…</option><option value="100">100 editions</option><option value="1000">1,000 editions</option>
-            </select>
-            <span class="help" id="f-editionSize-help">How many supporter collectibles exist in total.</span>
+            <input id="f-editionSize" name="editionSize" type="number" min="1" max="9007199254740991" step="1" inputmode="numeric"
+              aria-describedby="f-editionSize-help f-editionSize-source f-editionSize-error">
+            <span class="help" id="f-editionSize-help">Maximum editions in the series. A future mint must also meet the collection's limit.</span>
           </div>
           <div class="field" data-field="priceUSDC">
             <label for="f-priceUSDC">Price each <span class="badge" aria-hidden="true"></span></label>
@@ -132,11 +131,41 @@
       <h2 id="mint-heading">4 · Mint and list</h2>
       <p id="mint-waiting-note">Not available yet. Minting waits on creator permissions
         (<a href="https://github.com/TheJollyLaMa/DecentMarket/issues/47" target="_blank" rel="noopener noreferrer">#47</a>)
-        and listing with your own payout waits on seller listings
+        and verification of a published DecentCanopy project
+        (<a href="https://github.com/TheJollyLaMa/DecentMarket/issues/85" target="_blank" rel="noopener noreferrer">#85</a>).
+        Listing with your own payout waits on seller listings
         (<a href="https://github.com/TheJollyLaMa/DecentMarket/issues/84" target="_blank" rel="noopener noreferrer">#84</a>).
         This studio never connects a wallet, uploads to IPFS, calls a contract, or posts to ENS or Discord.</p>
+      <button type="button" id="gift-preview-open" disabled>Preview the optional edition gift</button>
+      <p class="help" id="gift-preview-result" aria-live="polite">Preview only. No gift choice has been made.</p>
       <button type="button" id="mint-disabled" disabled aria-describedby="mint-waiting-note">Mint Supporter edition</button>
       <button type="button" id="list-disabled" disabled aria-describedby="mint-waiting-note">List on DecentMarket</button>
+
+      <dialog id="gift-preview" aria-labelledby="gift-preview-heading" aria-describedby="gift-explanation">
+        <h3 id="gift-preview-heading">A little gift, if you like</h3>
+        <p id="gift-explanation">There's no Agency minting fee. You may give 10% of the editions minted
+          in this transaction to DecentAgency, rounded down. Fewer than 10 editions gives none.
+          Giving and skipping are both welcome.</p>
+        <div class="gift-comic">
+          <article><span aria-hidden="true">🎨</span><strong>Make</strong><p>Your project, your editions.</p></article>
+          <article><span aria-hidden="true">🌱</span><strong>Share?</strong><p>Choose whether to give a little.</p></article>
+          <article><span aria-hidden="true">✨</span><strong>Grow</strong><p>Keep creating either way.</p></article>
+        </div>
+        <label for="gift-example-amount">Editions minted in this example</label>
+        <input id="gift-example-amount" type="number" min="1" max="9007199254740991" step="1" inputmode="numeric"
+          aria-describedby="gift-example-help gift-example-error">
+        <p class="help" id="gift-example-help">This example starts with the whole series; later mints are calculated separately.</p>
+        <p class="field-error" id="gift-example-error" aria-live="polite"></p>
+        <p id="gift-counts" aria-live="polite" aria-atomic="true"></p>
+        <p class="help">Agency recipient: not available in this preview. A future mint review must show its verified address
+          and estimated network gas before wallet confirmation.</p>
+        <p class="help">This is only a preview. No wallet is connected, and your choice is not saved or sent.</p>
+        <div class="gift-actions">
+          <button type="button" id="gift-give">Give</button>
+          <button type="button" id="gift-skip">Skip</button>
+        </div>
+        <button type="button" id="gift-cancel">Close preview without choosing</button>
+      </dialog>
     </section>
 
     <p id="status" role="status" aria-live="polite">Choose a project to begin. Nothing leaves this browser.</p>
