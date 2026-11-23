@@ -1,0 +1,92 @@
+{
+  "contract": "DecentBuskingTipRouter_v0_2",
+  "version": "v0.2",
+  "chainId": 8453,
+  "address": "0xf774E24cda0732Fa57B167A57D30204842df30DD",
+  "transactionHash": "0xa75061804bd64f41ed8d375c3880d5fbce7413aebe6fe203eb1d946854465abc",
+  "startBlock": 61220951,
+  "deployer": "0xcAeEd8422fB5682C298B7F0971906d446fFd4e7a",
+  "owner": "0xcAeEd8422fB5682C298B7F0971906d446fFd4e7a",
+  "allowedTokens": [
+    "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+  ],
+  "deployedAt": "2026-11-23T11:49:25.979Z",
+  "compiler": {
+    "solc": "0.8.26+commit.8a97fa7a",
+    "optimizerRuns": 200,
+    "evmVersion": "cancun",
+    "viaIR": false
+  },
+  "sourceSha256": "5b9740d1bdd04e48112ad45bd06553c4faf06dd4d31d90dfc8b0efad6f6455ba",
+  "interface": {
+    "tip": "tip(address,uint8,string)",
+    "tipSplit": "tipSplit(address[],uint16[],uint8,string)",
+    "tipToken": "tipToken(address,address,uint256,uint8,string)",
+    "tipTokenSplit": "tipTokenSplit(address,address[],uint16[],uint256,uint8,string)",
+    "giftNfts": "giftNfts((address,uint8,uint256,uint256,address)[],uint8,string)",
+    "tokenEvent": "TokenTipSent(address,address,bytes32,address,uint8,uint256,string)",
+    "nftEvent": "NftGiftSent(address,address,bytes32,address,uint8,uint256,uint256,uint8,string)",
+    "event": "TipSent(address,address,bytes32,uint8,uint256,string)"
+  },
+  "checks": {
+    "ok": true,
+    "codeMatchesCompiled": true,
+    "ownerMatches": true,
+    "tokensAllowed": true,
+    "runtimeCodeHash": "0xd42a3df8700bcdc8fd91764af3c74d4f46bf6da10d8b484b3d78adc0ca27f407",
+    "simulations": [
+      {
+        "name": "a valid live tip simulates",
+        "ok": true
+      },
+      {
+        "name": "an unknown source kind is rejected",
+        "ok": true
+      },
+      {
+        "name": "a zero recipient is rejected",
+        "ok": true
+      },
+      {
+        "name": "an empty context is rejected",
+        "ok": true
+      },
+      {
+        "name": "a zero amount is rejected",
+        "ok": true
+      },
+      {
+        "name": "a valid 50/50 split tip simulates",
+        "ok": true
+      },
+      {
+        "name": "shares not totalling 10000 are rejected",
+        "ok": true
+      },
+      {
+        "name": "a duplicate co-owner is rejected",
+        "ok": true
+      },
+      {
+        "name": "a split too small to pay everyone is rejected",
+        "ok": true
+      },
+      {
+        "name": "an unlisted token tip is rejected",
+        "ok": true
+      },
+      {
+        "name": "an empty NFT gift batch is rejected",
+        "ok": true
+      }
+    ]
+  },
+  "verification": {
+    "explorer": "Sourcify",
+    "method": "Sourcify API v2, standard JSON input",
+    "result": "exact_match (creation and runtime)",
+    "url": "https://repo.sourcify.dev/8453/0xf774E24cda0732Fa57B167A57D30204842df30DD",
+    "confirmedAt": "2026-11-23T11:51:22Z",
+    "note": "Sourcify relay to Etherscan hit its daily submission limit; Blockscout submission accepted"
+  }
+}

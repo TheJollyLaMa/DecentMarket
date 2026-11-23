@@ -18,6 +18,7 @@ Single source of truth for all on-chain deployments of DecentMarket smart contra
 | Base Mainnet | DeVertQueue | v0.1 | `0x9ebf98367319E6c8b15b5517d808CCfEb3dddA61` | `abis/DeVertQueue_v0.1.json` | [BaseScan verified source](https://basescan.org/address/0x9ebf98367319E6c8b15b5517d808CCfEb3dddA61#code) |
 | Base Mainnet | DeVertQueue | v0.2 | `0xe54609f022A8D760417E7cc0Eea6360b6E1D11Bb` | `abis/DeVertQueue_v0.2.json` | [BaseScan verified source](https://basescan.org/address/0xe54609f022A8D760417E7cc0Eea6360b6E1D11Bb#code) |
 | Base Mainnet | DecentBuskingTipRouter | v0.1 | `0xAa0207731e9F836273634F7B08cE87FfAA125183` | `abis/DecentBuskingTipRouter.json` | [BaseScan verified source (exact match)](https://basescan.org/address/0xAa0207731e9F836273634F7B08cE87FfAA125183#code) |
+| Base Mainnet | DecentBuskingTipRouter | v0.2 | `0xf774E24cda0732Fa57B167A57D30204842df30DD` | `abis/DecentBuskingTipRouter_v0.2.json` | [Sourcify exact match](https://repo.sourcify.dev/8453/0xf774E24cda0732Fa57B167A57D30204842df30DD) |
 
 ### DeVert paid queue v0.1
 
@@ -183,6 +184,29 @@ Release order, which must not be skipped:
    explicit approval.
 
 Direct wallet transfers that happened before the router are never backfilled.
+
+### DecentBusking tip router v0.2 (split, USDC and NFT gifts)
+
+Deployed November 23, 2026 at `0xf774E24cda0732Fa57B167A57D30204842df30DD`,
+transaction
+[`0xa750…5abc`](https://basescan.org/tx/0xa75061804bd64f41ed8d375c3880d5fbce7413aebe6fe203eb1d946854465abc),
+block 61220951. Source is an
+[exact match on Sourcify](https://repo.sourcify.dev/8453/0xf774E24cda0732Fa57B167A57D30204842df30DD)
+(creation and runtime); the BaseScan relay hit its daily limit. ABI:
+`abis/DecentBuskingTipRouter_v0.2.json`; record:
+[deployments/busking-tip-router-v02-base.json](deployments/busking-tip-router-v02-base.json).
+Constructor: owner `0xcAeEd8422fB5682C298B7F0971906d446fFd4e7a`, allowed tokens
+`[Base USDC]`.
+
+Adds `tipSplit` (ETH by song shares, DJuke `configureSong` rules), `tipToken` /
+`tipTokenSplit` for allowlisted ERC-20s and `giftNfts` (up to 32 ERC-721/1155
+gifts). Custody-free: every transfer goes from the tipper to the recipients in
+the same call; there is no receive/fallback, NFT receiver hook, recovery or
+withdrawal function. The owner can only allow or disallow ERC-20 tokens.
+Post-deploy checks confirmed the runtime code equals the compiled artifact and
+11 read-only simulations behaved as expected. The worker reads it via
+`TIP_SPLIT_ROUTER_ADDRESS` / `TIP_SPLIT_START_BLOCK`; the site enables it via
+`tipSplitRouterAddress`.
 
 ### Supported Escrow Tokens (Optimism Mainnet)
 
