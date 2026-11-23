@@ -20,7 +20,8 @@ import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
  *   register and mint their OWN Product tokens. Each creator product:
  *     - records the creator in `creatorOf`, `TokenRegistered.creator` and
  *       `EditionMinted.minter`;
- *     - is minted only to the creator (no arbitrary recipients);
+ *     - is minted to the creator, except for an explicitly selected gift to
+ *       the configured Agency recipient (no arbitrary recipients);
  *     - has a finite supply within the creator's edition limit;
  *     - has a mandatory per-token ERC-2981 royalty capped by `creatorRoyaltyCapBps`
  *       (the receiver may be a split contract for multi-artist payouts);
@@ -47,8 +48,7 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
     /// @notice Hard ceiling for the admin-configurable creator royalty cap (25 %).
     uint96 public constant MAX_CREATOR_ROYALTY_BPS = 2_500;
 
-    // Transient authorization windows; never set across an external call except
-    // MINTING (the ERC-1155 receiver callback to the creator itself).
+    // Transient authorization windows are consumed before any receiver callback.
     bytes32 private constant REGISTERING_CREATOR_SLOT =
         keccak256("decentnft.v0_4.registeringCreator");
     bytes32 private constant MINTING_CREATOR_SLOT =
@@ -63,6 +63,9 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
     /// @notice Royalty cap (basis points) applied to new creator products.
     uint96 public creatorRoyaltyCapBps;
 
+    /// @notice Approved recipient for optional edition gifts; zero disables gifts.
+    address public editionGiftRecipient;
+
     mapping(address => CreatorLimits) private _creatorLimits;
     mapping(uint256 => address) private _productCreator;
 
@@ -76,6 +79,13 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
         uint256 maxSupply
     );
     event CreatorRoyaltyCapUpdated(uint96 capBps);
+    event EditionGiftRecipientUpdated(address indexed recipient);
+    event CreatorEditionsGifted(
+        uint256 indexed tokenId,
+        address indexed creator,
+        address indexed recipient,
+        uint256 amount
+    );
     event Recovered(address indexed asset, address indexed to, uint256 amountOrTokenId);
 
     error CreatorProductLocked(uint256 tokenId);
@@ -87,6 +97,8 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
     error MetadataURIRequired();
     error ZeroAmount();
     error ZeroAddress();
+    error InvalidGiftRecipient();
+    error GiftRecipientMismatch(address expected, address configured);
     error CannotRecoverCollectionTokens();
 
     constructor(
@@ -133,6 +145,13 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
         _setCreatorRoyaltyCap(capBps);
     }
 
+    /// @notice Set the Agency gift recipient, or zero to disable edition gifts.
+    function setEditionGiftRecipient(address recipient) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (recipient == address(this)) revert InvalidGiftRecipient();
+        editionGiftRecipient = recipient;
+        emit EditionGiftRecipientUpdated(recipient);
+    }
+
     function pause() external {
         if (!hasRole(PAUSER_ROLE, _msgSender())) _checkRole(DEFAULT_ADMIN_ROLE);
         _pause();
@@ -162,6 +181,35 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
         address royaltyReceiver,
         uint96 royaltyFeeBps
     ) external whenNotPaused nonReentrant onlyRole(CREATOR_ROLE) returns (uint256 tokenId) {
+        return _registerAndMintProduct(amount, maxSupply_, tokenURI_, royaltyReceiver, royaltyFeeBps, address(0));
+    }
+
+    /**
+     * @notice Register and mint with an explicit gift of floor(amount / 10) editions.
+     *         The gift is included in `amount`, not added to it.
+     * @param expectedRecipient The configured Agency recipient shown to the creator.
+     *         Reverts if the recipient was changed or disabled.
+     */
+    function registerAndMintProductWithGift(
+        uint256 amount,
+        uint256 maxSupply_,
+        string calldata tokenURI_,
+        address royaltyReceiver,
+        uint96 royaltyFeeBps,
+        address expectedRecipient
+    ) external whenNotPaused nonReentrant onlyRole(CREATOR_ROLE) returns (uint256 tokenId) {
+        _checkGiftRecipient(expectedRecipient);
+        return _registerAndMintProduct(amount, maxSupply_, tokenURI_, royaltyReceiver, royaltyFeeBps, expectedRecipient);
+    }
+
+    function _registerAndMintProduct(
+        uint256 amount,
+        uint256 maxSupply_,
+        string calldata tokenURI_,
+        address royaltyReceiver,
+        uint96 royaltyFeeBps,
+        address giftRecipient
+    ) private returns (uint256 tokenId) {
         address creator = _msgSender();
         if (amount == 0) revert ZeroAmount();
         if (bytes(tokenURI_).length == 0) revert MetadataURIRequired();
@@ -189,7 +237,7 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
         _productCreator[tokenId] = creator;
         emit CreatorProductRegistered(tokenId, creator, royaltyReceiver, royaltyFeeBps, maxSupply_);
 
-        _creatorMint(creator, tokenId, amount);
+        _creatorMint(creator, tokenId, amount, giftRecipient);
     }
 
     /// @notice Mint more editions of the caller's own product, to the caller.
@@ -201,7 +249,20 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
     {
         address creator = _msgSender();
         if (_productCreator[tokenId] != creator) revert NotProductCreator(tokenId, creator);
-        _creatorMint(creator, tokenId, amount);
+        _creatorMint(creator, tokenId, amount, address(0));
+    }
+
+    /// @notice Mint more of the caller's own product with an explicit edition gift.
+    function mintCreatorProductWithGift(uint256 tokenId, uint256 amount, address expectedRecipient)
+        external
+        whenNotPaused
+        nonReentrant
+        onlyRole(CREATOR_ROLE)
+    {
+        address creator = _msgSender();
+        if (_productCreator[tokenId] != creator) revert NotProductCreator(tokenId, creator);
+        _checkGiftRecipient(expectedRecipient);
+        _creatorMint(creator, tokenId, amount, expectedRecipient);
     }
 
     /// @notice Move the caller's own product royalty (e.g. to a split contract), within the cap.
@@ -275,10 +336,22 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
     // Internal
     // -------------------------------------------------------------------------
 
-    function _creatorMint(address creator, uint256 tokenId, uint256 amount) private {
+    function _creatorMint(address creator, uint256 tokenId, uint256 amount, address giftRecipient) private {
+        uint256 gifted = giftRecipient == address(0) ? 0 : amount / 10;
+        _mintCreatorEdition(creator, creator, tokenId, amount - gifted);
+        if (gifted > 0) _mintCreatorEdition(creator, giftRecipient, tokenId, gifted);
+        if (giftRecipient != address(0)) emit CreatorEditionsGifted(tokenId, creator, giftRecipient, gifted);
+    }
+
+    function _mintCreatorEdition(address creator, address to, uint256 tokenId, uint256 amount) private {
         MINTING_CREATOR_SLOT.asAddress().tstore(creator);
-        _mintChecked(creator, tokenId, amount);
+        _mintChecked(to, tokenId, amount);
         MINTING_CREATOR_SLOT.asAddress().tstore(address(0));
+    }
+
+    function _checkGiftRecipient(address expected) private view {
+        address configured = editionGiftRecipient;
+        if (expected == address(0) || expected != configured) revert GiftRecipientMismatch(expected, configured);
     }
 
     function _checkCreatorRoyalty(address receiver, uint96 feeBps) private view {
@@ -337,8 +410,11 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
             address minting = MINTING_CREATOR_SLOT.asAddress().tload();
             for (uint256 i = 0; i < ids.length; i++) {
                 address creator = _productCreator[ids[i]];
-                if (creator != address(0) && creator != minting) revert CreatorProductLocked(ids[i]);
+                if (creator != address(0) && (creator != minting || _msgSender() != creator)) {
+                    revert CreatorProductLocked(ids[i]);
+                }
             }
+            if (minting != address(0)) MINTING_CREATOR_SLOT.asAddress().tstore(address(0));
         }
         super._update(from, to, ids, values);
     }

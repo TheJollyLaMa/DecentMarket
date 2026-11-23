@@ -62,11 +62,14 @@ async function main() {
   await nft.waitForDeployment();
   await (await nft.authorizeCreator(alice.address, 2, 50)).wait();
   await (await nft.authorizeCreator(bob.address, 2, 50)).wait();
+  await (await nft.setEditionGiftRecipient(collector.address)).wait();
 
-  const aliceTx = await (await nft.connect(alice).registerAndMintProduct(
-    5, 50, "ipfs://rehearsal-alice", splitter.address, 750)).wait();
+  const aliceTx = await (await nft.connect(alice).registerAndMintProductWithGift(
+    19, 50, "ipfs://rehearsal-alice", splitter.address, 750, collector.address)).wait();
   const bobTx = await (await nft.connect(bob).registerAndMintProduct(
     1, 1, "ipfs://rehearsal-bob", bob.address, 0)).wait();
+  if (await nft.balanceOf(alice.address, 0) !== 18n || await nft.balanceOf(collector.address, 0) !== 1n ||
+      await nft.totalMinted(0) !== 19n) throw new Error("Optional gift split or supply mismatch");
   await (await nft.registerAndMintProductsBatch([{ recipient: collector.address, amount: 1, maxSupply: 1,
     tokenURI: "ipfs://rehearsal-agency", royaltyReceiver: admin.address, royaltyFeeBps: 500 }])).wait();
 

@@ -23,7 +23,9 @@ v0.2/v0.3 ABI, events, Product/Achievement lanes, owner batch
 | Need | v0.4 behavior |
 | --- | --- |
 | Creator authorization | `CREATOR_ROLE`, granted with limits by `authorizeCreator(creator, maxProducts, maxEditionsPerProduct)`. A bare `grantRole` has zero limits, so it fails closed. |
-| Self-service | `registerAndMintProduct(amount, maxSupply, tokenURI, royaltyReceiver, royaltyBps)` registers a Product and mints it **to the caller only**. `mintCreatorProduct(tokenId, amount)` mints more of the caller's own product. |
+| Self-service | `registerAndMintProduct(amount, maxSupply, tokenURI, royaltyReceiver, royaltyBps)` registers a Product and mints it to the caller. `mintCreatorProduct(tokenId, amount)` mints more of the caller's own product. |
+| Optional edition gift | The separate `registerAndMintProductWithGift` and `mintCreatorProductWithGift` methods require an explicit expected Agency recipient. They gift `floor(amount / 10)` editions from the requested amount; fewer than 10 gives zero. The ordinary methods never gift. Rounding is per mint transaction. |
+| Gift recipient | An admin sets `setEditionGiftRecipient` to the verified Agency recipient; the initial zero address disables gifts. A changed or disabled recipient causes an opt-in transaction to revert rather than sending to a different address. The recipient must be able to receive ERC-1155 editions. |
 | Provenance | `creatorOf`, `TokenRegistered.creator` and `EditionMinted.minter` are the creator. `productCreator(tokenId)` and `CreatorProductRegistered` identify creator-lane products (zero for Agency products). |
 | Supply | Finite supply is required: `1 ≤ maxSupply ≤ maxEditionsPerProduct`. Lifetime `maxProducts` per creator. |
 | Royalties | A per-token ERC-2981 royalty is mandatory. The receiver must be non-zero and can be a split contract. Royalty is capped at `creatorRoyaltyCapBps` (admin-set, hard ceiling 2,500 bps). The creator alone can move it with `setCreatorProductRoyalty`, within the cap. |
@@ -41,20 +43,26 @@ in three hooks:
   a transient window that makes no external calls. It also blocks
   `setTokenURI` on creator products.
 - `_setTokenRoyalty`: locks creator royalties.
-- `_update`: pauses mints and allows only the product's creator to mint it.
+- `_update`: pauses mints and allows only the product's creator to mint it. The
+  transient mint permission is consumed before any ERC-1155 receiver callback.
 
 The registration runs as a delegatecall into v0.2's `registerToken`, as in
 the v0.3 batch. This preserves `msg.sender` and v0.2's events. A contract creator's receive
 hook cannot re-enter with elevated rights; the tests cover this.
 
-Out of scope here: batch payout settlement and seller-scoped listings (#84),
-the Studio UI (#83), and Canopy/Lobby announcements (#72).
+The current draft does **not** yet verify that a creator's project is published in
+Canopy; its contributor-wide `maxProducts` limit also needs revision for the
+project-based eligibility policy in #85. Do not enable self-service until those
+requirements are implemented and reviewed. Batch payout settlement and
+seller-scoped listings (#84), the Studio UI (#83), and Canopy/Lobby announcements
+(#72) remain separate work.
 
 ## Validation
 
 - `npx hardhat test test/DecentNFT_v04.test.js`: authorization boundaries,
   admin lock-out, re-entrancy, royalties and cap, limits and supply, revocation,
-  pause, atomic rollback, token-ID sequencing, event provenance and recovery.
+  optional gift rounding and recipient changes, pause, atomic rollback,
+  token-ID sequencing, event provenance and recovery.
   The v0.2/v0.3 suites still pass.
 - `npm run rehearse:nft-v04:fork` runs on an in-process Base fork with Hardhat
   test accounts. It refuses any network but the local fork. It snapshots the
@@ -63,13 +71,16 @@ the Studio UI (#83), and Canopy/Lobby announcements (#72).
   fork USDC. It asserts the live collections are unchanged. It broadcasts
   nothing.
 
-## Deployment and migration (after approval gate A only)
+## Deployment and migration (after project eligibility and approval gate A only)
 
 1. Deploy v0.4 on Base with constructor arguments `("", <agency royalty receiver>,
    <default bps>, <creator royalty cap bps>)`. Set `setContractURI`. Verify the
    source. Record a new `deployments/decentnft-v04-base.json` with the start
    block. Do not overwrite the v0.2/v0.3 records.
-2. Authorize the creators approved at the gate with `authorizeCreator`.
+2. After project-based eligibility is implemented, authorize the creators
+   approved at the gate. Configure a verified `editionGiftRecipient` before
+   offering gifts; do not assume a wallet address or enable gifts while it is
+   unset.
 3. Add the address as a separate collection (keep `DNFT` v0.2) in Market
    `js/config/contracts.js`, the Supporter Studio and the seller-scoped listing
    allowlist (#84). Use `abis/DecentNFT_v0.4.json`.

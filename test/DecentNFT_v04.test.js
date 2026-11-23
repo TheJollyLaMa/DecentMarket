@@ -9,6 +9,10 @@ describe("DecentNFT_v0_4 creator permissions", function () {
     const o = { amount: 1, maxSupply: 10, uri: "ipfs://alice-supporter", receiver: signer.address, bps: 500, ...overrides };
     return nft.connect(signer).registerAndMintProduct(o.amount, o.maxSupply, o.uri, o.receiver, o.bps);
   };
+  const createWithGift = (signer, giftRecipient, overrides = {}) => {
+    const o = { amount: 10, maxSupply: 100, uri: "ipfs://alice-supporter", receiver: signer.address, bps: 500, ...overrides };
+    return nft.connect(signer).registerAndMintProductWithGift(o.amount, o.maxSupply, o.uri, o.receiver, o.bps, giftRecipient);
+  };
   const adminProduct = (recipient, overrides = {}) => ({
     recipient, amount: 1, maxSupply: 10, tokenURI: "ipfs://agency", royaltyReceiver: admin.address, royaltyFeeBps: 500, ...overrides,
   });
@@ -123,6 +127,111 @@ describe("DecentNFT_v0_4 creator permissions", function () {
         expect(await nft.totalMinted(before)).to.equal(1);
       }
       expect(await nft.creatorOf(0)).to.equal(await creator.getAddress());
+    });
+  });
+
+  describe("optional edition gifts", function () {
+    it("rounds each opted-in gift down and keeps the total minted within the chosen amount", async function () {
+      await nft.authorizeCreator(alice.address, 10, 100);
+      await nft.setEditionGiftRecipient(collector.address);
+      for (const [amount, gifted] of [[1, 0], [9, 0], [10, 1], [19, 1], [20, 2], [99, 9]]) {
+        const tokenId = await nft.nextTokenId();
+        await expect(createWithGift(alice, collector.address, { amount, maxSupply: amount }))
+          .to.emit(nft, "CreatorEditionsGifted").withArgs(tokenId, alice.address, collector.address, gifted);
+        expect(await nft.balanceOf(alice.address, tokenId)).to.equal(BigInt(amount - gifted));
+        expect(await nft.balanceOf(collector.address, tokenId)).to.equal(BigInt(gifted));
+        expect(await nft.totalMinted(tokenId)).to.equal(BigInt(amount));
+      }
+    });
+
+    it("gifts only on explicit opt-in, including subsequent mint transactions", async function () {
+      await nft.setEditionGiftRecipient(collector.address);
+      await create(alice, { amount: 10, maxSupply: 50 });
+      expect(await nft.balanceOf(collector.address, 0)).to.equal(0);
+      await expect(nft.connect(alice).mintCreatorProductWithGift(0, 19, collector.address))
+        .to.emit(nft, "EditionMinted").withArgs(0, alice.address, 18, alice.address)
+        .and.to.emit(nft, "EditionMinted").withArgs(0, collector.address, 1, alice.address)
+        .and.to.emit(nft, "CreatorEditionsGifted").withArgs(0, alice.address, collector.address, 1);
+      await nft.connect(alice).mintCreatorProduct(0, 10);
+      expect(await nft.balanceOf(alice.address, 0)).to.equal(38);
+      expect(await nft.balanceOf(collector.address, 0)).to.equal(1);
+      expect(await nft.totalMinted(0)).to.equal(39);
+      await expect(nft.connect(bob).mintCreatorProductWithGift(0, 10, collector.address))
+        .to.be.revertedWithCustomError(nft, "NotProductCreator");
+
+      await createWithGift(alice, collector.address, { amount: 9, maxSupply: 18 });
+      await nft.connect(alice).mintCreatorProductWithGift(1, 9, collector.address);
+      expect(await nft.balanceOf(alice.address, 1)).to.equal(18);
+      expect(await nft.balanceOf(collector.address, 1)).to.equal(0);
+    });
+
+    it("requires the creator's expected recipient to match the admin configuration", async function () {
+      await expect(nft.connect(alice).setEditionGiftRecipient(collector.address))
+        .to.be.revertedWithCustomError(nft, "AccessControlUnauthorizedAccount");
+      await expect(nft.setEditionGiftRecipient(await nft.getAddress()))
+        .to.be.revertedWithCustomError(nft, "InvalidGiftRecipient");
+      await expect(createWithGift(alice, collector.address))
+        .to.be.revertedWithCustomError(nft, "GiftRecipientMismatch").withArgs(collector.address, ethers.ZeroAddress);
+      await expect(nft.setEditionGiftRecipient(collector.address))
+        .to.emit(nft, "EditionGiftRecipientUpdated").withArgs(collector.address);
+      await expect(createWithGift(alice, ethers.ZeroAddress))
+        .to.be.revertedWithCustomError(nft, "GiftRecipientMismatch");
+      await nft.setEditionGiftRecipient(bob.address);
+      await expect(createWithGift(alice, collector.address))
+        .to.be.revertedWithCustomError(nft, "GiftRecipientMismatch").withArgs(collector.address, bob.address);
+      expect(await nft.nextTokenId()).to.equal(0);
+      expect(await nft.creatorLimits(alice.address)).to.deep.equal([3n, 100n, 0n]);
+      await nft.setEditionGiftRecipient(ethers.ZeroAddress);
+      await create(alice, { amount: 10 });
+      expect(await nft.balanceOf(alice.address, 0)).to.equal(10);
+    });
+
+    it("rolls back the entire mint if the gift recipient rejects editions", async function () {
+      const receiver = await (await ethers.getContractFactory("RejectingNFTReceiver")).deploy();
+      const recipient = await receiver.getAddress();
+      await nft.setEditionGiftRecipient(recipient);
+      await expect(createWithGift(alice, recipient, { amount: 10, maxSupply: 10 })).to.be.revertedWith("Receiver rejected mint");
+      expect(await nft.nextTokenId()).to.equal(0);
+      expect(await nft.creatorLimits(alice.address)).to.deep.equal([3n, 100n, 0n]);
+      await expect(createWithGift(alice, recipient, { amount: 9, maxSupply: 9 }))
+        .to.emit(nft, "CreatorEditionsGifted").withArgs(0, alice.address, recipient, 0);
+      expect(await nft.balanceOf(alice.address, 0)).to.equal(9);
+    });
+
+    it("rolls back both sides of a gift when the requested total exceeds the supply cap", async function () {
+      await nft.setEditionGiftRecipient(collector.address);
+      await create(alice, { amount: 1, maxSupply: 10 });
+      await expect(nft.connect(alice).mintCreatorProductWithGift(0, 10, collector.address))
+        .to.be.revertedWith("DecentNFT: exceeds supply cap");
+      expect(await nft.balanceOf(alice.address, 0)).to.equal(1);
+      expect(await nft.balanceOf(collector.address, 0)).to.equal(0);
+      expect(await nft.totalMinted(0)).to.equal(1);
+    });
+
+    it("closes mint authorization before an admin gift recipient's receiver callback", async function () {
+      const receiver = await (await ethers.getContractFactory("MockReentrantCreator")).deploy(await nft.getAddress());
+      const recipient = await receiver.getAddress();
+      await nft.grantRole(await nft.DEFAULT_ADMIN_ROLE(), recipient);
+      await nft.setEditionGiftRecipient(recipient);
+      await receiver.setMode(2);
+      await createWithGift(alice, recipient, { amount: 10, maxSupply: 20 });
+      expect(await receiver.attempted()).to.equal(true);
+      expect(await receiver.reentrySucceeded()).to.equal(false);
+      expect((await receiver.reentryError()).slice(0, 10)).to.equal(nft.interface.getError("CreatorProductLocked").selector);
+      expect(await nft.totalMinted(0)).to.equal(10);
+      expect(await nft.balanceOf(recipient, 0)).to.equal(1);
+    });
+
+    it("also closes mint authorization before a creator-admin's own receiver callback", async function () {
+      const creator = await (await ethers.getContractFactory("MockReentrantCreator")).deploy(await nft.getAddress());
+      const address = await creator.getAddress();
+      await nft.authorizeCreator(address, 1, 10);
+      await nft.grantRole(await nft.DEFAULT_ADMIN_ROLE(), address);
+      await creator.setMode(2);
+      await creator.create(1, 10);
+      expect(await creator.reentrySucceeded()).to.equal(false);
+      expect((await creator.reentryError()).slice(0, 10)).to.equal(nft.interface.getError("CreatorProductLocked").selector);
+      expect(await nft.totalMinted(0)).to.equal(1);
     });
   });
 
