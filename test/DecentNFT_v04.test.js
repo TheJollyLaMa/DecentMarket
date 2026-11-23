@@ -51,6 +51,7 @@ describe("DecentNFT_v0_4 creator permissions", function () {
         .withArgs(collector.address, await nft.CREATOR_ROLE());
       await nft.grantRole(await nft.CREATOR_ROLE(), collector.address);
       await expect(create(collector)).to.be.revertedWithCustomError(nft, "CreatorProjectNotApproved");
+      expect(await nft.creatorProjectLimit(collector.address)).to.equal(10);
       await approveProject(collector.address);
       await expect(create(collector)).to.be.revertedWithCustomError(nft, "InvalidCreatorSupply").withArgs(10, 0);
     });
@@ -67,6 +68,7 @@ describe("DecentNFT_v0_4 creator permissions", function () {
         () => asAlice.revokeRole(CREATOR, bob.address),
         () => asAlice.grantRole(MINTER, alice.address),
         () => asAlice.authorizeCreator(alice.address, 1000),
+        () => asAlice.setCreatorProjectLimit(alice.address, 1000),
         () => asAlice.setCreatorProjectApproval(alice.address, projectId(alice.address, "unapproved"), true),
         () => asAlice.registerToken(0, "ipfs://x", 1, alice.address, 9000),
         () => asAlice.mintProduct(alice.address, 0, 1),
@@ -249,32 +251,80 @@ describe("DecentNFT_v0_4 creator permissions", function () {
   });
 
   describe("royalties", function () {
-    it("requires a non-zero receiver and enforces the creator royalty cap", async function () {
+    it("requires the creator wallet as receiver and enforces the creator royalty cap", async function () {
       await expect(create(alice, { bps: CAP + 1 })).to.be.revertedWithCustomError(nft, "InvalidCreatorRoyalty")
         .withArgs(alice.address, CAP + 1, CAP);
       await expect(create(alice, { receiver: ethers.ZeroAddress })).to.be.revertedWithCustomError(nft, "InvalidCreatorRoyalty");
-      await create(alice, { receiver: splitter.address, bps: CAP });
-      expect(await nft.royaltyInfo(0, 10000)).to.deep.equal([splitter.address, BigInt(CAP)]);
+      await expect(create(alice, { receiver: splitter.address })).to.be.revertedWithCustomError(nft, "InvalidCreatorRoyalty");
+      await create(alice, { bps: CAP });
+      expect(await nft.royaltyInfo(0, 10000)).to.deep.equal([alice.address, BigInt(CAP)]);
       await create(alice, { bps: 0 });
       expect(await nft.royaltyInfo(1, 10000)).to.deep.equal([alice.address, 0n]);
     });
 
-    it("lets only the creator move their royalty within the cap, and caps the cap", async function () {
+    it("lets only the creator change their royalty rate within the cap", async function () {
       await create(alice);
-      await nft.connect(alice).setCreatorProductRoyalty(0, splitter.address, 750);
-      expect(await nft.royaltyInfo(0, 10000)).to.deep.equal([splitter.address, 750n]);
-      await expect(nft.connect(alice).setCreatorProductRoyalty(0, splitter.address, CAP + 1))
+      await nft.connect(alice).setCreatorProductRoyalty(0, alice.address, 750);
+      expect(await nft.royaltyInfo(0, 10000)).to.deep.equal([alice.address, 750n]);
+      await expect(nft.connect(alice).setCreatorProductRoyalty(0, splitter.address, 750))
         .to.be.revertedWithCustomError(nft, "InvalidCreatorRoyalty");
-      await expect(nft.setCreatorRoyaltyCap(2501)).to.be.revertedWithCustomError(nft, "RoyaltyCapTooHigh");
+      await expect(nft.connect(alice).setCreatorProductRoyalty(0, alice.address, CAP + 1))
+        .to.be.revertedWithCustomError(nft, "InvalidCreatorRoyalty");
+      await expect(nft.setCreatorRoyaltyCap(CAP + 1)).to.be.revertedWithCustomError(nft, "RoyaltyCapTooHigh");
       await expect(nft.setCreatorRoyaltyCap(200)).to.emit(nft, "CreatorRoyaltyCapUpdated").withArgs(200);
-      expect(await nft.royaltyInfo(0, 10000)).to.deep.equal([splitter.address, 750n]);
+      expect(await nft.royaltyInfo(0, 10000)).to.deep.equal([alice.address, 750n]);
       await expect(create(alice, { bps: 201 })).to.be.revertedWithCustomError(nft, "InvalidCreatorRoyalty");
-      await expect((await ethers.getContractFactory("DecentNFT_v0_4")).deploy("", admin.address, 500, 2501))
+      await expect((await ethers.getContractFactory("DecentNFT_v0_4")).deploy("", admin.address, 500, CAP + 1))
         .to.be.revertedWithCustomError(nft, "RoyaltyCapTooHigh");
     });
   });
 
   describe("limits, supply and revocation", function () {
+    it("counts ten distinct lifetime projects, not series or repeated approvals", async function () {
+      expect(await nft.creatorProjectLimit(alice.address)).to.equal(10);
+      for (let i = 1; i < 10; i++) await approveProject(alice.address, `project-${i}`);
+      expect(await nft.creatorProjectCount(alice.address)).to.equal(10);
+      await create(alice);
+      await create(alice);
+      await approveProject(alice.address, "forest", false);
+      await expect(approveProject(alice.address, "eleventh"))
+        .to.be.revertedWithCustomError(nft, "CreatorProjectLimitReached").withArgs(alice.address, 10);
+      await approveProject(alice.address);
+      await approveProject(alice.address);
+      expect(await nft.creatorProjectCount(alice.address)).to.equal(10);
+      await nft.revokeCreator(alice.address);
+      await nft.authorizeCreator(alice.address, 100);
+      await approveProject(alice.address);
+      expect(await nft.creatorProjectCount(alice.address)).to.equal(10);
+      await expect(approveProject(alice.address, "eleventh"))
+        .to.be.revertedWithCustomError(nft, "CreatorProjectLimitReached").withArgs(alice.address, 10);
+      await expect(nft.setCreatorProjectLimit(alice.address, 11))
+        .to.emit(nft, "CreatorProjectLimitUpdated").withArgs(alice.address, 11);
+      await approveProject(alice.address, "eleventh");
+      expect(await nft.creatorProjectCount(alice.address)).to.equal(11);
+      await nft.setCreatorProjectLimit(alice.address, 5);
+      expect(await nft.isCreatorProjectApproved(alice.address, projectHash(alice.address, "eleventh"))).to.equal(true);
+      await expect(approveProject(alice.address, "twelfth"))
+        .to.be.revertedWithCustomError(nft, "CreatorProjectLimitReached").withArgs(alice.address, 5);
+      await approveProject(alice.address);
+    });
+
+    it("preserves a steward-set project limit across later creator authorization", async function () {
+      await nft.setCreatorProjectLimit(collector.address, 0);
+      await nft.grantRole(await nft.CREATOR_ROLE(), collector.address);
+      expect(await nft.creatorProjectLimit(collector.address)).to.equal(0);
+      await expect(approveProject(collector.address)).to.be.revertedWithCustomError(nft, "CreatorProjectLimitReached");
+      await nft.authorizeCreator(collector.address, 10);
+      expect(await nft.creatorProjectLimit(collector.address)).to.equal(0);
+      await nft.setCreatorProjectLimit(collector.address, 1);
+      await approveProject(collector.address);
+      await nft.revokeCreator(collector.address);
+      await nft.authorizeCreator(collector.address, 10);
+      expect(await nft.creatorProjectLimit(collector.address)).to.equal(1);
+      await approveProject(collector.address);
+      await expect(approveProject(collector.address, "another")).to.be.revertedWithCustomError(nft, "CreatorProjectLimitReached");
+    });
+
     it("enforces finite supply and the per-product edition limit", async function () {
       await expect(create(alice, { maxSupply: 0 })).to.be.revertedWithCustomError(nft, "InvalidCreatorSupply").withArgs(0, 100);
       await expect(create(alice, { maxSupply: 101 })).to.be.revertedWithCustomError(nft, "InvalidCreatorSupply").withArgs(101, 100);
@@ -335,7 +385,7 @@ describe("DecentNFT_v0_4 creator permissions", function () {
       await expect(nft.connect(alice).mintCreatorProductWithGift(0, 1, collector.address))
         .to.be.revertedWithCustomError(nft, "CreatorProjectNotApproved");
       await nft.connect(alice).safeTransferFrom(alice.address, collector.address, 0, 1, "0x");
-      await nft.connect(alice).setCreatorProductRoyalty(0, splitter.address, 100);
+      await nft.connect(alice).setCreatorProductRoyalty(0, alice.address, 100);
       await nft.connect(alice).mintCreatorProduct(1, 1);
       await approveProject(alice.address);
       await nft.connect(alice).mintCreatorProduct(0, 1);
@@ -364,13 +414,16 @@ describe("DecentNFT_v0_4 creator permissions", function () {
       }
     });
 
-    it("revokes future creator actions while existing products stay owned and locked", async function () {
+    it("revokes minting while preserving creator ownership and royalty control", async function () {
       await create(alice, { amount: 2 });
       await expect(nft.revokeCreator(alice.address)).to.emit(nft, "CreatorRevoked").withArgs(alice.address);
       expect(await nft.hasRole(await nft.CREATOR_ROLE(), alice.address)).to.equal(false);
       await expect(create(alice)).to.be.revertedWithCustomError(nft, "AccessControlUnauthorizedAccount");
       await expect(nft.connect(alice).mintCreatorProduct(0, 1)).to.be.revertedWithCustomError(nft, "AccessControlUnauthorizedAccount");
-      await expect(nft.connect(alice).setCreatorProductRoyalty(0, alice.address, 1)).to.be.revertedWithCustomError(nft, "AccessControlUnauthorizedAccount");
+      await nft.connect(alice).setCreatorProductRoyalty(0, alice.address, 1);
+      expect(await nft.royaltyInfo(0, 10000)).to.deep.equal([alice.address, 1n]);
+      await expect(nft.connect(bob).setCreatorProductRoyalty(0, bob.address, 1))
+        .to.be.revertedWithCustomError(nft, "NotProductCreator");
       await expect(nft.mintProduct(admin.address, 0, 1)).to.be.revertedWithCustomError(nft, "CreatorProductLocked");
       expect(await nft.creatorOf(0)).to.equal(alice.address);
       await nft.connect(alice).safeTransferFrom(alice.address, collector.address, 0, 1, "0x");

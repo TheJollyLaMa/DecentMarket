@@ -24,8 +24,8 @@ import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
  *     - is minted to the creator, except for an explicitly selected gift to
  *       the configured Agency recipient (no arbitrary recipients);
  *     - has a finite supply within the creator's edition limit;
- *     - has a mandatory per-token ERC-2981 royalty capped by `creatorRoyaltyCapBps`
- *       (the receiver may be a split contract for multi-artist payouts);
+ *     - has a per-token ERC-2981 royalty paid to the creator, capped by
+ *       `creatorRoyaltyCapBps`;
  *     - is locked against admin minting, admin royalty changes and admin URI
  *       changes, so the admin cannot mint as or impersonate the creator.
  *   Creators cannot grant/revoke roles, register Achievement tokens or mint any
@@ -46,8 +46,9 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
     bytes32 public constant CREATOR_ROLE = keccak256("CREATOR_ROLE");
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
 
-    /// @notice Hard ceiling for the admin-configurable creator royalty cap (25 %).
-    uint96 public constant MAX_CREATOR_ROYALTY_BPS = 2_500;
+    /// @notice Hard ceiling for the admin-configurable creator royalty cap (10 %).
+    uint96 public constant MAX_CREATOR_ROYALTY_BPS = 1_000;
+    uint64 public constant INITIAL_CREATOR_PROJECT_LIMIT = 10;
 
     // Transient authorization windows are consumed before any receiver callback.
     bytes32 private constant REGISTERING_CREATOR_SLOT =
@@ -63,6 +64,10 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
 
     /// @notice Maximum supply per creator product; zero prevents new registration.
     mapping(address => uint64) public creatorEditionLimit;
+    mapping(address => uint64) public creatorProjectLimit;
+    mapping(address => uint64) public creatorProjectCount;
+    mapping(address => bool) private _creatorProjectLimitInitialized;
+    mapping(address => mapping(bytes32 => bool)) private _previouslyApprovedProject;
     mapping(uint256 => address) private _productCreator;
     mapping(uint256 => bytes32) public productProject;
     mapping(address => uint256) private _creatorEpoch;
@@ -70,6 +75,7 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
 
     event CreatorAuthorized(address indexed creator, uint64 maxEditionsPerProduct);
     event CreatorRevoked(address indexed creator);
+    event CreatorProjectLimitUpdated(address indexed creator, uint64 limit);
     event CreatorProjectApproval(
         address indexed creator,
         bytes32 indexed projectHash,
@@ -98,6 +104,7 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
     error NotProductCreator(uint256 tokenId, address account);
     error CreatorNotAuthorized(address creator);
     error CreatorProjectNotApproved(address creator, bytes32 projectHash);
+    error CreatorProjectLimitReached(address creator, uint64 limit);
     error InvalidCanopyProjectId();
     error InvalidCreatorSupply(uint256 maxSupply, uint256 limit);
     error InvalidCreatorRoyalty(address receiver, uint96 feeBps, uint96 capBps);
@@ -137,6 +144,14 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
         emit CreatorAuthorized(creator, maxEditionsPerProduct);
     }
 
+    /// @notice Adjust the lifetime number of distinct projects a creator may be approved for.
+    function setCreatorProjectLimit(address creator, uint64 limit) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (creator == address(0)) revert ZeroAddress();
+        _creatorProjectLimitInitialized[creator] = true;
+        creatorProjectLimit[creator] = limit;
+        emit CreatorProjectLimitUpdated(creator, limit);
+    }
+
     /**
      * @notice Record or revoke a steward-reviewed Canopy wallet/project association.
      *         The steward must verify the public signed record before approval.
@@ -147,7 +162,16 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
     {
         if (creator == address(0)) revert ZeroAddress();
         bytes32 projectHash = _canopyProjectHash(creator, projectId);
-        if (approved && !hasRole(CREATOR_ROLE, creator)) revert CreatorNotAuthorized(creator);
+        if (approved) {
+            if (!hasRole(CREATOR_ROLE, creator)) revert CreatorNotAuthorized(creator);
+            if (!_previouslyApprovedProject[creator][projectHash]) {
+                uint64 count = creatorProjectCount[creator];
+                uint64 limit = creatorProjectLimit[creator];
+                if (count >= limit) revert CreatorProjectLimitReached(creator, limit);
+                _previouslyApprovedProject[creator][projectHash] = true;
+                creatorProjectCount[creator] = count + 1;
+            }
+        }
         _projectApprovalEpoch[creator][projectHash] = approved ? _creatorEpoch[creator] + 1 : 0;
         emit CreatorProjectApproval(creator, projectHash, projectId, approved);
     }
@@ -188,7 +212,7 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
      * @param amount          Editions minted now (> 0).
      * @param maxSupply_      Finite supply, 1..maxEditionsPerProduct.
      * @param tokenURI_       Required per-token metadata URI (e.g. `ipfs://<CID>`).
-     * @param royaltyReceiver Non-zero ERC-2981 receiver (wallet or split contract).
+     * @param royaltyReceiver Must be the creator's wallet.
      * @param royaltyFeeBps   Royalty, at most `creatorRoyaltyCapBps`.
      * @param projectHash     Keccak-256 of the approved canonical Canopy project ID.
      */
@@ -289,11 +313,10 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
         _creatorMint(creator, tokenId, amount, expectedRecipient);
     }
 
-    /// @notice Move the caller's own product royalty (e.g. to a split contract), within the cap.
+    /// @notice Change the caller's own product royalty rate, within the cap.
     function setCreatorProductRoyalty(uint256 tokenId, address receiver, uint96 feeBps)
         external
         nonReentrant
-        onlyRole(CREATOR_ROLE)
     {
         address creator = _msgSender();
         if (_productCreator[tokenId] != creator) revert NotProductCreator(tokenId, creator);
@@ -395,7 +418,7 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
     }
 
     function _checkCreatorRoyalty(address receiver, uint96 feeBps) private view {
-        if (receiver == address(0) || feeBps > creatorRoyaltyCapBps) {
+        if (receiver != _msgSender() || feeBps > creatorRoyaltyCapBps) {
             revert InvalidCreatorRoyalty(receiver, feeBps, creatorRoyaltyCapBps);
         }
     }
@@ -409,6 +432,15 @@ contract DecentNFT_v0_4 is DecentNFT_v0_3, Pausable, ReentrancyGuardTransient {
         if (capBps > MAX_CREATOR_ROYALTY_BPS) revert RoyaltyCapTooHigh(capBps);
         creatorRoyaltyCapBps = capBps;
         emit CreatorRoyaltyCapUpdated(capBps);
+    }
+
+    function _grantRole(bytes32 role, address account) internal override returns (bool) {
+        if (role == CREATOR_ROLE && !_creatorProjectLimitInitialized[account]) {
+            _creatorProjectLimitInitialized[account] = true;
+            creatorProjectLimit[account] = INITIAL_CREATOR_PROJECT_LIMIT;
+            emit CreatorProjectLimitUpdated(account, INITIAL_CREATOR_PROJECT_LIMIT);
+        }
+        return super._grantRole(role, account);
     }
 
     function _revokeRole(bytes32 role, address account) internal override returns (bool) {

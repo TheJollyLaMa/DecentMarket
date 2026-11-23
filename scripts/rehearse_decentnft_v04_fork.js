@@ -64,7 +64,7 @@ async function main() {
   await network.provider.send("hardhat_mine", ["0x1"]);
   const before = await snapshot();
 
-  const [admin, alice, bob, collector, splitter] = await ethers.getSigners();
+  const [admin, alice, bob, collector] = await ethers.getSigners();
   const nft = await (await ethers.getContractFactory("DecentNFT_v0_4")).deploy("", admin.address, 500, 1000);
   await nft.waitForDeployment();
   await (await nft.authorizeCreator(alice.address, 50)).wait();
@@ -77,7 +77,7 @@ async function main() {
   await (await nft.setEditionGiftRecipient(collector.address)).wait();
 
   const aliceTx = await (await nft.connect(alice).registerAndMintProductWithGift(
-    19, 50, "ipfs://rehearsal-alice", splitter.address, 750, aliceProjectHash, collector.address)).wait();
+    19, 50, "ipfs://rehearsal-alice", alice.address, 750, aliceProjectHash, collector.address)).wait();
   const bobTx = await (await nft.connect(bob).registerAndMintProduct(
     1, 1, "ipfs://rehearsal-bob", bob.address, 0, bobProjectHash)).wait();
   if (await nft.balanceOf(alice.address, 0) !== 18n || await nft.balanceOf(collector.address, 0) !== 1n ||
