@@ -19,6 +19,7 @@ Single source of truth for all on-chain deployments of DecentMarket smart contra
 | Base Mainnet | DeVertQueue | v0.2 | `0xe54609f022A8D760417E7cc0Eea6360b6E1D11Bb` | `abis/DeVertQueue_v0.2.json` | [BaseScan verified source](https://basescan.org/address/0xe54609f022A8D760417E7cc0Eea6360b6E1D11Bb#code) |
 | Base Mainnet | DecentBuskingTipRouter | v0.1 | `0xAa0207731e9F836273634F7B08cE87FfAA125183` | `abis/DecentBuskingTipRouter.json` | [BaseScan verified source (exact match)](https://basescan.org/address/0xAa0207731e9F836273634F7B08cE87FfAA125183#code) |
 | Base Mainnet | DecentBuskingTipRouter | v0.2 | `0xf774E24cda0732Fa57B167A57D30204842df30DD` | `abis/DecentBuskingTipRouter_v0.2.json` | [Sourcify exact match](https://repo.sourcify.dev/8453/0xf774E24cda0732Fa57B167A57D30204842df30DD) |
+| Base Mainnet | DecentSongSplitWalletFactory | v0.1 | `0x05D1151d75b4369343f983F5F0233bdcEc5ba84A` | `abis/DecentSongSplitWalletFactory_v0.1.json` | [Sourcify exact match](https://repo.sourcify.dev/8453/0x05D1151d75b4369343f983F5F0233bdcEc5ba84A) |
 
 ### DeVert paid queue v0.1
 
@@ -207,6 +208,29 @@ Post-deploy checks confirmed the runtime code equals the compiled artifact and
 11 read-only simulations behaved as expected. The worker reads it via
 `TIP_SPLIT_ROUTER_ADDRESS` / `TIP_SPLIT_START_BLOCK`; the site enables it via
 `tipSplitRouterAddress`.
+
+### Song split wallets v0.1 (DMTv song splits)
+
+Deployed November 23, 2026: factory `0x05D1151d75b4369343f983F5F0233bdcEc5ba84A`,
+wallet implementation `0xC42D8aAE0EF078cAe573824CA784Da2e9743Da6D`, transaction
+[`0x0655…6ba1`](https://basescan.org/tx/0x0655a0e586e9a636f1483e92c86f619ab2b33ab66d372c42b6d2e58093c06ba1),
+block 61335876. Both are exact matches on Sourcify (creation and runtime). ABIs:
+`abis/DecentSongSplitWalletFactory_v0.1.json`, `abis/DecentSongSplitWallet_v0.1.json`;
+record: [deployments/song-split-wallets-v01-base.json](deployments/song-split-wallets-v01-base.json).
+Owner `0xcAeEd8422fB5682C298B7F0971906d446fFd4e7a` (`Ownable2Step`).
+
+Lets single-address payers such as the DMTv escrow (`0x82a21D2039C239d141a26Fa82999bFC2b295aba6`)
+honor a song's split. `walletFor(recipients, sharesBps)` predicts a deterministic
+EIP-1167 clone (salt `keccak256(abi.encode(recipients, sharesBps))`, DJuke
+`configureSong` rules: 1–16 unique non-zero recipients, shares total 10000);
+`createWallet` is permissionless and idempotent. Each wallet's permissionless
+`distribute(token)` pays its whole balance by share (the last recipient takes rounding).
+Wallets hold funds between payment and distribution, so the factory owner can
+`recover` native or ERC-20 balances (prototype recovery policy). Post-deploy checks
+confirmed code equals the compiled artifacts, the implementation is locked and the
+off-chain CREATE2 prediction matches. The DecentBusking worker reads it via
+`SONG_SPLIT_WALLET_FACTORY` / `SONG_SPLIT_WALLET_IMPLEMENTATION`; the site via
+`songSplitWalletFactory` / `songSplitWalletImplementation`.
 
 ### Supported Escrow Tokens (Optimism Mainnet)
 
