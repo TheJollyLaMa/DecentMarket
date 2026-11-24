@@ -1,0 +1,39 @@
+{
+  "contract": "DecentSongSplitWalletFactory_v0_1",
+  "version": "v0.1",
+  "chainId": 8453,
+  "address": "0x05D1151d75b4369343f983F5F0233bdcEc5ba84A",
+  "implementation": "0xC42D8aAE0EF078cAe573824CA784Da2e9743Da6D",
+  "transactionHash": "0x0655a0e586e9a636f1483e92c86f619ab2b33ab66d372c42b6d2e58093c06ba1",
+  "startBlock": 61335876,
+  "deployer": "0xcAeEd8422fB5682C298B7F0971906d446fFd4e7a",
+  "owner": "0xcAeEd8422fB5682C298B7F0971906d446fFd4e7a",
+  "deployedAt": "2026-11-23T18:12:32.031Z",
+  "compiler": {
+    "solc": "0.8.26+commit.8a97fa7a",
+    "optimizerRuns": 200,
+    "evmVersion": "cancun",
+    "viaIR": false
+  },
+  "sourceSha256": "4fb99dd60576ee1f5ef61e71140769d3c907e9922ad857a1a03d28f4f1476a4c",
+  "interface": {
+    "walletFor": "walletFor(address[],uint16[])",
+    "createWallet": "createWallet(address[],uint16[])",
+    "distribute": "distribute(address)",
+    "recover": "recover(address,address,uint256)",
+    "event": "WalletCreated(address,address[],uint16[])",
+    "paid": "Paid(address,address,uint256)"
+  },
+  "checks": {
+    "ok": true,
+    "codeMatchesCompiled": true,
+    "implementation": "0xC42D8aAE0EF078cAe573824CA784Da2e9743Da6D",
+    "ownerMatches": true,
+    "implementationLocked": true,
+    "implementationCodeMatches": true,
+    "offChainPredictionMatches": true,
+    "createSimulates": true,
+    "invalidSplitRejected": true,
+    "runtimeCodeHash": "0x522048498f6589a9f5d0e5da3aa490f279f20db13a46f6aed6908998ae35489d"
+  }
+}
