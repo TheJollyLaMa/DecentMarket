@@ -1,0 +1,31 @@
+name: Supporter contract tests
+on:
+  push:
+    paths: ['contracts/**', 'test/DecentNFT_v0*.test.js', 'test/DecentSupporterListings_v01.test.js', 'hardhat.config.js', 'package*.json', '.github/workflows/supporter-contracts.yml']
+  pull_request:
+    paths: ['contracts/**', 'test/DecentNFT_v0*.test.js', 'test/DecentSupporterListings_v01.test.js', 'hardhat.config.js', 'package*.json', '.github/workflows/supporter-contracts.yml']
+permissions:
+  contents: read
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Test NFT and Supporter listing contracts
+        shell: bash
+        run: |
+          tests=(test/DecentNFT_v02.test.js test/DecentNFT_v03.test.js)
+          if [[ -f contracts/DecentNFT_v0.4.sol ]]; then
+            test -f test/DecentNFT_v04.test.js
+            tests+=(test/DecentNFT_v04.test.js)
+          fi
+          if [[ -f contracts/DecentSupporterListings_v0.1.sol ]]; then
+            test -f test/DecentSupporterListings_v01.test.js
+            tests+=(test/DecentSupporterListings_v01.test.js)
+          fi
+          npx hardhat test "${tests[@]}"
