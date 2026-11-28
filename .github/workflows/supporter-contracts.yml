@@ -1,9 +1,9 @@
 name: Supporter contract tests
 on:
   push:
-    paths: ['contracts/**', 'test/DecentNFT_v0*.test.js', 'test/DecentSupporterListings_v01.test.js', 'hardhat.config.js', 'package*.json', '.github/workflows/supporter-contracts.yml']
+    paths: ['contracts/**', 'test/DecentNFT_v0*.test.js', 'test/DecentSupporterListings_v01.test.js', 'test/CreatorSupporter.test.js', 'hardhat.config.js', 'package*.json', '.github/workflows/supporter-contracts.yml']
   pull_request:
-    paths: ['contracts/**', 'test/DecentNFT_v0*.test.js', 'test/DecentSupporterListings_v01.test.js', 'hardhat.config.js', 'package*.json', '.github/workflows/supporter-contracts.yml']
+    paths: ['contracts/**', 'test/DecentNFT_v0*.test.js', 'test/DecentSupporterListings_v01.test.js', 'test/CreatorSupporter.test.js', 'hardhat.config.js', 'package*.json', '.github/workflows/supporter-contracts.yml']
 permissions:
   contents: read
 jobs:
@@ -28,4 +28,8 @@ jobs:
             test -f test/DecentSupporterListings_v01.test.js
             tests+=(test/DecentSupporterListings_v01.test.js)
           fi
-          npx hardhat test "${tests[@]}"
+          if [[ -f test/CreatorSupporter.test.js ]]; then
+            tests+=(test/CreatorSupporter.test.js)
+          fi
+          # In-process Hardhat chain only; enables the creator mint/list journal suite.
+          LOCAL_BASE_REHEARSAL=1 npx hardhat test "${tests[@]}"
