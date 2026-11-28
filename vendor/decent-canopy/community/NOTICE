@@ -1,0 +1,6 @@
+DecentCanopy live published-creator loader
+Source repository: https://github.com/TheJollyLaMa/DecentCanopy
+Source file: scripts/published-creator.mjs
+Source state: uncommitted feat/first-project-incentive work based on e9fceef06afb381ec93164e08ea4c0cc440394b8.
+Copied unchanged. Uses the canonical creator-records verifier vendored separately at e9fceef0.
+Apache-2.0; see LICENSE. Keep the loader copies identical.

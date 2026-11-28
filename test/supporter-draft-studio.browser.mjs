@@ -55,7 +55,7 @@ try {
     await page.click('#save-draft');
     assert.equal(await page.evaluate(() => document.activeElement.id), 'f-payoutAddress');
     assert.equal(await page.getAttribute('#f-payoutAddress', 'aria-invalid'), 'true');
-    assert.equal(await page.locator('#status').getAttribute('data-error'), 'true');
+    assert.equal(await page.locator('[data-supporter-draft-studio] #status').getAttribute('data-error'), 'true');
     await page.fill('#f-payoutAddress', '');
 
     // Save, edit, reopen, delete.

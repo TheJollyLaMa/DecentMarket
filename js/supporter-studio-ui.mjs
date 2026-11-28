@@ -313,8 +313,24 @@ export function mountDraftStudio(root, { storage = globalThis.localStorage, fetc
 
   renderDrafts();
   const ready = loadProjects();
-  return { ready, dispose() { window.removeEventListener('storage', onStorage); window.removeEventListener('beforeunload', beforeUnload); } };
+  return { ready,
+    current() { return project && fields ? { project: { ...project }, fields: { ...fields }, draftId } : null; },
+    selectPublishedProject(item) {
+      if (!confirmDiscard()) return false;
+      projects.set(item.id, item);
+      if (![...$('existing-project').options].some(option => option.value === item.id)) {
+        const option = element('option', item.label); option.value = item.id; $('existing-project').append(option);
+      }
+      $('existing-project').value = item.id;
+      root.querySelector('[name="project-kind"][value="existing"]').checked = true;
+      begin(item);
+      return true;
+    },
+    dispose() { window.removeEventListener('storage', onStorage); window.removeEventListener('beforeunload', beforeUnload); } };
 }
 
 const root = typeof document !== 'undefined' && document.querySelector('main[data-supporter-draft-studio]');
-if (root) mountDraftStudio(root);
+if (root) {
+  root.draftStudio = mountDraftStudio(root);
+  root.dispatchEvent(new CustomEvent('decentmarket:draft-studio-ready'));
+}

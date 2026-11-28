@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Project Supporters · DecentMarket</title>
+  <link rel="stylesheet" href="css/supporter-studio.css">
+  <link rel="stylesheet" href="css/supporter-draft-studio.css">
+  <script src="./decent-head.config.js"></script>
+  <script src="vendor/decent-canopy/e9fceef0/scripts/creator-records.js"></script>
+  <script type="module" src="js/supporter-sales-ui.mjs"></script>
+</head>
+<body>
+  <a class="skip-link" href="#supporter-sales">Skip to project sales</a>
+  <decent-header></decent-header>
+  <main id="supporter-sales" data-supporter-sales class="draft-studio">
+    <header class="draft-studio-intro">
+      <a href="./">DecentMarket</a> · <a href="studio.html">Supporter Studio</a>
+      <h1>Support a published project</h1>
+      <p>Creator-owned Supporter editions from current signed Canopy projects. This is not a whole-market or resale index.
+        Signatures prove wallet control, not real-world identity or project ownership.</p>
+    </header>
+    <form data-sales-project>
+      <label>Published creator wallet<input name="creator" required maxlength="42" placeholder="0x…"></label>
+      <label>Published project key<input name="projectKey" required maxlength="50" pattern="[a-zA-Z0-9_-]{1,50}"></label>
+      <button type="submit">Verify publication &amp; load sales · read only</button>
+    </form>
+    <p data-sales-status role="status" aria-live="polite">Choose a published project. Loading does not connect a wallet or purchase.</p>
+    <section data-sales-catalog aria-label="Current creator listings"></section>
+    <section aria-labelledby="purchase-recovery">
+      <h2 id="purchase-recovery">Resume an uncertain wallet response</h2>
+      <p>Never resend a pending purchase. Connect the same Base wallet; enter the exact listing ID and wallet transaction hash.
+        Receipts must match the saved buyer, contract, calldata, value, nonce and purchase event, with two canonical confirmations.</p>
+      <label>Listing ID<input data-sales-listing inputmode="numeric" value="1"></label>
+      <label>Transaction hash<input data-sales-hash placeholder="0x…"></label>
+      <button type="button" data-sales-reconcile>Reconcile only · no new transaction</button>
+      <button type="button" data-sales-reset>Discard a quote with no pending transaction</button>
+      <p>Discarding a quote does not revoke a previously granted token allowance. No automatic or guaranteed purchase;
+        wallet gas is separate. Existing Agency checkout is unchanged.</p>
+    </section>
+  </main>
+</body>
+</html>

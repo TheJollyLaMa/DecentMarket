@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Supporter Studio · drafts and previews · DecentMarket</title>
+  <title>Supporter Studio · DecentMarket</title>
   <meta name="description" content="Prepare a Supporter edition for your project: edit details, preview the Market card, listing and terms, and save private drafts in this browser.">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="DecentMarket">
@@ -16,16 +16,20 @@
   <link rel="stylesheet" href="css/market-dialog.css">
   <link rel="stylesheet" href="css/supporter-draft-studio.css">
   <script src="./decent-head.config.js"></script>
+  <script src="vendor/decent-canopy/e9fceef0/scripts/creator-records.js"></script>
   <script type="module" src="js/supporter-studio-ui.mjs"></script>
+  <script type="module" src="js/creator-supporter-ui.mjs"></script>
 </head>
 <body>
   <a class="skip-link" href="#studio-form-heading">Skip to edition details</a>
+  <decent-header></decent-header>
   <main data-supporter-draft-studio class="draft-studio">
     <header class="draft-studio-intro">
       <a href="./">☥ DecentMarket</a>
       <h1>Supporter Studio</h1>
       <p>Design a Supporter edition for your project and see exactly how it will look in the Market.
-        Everything here stays in this browser. Nothing is uploaded, minted, listed or announced.</p>
+        Drafts and previews stay in this browser. The separate creator flow below requires a published Canopy project,
+        steward approval and configured contracts before explicit public uploads, minting or listing.</p>
     </header>
 
     <section aria-labelledby="project-heading">
@@ -135,7 +139,8 @@
         (<a href="https://github.com/TheJollyLaMa/DecentMarket/issues/85" target="_blank" rel="noopener noreferrer">#85</a>).
         Listing with your own payout waits on seller listings
         (<a href="https://github.com/TheJollyLaMa/DecentMarket/issues/84" target="_blank" rel="noopener noreferrer">#84</a>).
-        This studio never connects a wallet, uploads to IPFS, calls a contract, or posts to ENS or Discord.</p>
+        The draft preview never connects a wallet, uploads to IPFS, calls a contract, or posts to ENS or Discord.
+        Use the separate approved creator flow below when its deployment is configured.</p>
       <button type="button" id="gift-preview-open" disabled>Preview the optional edition gift</button>
       <p class="help" id="gift-preview-result" aria-live="polite">Preview only. No gift choice has been made.</p>
       <button type="button" id="mint-disabled" disabled aria-describedby="mint-waiting-note">Mint Supporter edition</button>
@@ -166,6 +171,41 @@
         </div>
         <button type="button" id="gift-cancel">Close preview without choosing</button>
       </dialog>
+    </section>
+
+    <section data-creator-supporter aria-labelledby="creator-supporter-heading">
+      <h2 id="creator-supporter-heading">Your published project · mint &amp; list</h2>
+      <p>Anyone can publish a Canopy creator profile and project. A steward must approve both before this project can mint.
+        A signature proves wallet control, not project ownership or unique human identity. No Agency mint fee.</p>
+      <a href="https://thejollylama.github.io/DecentCanopy/" target="_blank" rel="noopener noreferrer">Publish my creator profile / project in Canopy</a>
+      <button type="button" data-creator-load>Load my current signed Canopy projects</button>
+      <label>Published project<select data-creator-project></select></label>
+      <button type="button" data-creator-use>Use this project in the draft editor</button>
+      <p>Edit the details above, then prepare the public metadata. Collection and listings deployment is separate; legacy Agency contracts are never substituted.</p>
+      <label>Editions to mint now<input data-creator-amount type="number" min="1" step="1" value="10"></label>
+      <label>My editions to list<input data-creator-quantity type="number" min="1" step="1" value="9"></label>
+      <fieldset>
+        <legend>Optional edition gift · both choices are welcome</legend>
+        <p>Give sends floor(minted editions / 10) to the configured Agency recipient, included in the total minted.
+          Fewer than ten gives zero. Review the exact recipient below before minting.</p>
+        <label class="choice"><input type="radio" name="creator-gift" value="give"> Give</label>
+        <label class="choice"><input type="radio" name="creator-gift" value="skip"> Skip</label>
+      </fieldset>
+      <button type="button" data-creator-prepare>Review &amp; upload public IPFS metadata</button>
+      <button type="button" data-creator-resume>Resume this project’s mint/list journal</button>
+      <pre data-creator-review></pre>
+      <p>Creator sales pay 10% Agency fee; resales pay 5% Agency plus the creator royalty (maximum combined 10%).
+        Network gas is separate. Approving the listings operator permits it to pull your selected editions into seller custody.</p>
+      <label class="choice"><input type="checkbox" data-creator-consent> I reviewed these exact creator, project, mint/list, royalty, gift recipient and contract terms.</label>
+      <button type="button" data-creator-next disabled>Confirm mint/list step</button>
+      <label>Recover an existing wallet transaction<input data-creator-hash maxlength="66" placeholder="0x…"></label>
+      <button type="button" data-creator-reconcile>Reconcile existing transaction · never resend</button>
+      <button type="button" data-creator-new>Archive completed series / prepare another</button>
+      <p data-creator-progress aria-live="polite">No creator transaction prepared.</p>
+      <p data-creator-status role="status" aria-live="polite">Creator deployment has not been activated.</p>
+      <p data-creator-evidence></p>
+      <a data-creator-return hidden>Return to Canopy with mint/listing evidence</a>
+      <a data-creator-sale hidden>View this listing in Project Supporter sales</a>
     </section>
 
     <p id="status" role="status" aria-live="polite">Choose a project to begin. Nothing leaves this browser.</p>

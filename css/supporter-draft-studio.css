@@ -54,6 +54,11 @@ select:focus-visible,textarea:focus-visible,a:focus-visible,h2[tabindex]:focus-v
 .draft-list li { display:grid; gap:4px; padding:12px 0; border-bottom:1px solid #a99aff33; }
 .draft-buttons button { margin:6px 8px 0 0; }
 .mint-waiting button:disabled { border-style:dashed; }
+[data-creator-supporter] label { display:grid; gap:6px; margin-block:12px; }
+[data-creator-supporter] label.choice { display:inline-flex; }
+[data-creator-supporter] pre { white-space:pre-wrap; overflow-wrap:anywhere; max-width:100%; }
+[data-creator-supporter] p, [data-creator-supporter] a { overflow-wrap:anywhere; }
+[data-creator-supporter] input:not([type=checkbox]):not([type=radio]) { box-sizing:border-box; width:100%; min-width:0; }
 #gift-preview { box-sizing:border-box; width:min(680px, calc(100vw - 24px)); max-height:calc(100dvh - 24px); overflow:auto;
   padding:clamp(16px,4vw,28px); border:1px solid #7af0c6; border-radius:18px; background:#0b1526; color:#eaf8ff; }
 #gift-preview::backdrop { background:#02070dcc; }
