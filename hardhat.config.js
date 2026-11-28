@@ -49,7 +49,7 @@ module.exports = {
     hardhat: process.env.BASE_FORK_RPC
       ? { chainId: 8453, hardfork: "cancun", forking: { url: process.env.BASE_FORK_RPC },
           chains: { 8453: { hardforkHistory: { cancun: 0 } } } }
-      : {},
+      : process.env.LOCAL_BASE_REHEARSAL === "1" ? { chainId: 8453 } : {},
     localhost: {
       url: "http://127.0.0.1:8545",
     },

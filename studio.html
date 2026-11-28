@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Supporter Studio · DecentMarket</title>
+  <meta name="description" content="Prepare a Supporter edition for your project: edit details, preview the Market card, listing and terms, and save private drafts in this browser.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="DecentMarket">
+  <meta property="og:title" content="Supporter Studio · DecentMarket">
+  <meta property="og:description" content="Draft and preview a Supporter edition for your project. Drafts stay in your browser.">
+  <meta property="og:url" content="https://thejollylama.github.io/DecentMarket/studio.html">
+  <meta property="og:image" content="https://thejollylama.github.io/DecentMarket/assets/social-preview.jpg">
+  <meta property="og:image:alt" content="DecentMarket website preview">
+  <link rel="stylesheet" href="css/supporter-studio.css">
+  <link rel="stylesheet" href="css/market-dialog.css">
+  <link rel="stylesheet" href="css/supporter-draft-studio.css">
+  <script src="./decent-head.config.js"></script>
+  <script src="vendor/decent-canopy/e9fceef0/scripts/creator-records.js"></script>
+  <script type="module" src="js/supporter-studio-ui.mjs"></script>
+  <script type="module" src="js/creator-supporter-ui.mjs"></script>
+</head>
+<body>
+  <a class="skip-link" href="#studio-form-heading">Skip to edition details</a>
+  <decent-header></decent-header>
+  <main data-supporter-draft-studio class="draft-studio">
+    <header class="draft-studio-intro">
+      <a href="./">☥ DecentMarket</a>
+      <h1>Supporter Studio</h1>
+      <p>Design a Supporter edition for your project and see exactly how it will look in the Market.
+        Drafts and previews stay in this browser. The separate creator flow below requires a published Canopy project,
+        steward approval and configured contracts before explicit public uploads, minting or listing.</p>
+    </header>
+
+    <section aria-labelledby="project-heading">
+      <h2 id="project-heading">1 · Choose a project</h2>
+      <fieldset>
+        <legend>Which project is this Supporter edition for?</legend>
+        <label class="choice"><input type="radio" name="project-kind" value="existing" checked> An existing project</label>
+        <label class="choice"><input type="radio" name="project-kind" value="new"> A new project</label>
+      </fieldset>
+      <label id="existing-project-field">Existing project
+        <select id="existing-project" aria-describedby="existing-project-help"><option value="">Loading projects…</option></select>
+        <span class="help" id="existing-project-help">Details are copied from that project's published Market release. You can change every value. Choosing a project does not mean you own it.</span>
+      </label>
+      <button type="button" id="start-draft">Start a draft</button>
+    </section>
+
+    <div class="draft-studio-grid">
+      <form id="studio-form" novalidate aria-labelledby="studio-form-heading" hidden>
+        <h2 id="studio-form-heading" tabindex="-1">2 · Your Supporter edition</h2>
+        <p class="help" id="studio-project-label"></p>
+        <a class="jump-link" href="#previews-heading">Jump to live previews</a>
+        <p class="help">Labels show where each value came from: <span class="badge" data-kind="source">from source</span>
+          <span class="badge" data-kind="default">default</span> <span class="badge" data-kind="edited">edited</span>
+          <span class="badge" data-kind="unknown">unknown</span>.</p>
+
+        <div class="field" data-field="name">
+          <label for="f-name">Edition name <span class="badge" aria-hidden="true"></span></label>
+          <input id="f-name" name="name" maxlength="100" autocomplete="off" aria-describedby="f-name-help f-name-source f-name-error">
+          <span class="help" id="f-name-help">What collectors will see on the card, for example "Moonlit Album Supporter".</span>
+        </div>
+        <div class="field" data-field="description">
+          <label for="f-description">Description <span class="badge" aria-hidden="true"></span></label>
+          <textarea id="f-description" name="description" rows="5" maxlength="1000" aria-describedby="f-description-help f-description-source f-description-error"></textarea>
+          <span class="help" id="f-description-help">In a few sentences: what you are making and what support helps with.</span>
+        </div>
+        <div class="field" data-field="image">
+          <label for="f-image">Front artwork link <span class="badge" aria-hidden="true"></span></label>
+          <input id="f-image" name="image" inputmode="url" autocomplete="off" placeholder="https://… or ipfs://…" aria-describedby="f-image-help f-image-source f-image-error">
+          <span class="help" id="f-image-help">A link to an image you already host. The studio does not upload files.</span>
+        </div>
+        <div class="field" data-field="backImage">
+          <label for="f-backImage">Back artwork link (optional) <span class="badge" aria-hidden="true"></span></label>
+          <input id="f-backImage" name="backImage" inputmode="url" autocomplete="off" placeholder="https://… or ipfs://…" aria-describedby="f-backImage-help f-backImage-source f-backImage-error">
+          <span class="help" id="f-backImage-help">Adds a "View back" button to the card.</span>
+        </div>
+        <div class="field" data-field="externalUrl">
+          <label for="f-externalUrl">Project or Canopy page (optional) <span class="badge" aria-hidden="true"></span></label>
+          <input id="f-externalUrl" name="externalUrl" inputmode="url" autocomplete="off" placeholder="https://…" aria-describedby="f-externalUrl-help f-externalUrl-source f-externalUrl-error">
+          <span class="help" id="f-externalUrl-help">Where supporters can learn more. A code repository is not required.</span>
+        </div>
+        <div class="field-row">
+          <div class="field" data-field="editionSize">
+            <label for="f-editionSize">Edition size <span class="badge" aria-hidden="true"></span></label>
+            <input id="f-editionSize" name="editionSize" type="number" min="1" max="9007199254740991" step="1" inputmode="numeric"
+              aria-describedby="f-editionSize-help f-editionSize-source f-editionSize-error">
+            <span class="help" id="f-editionSize-help">Maximum editions in the series. A future mint must also meet the collection's limit.</span>
+          </div>
+          <div class="field" data-field="priceUSDC">
+            <label for="f-priceUSDC">Price each <span class="badge" aria-hidden="true"></span></label>
+            <select id="f-priceUSDC" name="priceUSDC" aria-describedby="f-priceUSDC-help f-priceUSDC-source f-priceUSDC-error">
+              <option value="">Choose…</option><option value="10">10 USDC</option><option value="100">100 USDC</option>
+            </select>
+            <span class="help" id="f-priceUSDC-help">Paid in USDC on Base. These are the supported Supporter terms today.</span>
+          </div>
+          <div class="field" data-field="royaltyBps">
+            <label for="f-royaltyBps">Resale royalty <span class="badge" aria-hidden="true"></span></label>
+            <select id="f-royaltyBps" name="royaltyBps" aria-describedby="f-royaltyBps-help f-royaltyBps-source f-royaltyBps-error"></select>
+            <span class="help" id="f-royaltyBps-help">You choose the creator-wallet share of resales. The planned Market flow enforces it; other marketplaces may not honour it.</span>
+          </div>
+        </div>
+        <div class="field" data-field="payoutAddress">
+          <label for="f-payoutAddress">Address note (optional) <span class="badge" aria-hidden="true"></span></label>
+          <input id="f-payoutAddress" name="payoutAddress" autocomplete="off" spellcheck="false" placeholder="0x…" aria-describedby="f-payoutAddress-help f-payoutAddress-source f-payoutAddress-error">
+          <span class="help" id="f-payoutAddress-help">A note only, not a payout instruction. The planned Market flow pays sale proceeds to the seller wallet and royalties to the creator wallet. No wallet is connected here.</span>
+        </div>
+
+        <div class="draft-actions">
+          <button type="submit" id="save-draft">Save draft in this browser</button>
+          <button type="button" id="discard-draft">Close without saving</button>
+        </div>
+        <p class="help" id="dirty-state"></p>
+      </form>
+
+      <section id="previews" aria-labelledby="previews-heading" hidden>
+        <h2 id="previews-heading" tabindex="-1">3 · Live previews</h2>
+        <p class="help">These update as you type and use the same card layout as the Market.</p>
+        <h3 id="card-preview-heading">Market card</h3>
+        <div id="card-preview" aria-labelledby="card-preview-heading"></div>
+        <h3 id="listing-preview-heading">Market listing</h3>
+        <div id="listing-preview" aria-labelledby="listing-preview-heading"></div>
+        <h3 id="terms-preview-heading">Supporter terms</h3>
+        <dl id="terms-preview" class="terms" aria-labelledby="terms-preview-heading"></dl>
+      </section>
+    </div>
+
+    <section aria-labelledby="drafts-heading">
+      <h2 id="drafts-heading" tabindex="-1">Saved drafts</h2>
+      <p class="help">Stored only in this browser on this device. Clearing browser data removes them. Drafts never include wallets, keys or passwords.</p>
+      <ul id="draft-list" class="draft-list"></ul>
+    </section>
+
+    <section aria-labelledby="mint-heading" class="mint-waiting">
+      <h2 id="mint-heading">4 · Mint and list</h2>
+      <p id="mint-waiting-note">Not available yet. Minting waits on creator permissions
+        (<a href="https://github.com/TheJollyLaMa/DecentMarket/issues/47" target="_blank" rel="noopener noreferrer">#47</a>)
+        and verification of a published DecentCanopy project
+        (<a href="https://github.com/TheJollyLaMa/DecentMarket/issues/85" target="_blank" rel="noopener noreferrer">#85</a>).
+        Listing with your own payout waits on seller listings
+        (<a href="https://github.com/TheJollyLaMa/DecentMarket/issues/84" target="_blank" rel="noopener noreferrer">#84</a>).
+        The draft preview never connects a wallet, uploads to IPFS, calls a contract, or posts to ENS or Discord.
+        Use the separate approved creator flow below when its deployment is configured.</p>
+      <button type="button" id="gift-preview-open" disabled>Preview the optional edition gift</button>
+      <p class="help" id="gift-preview-result" aria-live="polite">Preview only. No gift choice has been made.</p>
+      <button type="button" id="mint-disabled" disabled aria-describedby="mint-waiting-note">Mint Supporter edition</button>
+      <button type="button" id="list-disabled" disabled aria-describedby="mint-waiting-note">List on DecentMarket</button>
+
+      <dialog id="gift-preview" aria-labelledby="gift-preview-heading" aria-describedby="gift-explanation">
+        <h3 id="gift-preview-heading">A little gift, if you like</h3>
+        <p id="gift-explanation">There's no Agency minting fee. You may give 10% of the editions minted
+          in this transaction to DecentAgency, rounded down. Fewer than 10 editions gives none.
+          Giving and skipping are both welcome.</p>
+        <div class="gift-comic">
+          <article><span aria-hidden="true">🎨</span><strong>Make</strong><p>Your project, your editions.</p></article>
+          <article><span aria-hidden="true">🌱</span><strong>Share?</strong><p>Choose whether to give a little.</p></article>
+          <article><span aria-hidden="true">✨</span><strong>Grow</strong><p>Keep creating either way.</p></article>
+        </div>
+        <label for="gift-example-amount">Editions minted in this example</label>
+        <input id="gift-example-amount" type="number" min="1" max="9007199254740991" step="1" inputmode="numeric"
+          aria-describedby="gift-example-help gift-example-error">
+        <p class="help" id="gift-example-help">This example starts with the whole series; later mints are calculated separately.</p>
+        <p class="field-error" id="gift-example-error" aria-live="polite"></p>
+        <p id="gift-counts" aria-live="polite" aria-atomic="true"></p>
+        <p class="help">Agency recipient: not available in this preview. A future mint review must show its verified address
+          and estimated network gas before wallet confirmation.</p>
+        <p class="help">This is only a preview. No wallet is connected, and your choice is not saved or sent.</p>
+        <div class="gift-actions">
+          <button type="button" id="gift-give">Give</button>
+          <button type="button" id="gift-skip">Skip</button>
+        </div>
+        <button type="button" id="gift-cancel">Close preview without choosing</button>
+      </dialog>
+    </section>
+
+    <section data-creator-supporter aria-labelledby="creator-supporter-heading">
+      <h2 id="creator-supporter-heading">Your published project · mint &amp; list</h2>
+      <p>Anyone can publish a Canopy creator profile and project. A steward must approve both before this project can mint.
+        A signature proves wallet control, not project ownership or unique human identity. No Agency mint fee.</p>
+      <a href="https://thejollylama.github.io/DecentCanopy/" target="_blank" rel="noopener noreferrer">Publish my creator profile / project in Canopy</a>
+      <button type="button" data-creator-load>Load my current signed Canopy projects</button>
+      <label>Published project<select data-creator-project></select></label>
+      <button type="button" data-creator-use>Use this project in the draft editor</button>
+      <p>Edit the details above, then prepare the public metadata. Collection and listings deployment is separate; legacy Agency contracts are never substituted.</p>
+      <label>Editions to mint now<input data-creator-amount type="number" min="1" step="1" value="10"></label>
+      <label>My editions to list<input data-creator-quantity type="number" min="1" step="1" value="9"></label>
+      <fieldset>
+        <legend>Optional edition gift · both choices are welcome</legend>
+        <p>Give sends floor(minted editions / 10) to the configured Agency recipient, included in the total minted.
+          Fewer than ten gives zero. Review the exact recipient below before minting.</p>
+        <label class="choice"><input type="radio" name="creator-gift" value="give"> Give</label>
+        <label class="choice"><input type="radio" name="creator-gift" value="skip"> Skip</label>
+      </fieldset>
+      <button type="button" data-creator-prepare>Review &amp; upload public IPFS metadata</button>
+      <button type="button" data-creator-resume>Resume this project’s mint/list journal</button>
+      <pre data-creator-review></pre>
+      <p>Creator sales pay 10% Agency fee; resales pay 5% Agency plus the creator royalty (maximum combined 10%).
+        Network gas is separate. Approving the listings operator permits it to pull your selected editions into seller custody.</p>
+      <label class="choice"><input type="checkbox" data-creator-consent> I reviewed these exact creator, project, mint/list, royalty, gift recipient and contract terms.</label>
+      <button type="button" data-creator-next disabled>Confirm mint/list step</button>
+      <label>Recover an existing wallet transaction<input data-creator-hash maxlength="66" placeholder="0x…"></label>
+      <button type="button" data-creator-reconcile>Reconcile existing transaction · never resend</button>
+      <button type="button" data-creator-new>Archive completed series / prepare another</button>
+      <p data-creator-progress aria-live="polite">No creator transaction prepared.</p>
+      <p data-creator-status role="status" aria-live="polite">Creator deployment has not been activated.</p>
+      <p data-creator-evidence></p>
+      <a data-creator-return hidden>Return to Canopy with mint/listing evidence</a>
+      <a data-creator-sale hidden>View this listing in Project Supporter sales</a>
+    </section>
+
+    <p id="status" role="status" aria-live="polite">Choose a project to begin. Nothing leaves this browser.</p>
+  </main>
+</body>
+</html>

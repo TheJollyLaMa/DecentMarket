@@ -371,6 +371,70 @@ or Discord posting is performed. See [setup, recovery and evidence registration]
 Validate with `npm run test:supporter`; browser rehearsal:
 `BASE_URL=http://127.0.0.1:8792 npm run test:supporter:browser`.
 
+### Creator/project Supporters (implemented; not activated)
+
+[Supporter Studio](studio.html) has a separate creator flow using current signed
+Canopy publications and steward-approved creator/project permissions. Metadata is
+publicly uploaded only after quantity/gift/contract preflight. Register-and-mint,
+ERC1155 operator approval and seller-custody listing are three explicit, journaled
+wallet steps; uncertain responses require exact receipt recovery, never a resend.
+Give/Skip remain equally available; the gift is included in the chosen mint quantity.
+The same selected project must still exist before every transaction.
+
+[Project Supporter sales](project-supporters.html) discovers creator-owned inventory
+for one current public project. It is not a whole-market or resale index. Discovery
+is bounded to 100 recorded seller listings; unavailable or unsupported assets are
+errors, not empty results or USDC substitutes. Checkout uses the new seller listings,
+not legacy escrow: token approval is separate from purchase, USDC uses `maxTotal`,
+and ETH requires an exact payment. The purchase journal binds wallet, project,
+deployment, calldata, value, nonce and expected event to two canonical confirmations.
+Browser Web Locks coordinate mint/purchase sends across tabs. Existing Agency
+minting and checkout remain unchanged.
+
+Reuse: creator permissions/seller contracts from drafts #88/#87; canonical
+Canopy verifier from `e9fceef06afb381ec93164e08ea4c0cc440394b8`; the unchanged live
+publication loader from Canopy's uncommitted `feat/first-project-incentive` branch
+(same base). The shared listings reader is also vendored unchanged by Canopy.
+Licenses/NOTICE files identify these sources. The backend qualification and settlement
+rehearsal reuses Busking's campaign engine and ArtFi's actual settlement router.
+
+`community-supporter.json` intentionally contains null deployment addresses.
+Activation requires separately approved collection/listings deployment, fee/gift/
+asset configuration, worker capabilities/CORS and matching frontend addresses.
+The First Project reward allocation is funded/published separately; listing is
+not a reward approval. No legacy addresses are accepted as a substitute.
+
+Local receiving checks:
+
+```sh
+LOCAL_BASE_REHEARSAL=1 npx hardhat test test/CreatorSupporter.test.js test/DecentNFT_v04.test.js test/DecentSupporterListings_v01.test.js
+LOCAL_BASE_REHEARSAL=1 BUSKING_CAMPAIGNS_ROOT=/path/to/busking ARTFI_ROOT=/path/to/artfi npx hardhat test test/integration/FirstProjectCampaign.cjs
+MARKET_URL=http://127.0.0.1:8792 CANOPY_URL=http://127.0.0.1:8793 node test/community-supporter.browser.mjs
+```
+
+These use local synthetic Base contracts and browser fixtures; they do not broadcast,
+fund or activate a campaign on Base.
+
+### Supporter Studio drafts and previews (#83)
+
+[Supporter Studio](studio.html) lets a creator choose an existing project (prefilled
+from a published release's `supporter-metadata.json`) or start a new one, edit the
+edition, and see live previews of the Market card, listing row and supporter terms.
+Every value is labelled as from source, default, edited or unknown. Drafts are saved
+only in this browser (`localStorage` key `decent-market:supporter-studio:drafts`,
+versioned and validated by `js/supporter-draft.mjs`); unreadable or newer stores are
+left untouched. An optional, animated gift preview shows `floor(minted editions / 10)`
+and explicitly offers Give or Skip; editions below 10 gift zero. The example is not
+stored or sent, and the Agency recipient and gas estimate are not available here. The
+draft preview never connects a wallet, uploads to IPFS, calls a contract or posts to
+ENS/Discord. Its preview mint/list controls stay disabled. The separate creator flow
+above requires current publications, permissions and verified deployment activation
+before explicit uploads or wallet actions.
+
+Validate with `npm run test:supporter`; browser check:
+`BASE_URL=http://127.0.0.1:8792 npm run test:supporter:drafts:browser`
+(optional `SCREENSHOT_DIR=…`).
+
 ## License
 
 Code: [Apache-2.0](LICENSE) · Art and docs: [CC BY 4.0](LICENSES/CC-BY-4.0.txt) · Please keep the [NOTICE](NOTICE) and give The Jolly LaMa / A Decent Agency a head nod when you reuse this work.

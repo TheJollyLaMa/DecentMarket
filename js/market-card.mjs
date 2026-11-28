@@ -1,5 +1,6 @@
 import { BASE } from './supporter-mint.mjs';
-import { collectibleFaces, resolveCollectibleAsset } from './supporter-display.mjs';
+import { resolveCollectibleAsset } from './supporter-display.mjs';
+import { collectibleArtwork, collectibleEditionDetails } from './market-card-view.mjs';
 import { element, externalLink, openMarketDialog } from './market-dialog.mjs';
 import { assetKey, listingPrices, loadMarketListings, purchaseMarketListing } from './market-listings.mjs';
 import { visibleMarketProducts } from './market-moderation.mjs';
@@ -12,22 +13,7 @@ export function openCollectibleCard(product) {
   const { dialog, body } = openMarketDialog('nft-detail-modal', metadata.name || `DNFT #${tokenId ?? '?'}`, { purchase: true });
   trackPurchaseWallet(dialog);
   body.classList.add('market-collectible-card');
-  const artwork = element('div', undefined, 'market-card-art');
-  const faces = collectibleFaces(metadata);
-  if (faces.front) {
-    const image = element('img'); image.src = faces.front; image.alt = metadata.name || 'DNFT artwork';
-    image.onerror = () => artwork.replaceChildren(element('p', 'Artwork unavailable. Metadata and contract links remain below.'));
-    artwork.append(image);
-    if (faces.back) {
-      const flip = element('button', 'View back'); let back = false;
-      flip.onclick = () => {
-        back = !back; image.src = back ? faces.back : faces.front;
-        flip.textContent = back ? 'View front' : 'View back';
-        artwork.classList.remove('market-card-flip'); void artwork.offsetWidth; artwork.classList.add('market-card-flip');
-      };
-      artwork.append(flip);
-    }
-  } else artwork.append(element('p', '✦ Artwork not available ✦'));
+  const artwork = collectibleArtwork(metadata);
   const info = element('section');
   info.append(element('p', metadata.description || 'A Decent digital keepsake.'));
   if (tokenId !== undefined) info.append(element('p', `Base · DNFT #${tokenId}`, 'market-token-label'));
@@ -120,13 +106,7 @@ export function openCollectibleCard(product) {
   const parent = metadata.parentTokenId ?? properties.parentTokenId;
   if (/^\d+$/.test(String(parent))) addLink(provenance, `Parent DNFT #${parent} ↗`, `https://basescan.org/token/${nftContract}?a=${parent}`);
   info.append(provenance);
-  const attributes = element('details'); attributes.append(element('summary', 'Edition details'));
-  const dl = element('dl');
-  for (const trait of Array.isArray(metadata.attributes) ? metadata.attributes : []) {
-    if (trait && typeof trait.trait_type === 'string' && ['string', 'number', 'boolean'].includes(typeof trait.value))
-      dl.append(element('dt', trait.trait_type), element('dd', String(trait.value)));
-  }
-  attributes.append(dl); info.append(attributes);
+  info.append(collectibleEditionDetails(metadata));
   body.append(artwork, info);
   return dialog;
 }
